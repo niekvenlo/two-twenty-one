@@ -29,19 +29,23 @@ var test = (function testModule() {
    * - pass ok a true statement.
    * - pass fizzle a function that throws an error.
    * - pass solid a function that does not throw an error.
-   * Results are logged to the console.
+   * Results are logged to the console if there is an error.
    */
 
-  let /** boolean */ testsEnabled = false;
+  const logBook = [];
   let /** boolean */ allGood = false;
 
-  /** Turn tests on or off from this point on. */
-  const enable = (/**boolean */ on = true) => testsEnabled = on;
+  const print = () => logBook.forEach(el => console.log(...el));
 
-  const debug = (/** string */ m) => console.debug(`%c${m}`, 'color: grey');
-  const log = (/** string */ m) => console.debug(`%c${m}`, 'color: grey');
-  const logOk = (/** string */ m) => console.debug(`%c${m}`, 'color: green');
-  const logFail = (/** string */ m) => console.debug(`%c${m}`, 'color: red');
+  setTimeout(() => {
+    if (!allGood) {
+      print();
+    }
+  }, 1000);
+
+  const header = (/** string */ m) => logBook.push([`%c${m}`, 'color: grey']);
+  const logOk = (/** string */ m) => logBook.push([`%c${m}`, 'color: green']);
+  const logFail = (/** string */ m) => logBook.push([`%c${m}`, 'color: red']);
 
   /**
    * Define a test, which can include many test items.
@@ -51,18 +55,14 @@ var test = (function testModule() {
    * test items.
    */
   const group = (groupDesc, func) => {
-    if (!testsEnabled) {
-      debug(`${groupDesc} tests disabled`);
-      return;
-    }
     if (typeof func !== 'function') {
       throw new Error('Test requires a function');
     }
     allGood = true;
-    log(`===== ${groupDesc}`);
+    header(`===== ${groupDesc}`);
     func();
     const verdict = (allGood) ? 'OK' : 'FAIL';
-    log(`===== ${verdict}`);
+    header(`===== ${verdict}`);
   };
 
   /**
@@ -110,7 +110,7 @@ var test = (function testModule() {
    }
  }
  
- return {enable, group, ok, fizzle, solid};
+ return {group, ok, fizzle, solid, print};
 })();
 
 
@@ -133,7 +133,18 @@ var util =
     return !!domElement && domElement.parentNode !== undefined;
   }
 
-  return {isDomElement};
+  function debounce(func, delay) {
+    let timer = false;
+    return function debounced(...params) {
+      if (!timer) {
+        return func(...params);
+      }
+      timer = true;
+      setTimeout(() => timer = false, delay);
+    }
+  }
+
+  return {isDomElement, debounce};
 })();
 
 
@@ -205,7 +216,7 @@ var {config, counter, flag, log} =
      * @param {string} itemName - Name of the item in localStorage
      * @param {object} obj - Object, string or number to be stored.
      * Will overwrite previously stored values.
-     * @todo Log changes to stored values.
+     * @todo Persistently log changes to stored values.
      */
     set(itemName, obj = {}) {
       localStorage.setItem(this.baseName + itemName, JSON.stringify(obj))
@@ -434,6 +445,13 @@ var {setReactions, setGlobalReactions} =
     'paste',
   ]);
 
+  function eventToStrings(event) {
+    const eventString = eventToString(event);
+    const type = `${event.type}`;
+    const type_k = `${event.type}_${eventString}`;
+    return [type, type_k];
+  }
+
   /**
    * Maps a browser event to a descriptive string, if possible.
    * @param {Event} event - Browser event
@@ -441,7 +459,7 @@ var {setReactions, setGlobalReactions} =
    * @example A keydown event could map to 'ctrl-c' or 'shift'.
    * 'ctrl-Control' or similar.
    */
-function eventToString(event) {
+  function eventToString(event) {
     if (!event) {
       return '';
     }
@@ -505,10 +523,14 @@ function eventToString(event) {
    * @param {Array<function>} functions.
    */
   function runAll(functions) {
+    if (!functions) {
+      return;
+    }
     functions.forEach(func => {
       if (typeof func === 'function') {
         func();
       } else {
+        console.log(func);
         throw new Error('Not a function.');
       }
     });
@@ -614,7 +636,7 @@ function eventToString(event) {
       return idx + 1;
     }
     const mockReaction =
-        {click: [func1, func2], paste: [func1]};
+        {onClick: [func1, func2], onPaste: [func1]};
     const mockContext = {wrapper: {}, idx: 4, group: []};
     const wrapped = wrapReactions(mockReaction, mockContext);
     let tmp;
@@ -635,7 +657,6 @@ function eventToString(event) {
    * Setting a reaction on the load event immediately calls it.
    * @param {Object} reactions
    * @return {Object}
-   * @todo Wrap interact in a throttled wrapper.
    */
   function unpackInteractAndLoadReaction(reactions) {
     const reactionsClone = {...reactions};
@@ -646,8 +667,10 @@ function eventToString(event) {
       return reactionsClone;
     }
     const unpacked = {};
+    const interactions =
+        reactionsClone.interact.map(func => util.debounce(func, 500));
     for (let type of interactEvents) {
-      unpacked[type] = reactionsClone.interact;
+      unpacked[type] = interactions;
     }
     if (reactionsClone.load) {
       runAll(reactionsClone.load);
@@ -696,30 +719,49 @@ function eventToString(event) {
         unpackInteractAndLoadReaction(
             wrapReactions(reactions, context)
         );
-    reactionMap.set(
-      domElement,
-      mergeReactions(prior, additional)
-    );
+    const allReactions = mergeReactions(prior, additional);
+    reactionMap.set(domElement, allReactions);
   }
 
-  const globalReactions = new Map();
-  function setGlobalReactions(type, reaction) {
-    //console.log(type, reaction);
+  function setGlobalReactions(reactions) {
+    const allReactions =
+        unpackInteractAndLoadReaction(
+            wrapReactions(reactions, {})
+        );
+    reactionMap.set(document, allReactions);
   }
 
   function getTargetReactions(event) {
-    const eventString = eventToString(event);
-    const general = `${event.type}`;
-    const specific = `${event.type}_${eventString}`;
     const target = event.relatedTarget || event.target;
     const targetReactions = reactionMap.get(target);
-    if (!targetReactions) {
-      return [];
+    const globalReactions = reactionMap.get(document);
+
+    const [type, type_k] = eventToStrings(event);
+
+    const collection = [];
+    if (targetReactions) {
+      if (targetReactions[type_k]) {
+        collection.push(...targetReactions[type_k] || [])
+      }
+      if (targetReactions[type]) {
+        collection.push(...targetReactions[type] || [])
+      }
     }
-    return [
-      ...targetReactions[specific] || [],
-      ...targetReactions[general] || [],
-      ]
+    if (globalReactions) {
+      if (globalReactions[type]) {
+        collection.push(...globalReactions[type] || [])
+      }
+    }
+    return collection;
+
+    
+    
+//     const globalReactions = reactionMap.get(document);
+//     return [
+//       ...(targetReactions[specific] || []),
+//       ...(targetReactions[general] || []),
+//       ...(globalReactions[general] || []),
+//       ]
   }
 
   /**
@@ -786,8 +828,6 @@ var {wrap} = (function domAccessModule() {
    * which expose a limited number of methods, and which log
    * changes.
    */
-
-  test.enable();
 
   const domElementWeakMap = new WeakMap();
   const editableElementTypes =
@@ -966,9 +1006,6 @@ var {wrap} = (function domAccessModule() {
       throw new Error('Missing selector parameters.');
     }
     const domElements = findInDom(domSelector, pickElements);
-    if (domElements.length < 1) {
-      log.warn('No elements found');
-    }
     const options = {domSelector, pickElements, mode, name};
     const wrappers = domElements.map((element,idx) => {
       return wrapElement(element, idx, options);
@@ -989,30 +1026,24 @@ var {wrap} = (function domAccessModule() {
 ////////////////////////////////////////////////////////////////////////////////
 // WORKFLOW module
 
-/**
- * @todo Implement global event handlers in eventListenersModule
- * @todo Throttle onInteract
- */
-
 var {detectWorkflow, flows} = (function workflowModule() {
-  // @todo Ought to check the dom for telltale signs (ideally using wrap).
+  // @todo Check the dom for signs (ideally using wrap).
   function detectWorkflow() {
-    return 'ab';
+    return 'splash';
   }
 
-  function ab() {
+  function splash() {
     wrap('input', [2], 'programmable', 'Search Box',{
       onChange: (wrapper) => wrapper.value = wrapper.value + ':',
     });
 
     setGlobalReactions({
       onClick: () => console.log(new Date()),
+      onPaste: () => console.log(new Date()),
     });
-    return '';
   }
 
-  const flows = {ab};
-
+  const flows = {splash};
   return {detectWorkflow, flows};
 })();
 
@@ -1023,6 +1054,10 @@ var {detectWorkflow, flows} = (function workflowModule() {
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 // APP module
+
+/**
+ * @todo Implement global event handlers in eventListenersModule
+ */
 
 function main() {
   const name = detectWorkflow();
