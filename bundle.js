@@ -375,7 +375,7 @@ var gui =
    * associated data, and exposes an update method to send
    * updates to the data and trigger an update.
    * A custom event listener may replace or supplement the
-   * update function,
+   * update function.
    */
 
   let guiState = {
@@ -384,11 +384,19 @@ var gui =
     concerns: [],
   };
 
+  /**
+   * Merges new data into the local gui state, and triggers and update of
+   * the gui.
+   * @param {Object} packet Data to be merged into the gui's state.
+   */
   function update(packet) {
     guiState = {...guiState, ...packet};
     console.log(JSON.stringify(guiState));
   }
 
+  /**
+   * Sets a listener on the document for gui updates.
+   */
   function addGuiUpdateListener() {
     document.addEventListener('guiUpdate', ({detail}) => {
       const packet = detail;
@@ -422,10 +430,14 @@ var {setReactions, setGlobalReactions} =
    * on each DOM element.
    */
 
-  /** WeakMap - Maps DOM elements to reaction objects. */
+  /**
+   * WeakMap - Maps DOM elements to reaction objects.
+   */
   const reactionMap = new WeakMap();
 
-  /** Array<string>} */
+  /**
+   * Array<string>} These are the events that can be set on a Dom element.
+   */
   const supportedEvents = Object.freeze([
     'change',
     'click',
@@ -437,20 +449,16 @@ var {setReactions, setGlobalReactions} =
     /** interact is handled separately */
   ]);
 
-  /** Array<string>} */
+  /**
+   * Array<string>} These are the events that are triggered by the special
+   * 'interact' event.
+   */
   const interactEvents = Object.freeze([
     'click',
     'focusin',
     'keydown',
     'paste',
   ]);
-
-  function eventToStrings(event) {
-    const eventString = eventToString(event);
-    const type = `${event.type}`;
-    const type_k = `${event.type}_${eventString}`;
-    return [type, type_k];
-  }
 
   /**
    * Maps a browser event to a descriptive string, if possible.
@@ -519,6 +527,20 @@ var {setReactions, setGlobalReactions} =
   });
 
   /**
+   * Maps a browser event to two descriptive strings, if possible.
+   * @param {Event} event - Browser event
+   * @return {Array<string>}
+   * @example. A click event may be converted to ['click', 'click_'].
+   * @example. A keydown event may be converted to ['keydown', 'keydown_CtrlA'].
+   */
+  function eventToStrings(event) {
+    const eventString = eventToString(event);
+    const type = `${event.type}`;
+    const type_k = `${event.type}_${eventString}`;
+    return [type, type_k];
+  }
+
+  /**
    * Run an array of functions.
    * @param {Array<function>} functions.
    */
@@ -530,7 +552,6 @@ var {setReactions, setGlobalReactions} =
       if (typeof func === 'function') {
         func();
       } else {
-        console.log(func);
         throw new Error('Not a function.');
       }
     });
@@ -819,7 +840,7 @@ var {setReactions, setGlobalReactions} =
 ////////////////////////////////////////////////////////////////////////////////
 // DOM ACCESS module
 
-var {wrap} = (function domAccessModule() {
+var {wrap, clearReactions} = (function domAccessModule() {
   'use strict';
 
   /**
@@ -829,7 +850,16 @@ var {wrap} = (function domAccessModule() {
    * changes.
    */
 
-  const domElementWeakMap = new WeakMap();
+  let domElementWeakMap = new WeakMap(); // Should use const
+
+  /**
+   * Debug function. Clearing the weakmap should never be necessary
+   * in production.
+   */
+  function clearReactionsMap_debug() {
+    domElementWeakMap = new WeakMap();
+  }
+
   const editableElementTypes =
       Object.freeze(['textarea', 'select', 'text']);
 
@@ -1015,7 +1045,7 @@ var {wrap} = (function domAccessModule() {
     }
     return wrappers;
   }
-  return {wrap: findAndProcessDomElements};
+  return {wrap: findAndProcessDomElements, clearReactions: clearReactionsMap_debug};
 })();
 
 
@@ -1026,13 +1056,19 @@ var {wrap} = (function domAccessModule() {
 ////////////////////////////////////////////////////////////////////////////////
 // WORKFLOW module
 
+/**
+ * @todo Create flowMethods object.
+ * @todo Improve logging system.
+ */
+
 var {detectWorkflow, flows} = (function workflowModule() {
   // @todo Check the dom for signs (ideally using wrap).
   function detectWorkflow() {
-    return 'splash';
+    return 'ratingHome';
   }
 
-  function splash() {
+  function ratingHome() {
+    clearReactions();
     wrap('input', [2], 'programmable', 'Search Box',{
       onChange: (wrapper) => wrapper.value = wrapper.value + ':',
     });
@@ -1043,7 +1079,7 @@ var {detectWorkflow, flows} = (function workflowModule() {
     });
   }
 
-  const flows = {splash};
+  const flows = {ratingHome};
   return {detectWorkflow, flows};
 })();
 
@@ -1055,10 +1091,6 @@ var {detectWorkflow, flows} = (function workflowModule() {
 ////////////////////////////////////////////////////////////////////////////////
 // APP module
 
-/**
- * @todo Implement global event handlers in eventListenersModule
- */
-
 function main() {
   const name = detectWorkflow();
   if (!name) {
@@ -1066,8 +1098,8 @@ function main() {
   }
   const flowInit = flows[name];
   flowInit();
-  if (name === 'splash') {
-    log.notice('Splash screen loaded');
+  if (name === 'ratingHome') {
+    log.notice('ratingHome screen loaded');
   } else {
     log.notice('Task screen loaded');
   }
