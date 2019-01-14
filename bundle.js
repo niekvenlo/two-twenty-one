@@ -33,7 +33,7 @@ var test = (function testModule() {
    */
 
   const logBook = [];
-  let /** boolean */ allGood = false;
+  let /** boolean */ allGood = true;
 
   const print = () => logBook.forEach(el => console.log(...el));
 
@@ -58,7 +58,6 @@ var test = (function testModule() {
     if (typeof func !== 'function') {
       throw new Error('Test requires a function');
     }
-    allGood = true;
     header(`===== ${groupDesc}`);
     func();
     const verdict = (allGood) ? 'OK' : 'FAIL';
@@ -170,25 +169,28 @@ var {config, counter, flag, log} =
 
   /**
    * Create a human readable string timestamp.
-   * @param {boolean} long - Return a long format or short
-   * format timestamp: 12:34:56 or :34
+   * @param {Date} d - A date to turn into a matching timestamp.
+   * For today's Date, returns a short format (hh:mm)
+   * For other Dates, returns a long format (MM/DD hh:mm:ss) 
    * @return {string}
    */
-  function timestamp (long) {
-    const d = new Date();
-    const lead = (/** number */n) /** string */ => ('0' + n).slice(-2);
-    const hrs = lead(d.getHours());
-    const min = lead(d.getMinutes());
-    const sec = lead(d.getSeconds());
-    const longstamp = `${hrs}:${min}:${sec}`;
-    const shortstamp = `:${min}`;
-    return (long) ? longstamp : shortstamp;
-  }
+function timestamp (d = new Date()) {
+  const lead = (/** number */n) /** string */ => ('0' + n).slice(-2);
+  const today = (new Date().getDate() - d.getDate() === 0);
+  const month = lead(d.getMonth() + 1);
+  const date = lead(d.getDate());
+  const hrs = lead(d.getHours());
+  const min = lead(d.getMinutes());
+  const sec = lead(d.getSeconds());
+  const long = `${month}/${date} ${hrs}:${min}:${sec}`;
+  const short = `${hrs}:${min}`;
+  return (today) ? short : long;
+}
   test.group('timestamp', () => {
-    test.ok(timestamp().length === 3, 'Short length');
-    test.ok(/:\d\d/.test(timestamp()), 'Short format');
-    test.ok(timestamp(true).length === 8, 'Long length');
-    test.ok(/\d\d:\d\d:\d\d/.test(timestamp(true)), 'Long format');
+    const today = new Date();
+    const earlier = new Date('01-01-2019');
+    test.ok(timestamp(today).length === 5, 'Short length');
+    test.ok(timestamp(new Date(earlier)).length === 14, 'Long length');
   });
 
   /**
@@ -216,7 +218,6 @@ var {config, counter, flag, log} =
      * @param {string} itemName - Name of the item in localStorage
      * @param {object} obj - Object, string or number to be stored.
      * Will overwrite previously stored values.
-     * @todo Persistently log changes to stored values.
      */
     set(itemName, obj = {}) {
       localStorage.setItem(this.baseName + itemName, JSON.stringify(obj))
@@ -239,6 +240,7 @@ var {config, counter, flag, log} =
       return config[name];
     }
     function set(name, newValue, save) {
+      log.changeConfig(`${name} changed to '${newValue}'`)
       config[name] = newValue;
       if (save) {
         localStore.set('Configuration', config);
@@ -284,12 +286,15 @@ var {config, counter, flag, log} =
       const allCounts = localStore.get('Counter');
       if (name) {
         log.notice(
-          `Resetting counter ${name} from ${allCounts[name]}`
+          `Resetting counter ${name} from ${allCounts[name]}`,
+          true,
         );
         allCounts[name] = 0;
       } else {
-        log.notice('Resetting all counters');
-        log.notice(JSON.stringify(allCounts));
+        log.notice(
+          `Resetting all counters: ${JSON.stringify(allCounts)}`,
+          true,
+        );
         allCounts = {};
       }
       localStore.set('Counter', allCounts);
@@ -328,31 +333,121 @@ var {config, counter, flag, log} =
 
   /**
   * Object with methods to log events.
-  * @example log.notice('msg') prints '12:34:56) msg' to
-  * the console.
-  * @todo Implement a persistent log
+  * The following is true for each method:
+  * * @param {Object|string} payload
+  * * @param {Boolean} persist Should the event be persisted to localstorage?
+  * @return {Object}
   */
-  const log = (function logMiniModule() {
-    function write(note, timeColor, noteColor) {
-      const ts = timestamp();
-      console.log(
-        `%c${ts})%c ${format(note)}`,
-        `color: ${timeColor}`,
-        `color: ${noteColor}`,
-      );
-      return '';
-    }
-    const spacer = ' '.repeat(5);
-    const format = (str) => str.replace(/\n/g, '\n' + spacer);
-    return {
-      log: (note) => write(note, 'grey', 'black'),
-      notice: (note) => write(note, 'grey', 'blue'),
-      warn: (note) => write(note, 'grey', 'orange'),
-      ok: (note) => write(note, 'grey', 'green'),
-      low: (note) => write(note, 'grey', 'Gainsboro'),
+  const log = (function loggingModule() {
+    const logTypes = {
+      log: 'black',
+      notice: 'DodgerBlue',
+      warn: 'OrangeRed',
+      ok: 'LimeGreen',
+      low: 'Gainsboro',
+      changeValue: 'LightPink',
+      changeConfig: 'MediumOrchid',
+    };
 
-      changeValue: (note) => write(note, 'grey', 'pink'),
+    /**
+     * Retrieve an array of log entries.
+     * @return {Array<Object>} Array of entries. 
+     */
+    function getPersistent() {
+      const logBook = localStore.get('logBook');
+      return (logBook.entries || []).map(entry => {
+        entry.time = new Date(entry.time);
+        return entry;
+      });
     }
+    /**
+     * Save an array of log entries.
+     * @param {Object} An object containing an array of log entries. 
+     */
+    function setPersistent(entries) {
+      localStore.set('logBook', {entries});
+    }
+    /**
+     * Add a single log entries to the persistent log.
+     * @param {string} type.
+     * @param {Object|string} payload Data associated with the log entry.
+     */
+    function addPersistent({type, payload}) {
+      const entries = getPersistent();
+      const newEntry = {time: new Date(), type, payload};
+      const newEntries = [...entries, newEntry].slice(-20);
+      setPersistent(newEntries);
+    }
+    /**
+     * Get a filtered part of the persistent log.
+     * @param {=Object} filterBy Filter parameters.
+     * @return {Array<Object>}
+     * @example printPersistent({before: new Date()});
+     */
+    function getFilteredPersistent(filterBy = {}) {
+      let entries = getPersistent();
+      if (filterBy.type) {
+        entries = entries.filter(entry => entry.type === filterBy.type);
+      }
+      if (filterBy.after) {
+        entries = entries.filter(entry => entry.time > filterBy.after);
+      }
+      if (filterBy.before) {
+        entries = entries.filter(entry => entry.time < filterBy.before);
+      }  
+      return entries;  
+    }
+    /**
+     * Print a filtered part of the persistent log.
+     * @param {=Object} filterBy Filter parameters.
+     * @return {Array<Object>}
+     * @example printPersistent({before: new Date()});
+     */
+    function printPersistent(filterBy) {
+      getFilteredPersistent(filterBy).forEach(entry => toConsole(entry));
+    }
+    /**
+     * Generate a string from a log entry, in order to print to the console.
+     * @param {Object | string} payload Data associated with the log entry.
+     * @param {number} space Number of spaces to include in front of new lines.
+     */
+    function payloadToString(payload, space) {
+      const spacer = " ".repeat(space + 1);
+      if (typeof payload === 'string') {
+        return payload.replace(/\n/g,'\n' + spacer);
+      } else {
+        return JSON.stringify(payload);
+      }
+    }
+    /**
+     * Print a log entry to the console, with a timestamp.
+     * @param {string} type
+     * @param {Object|string} payload
+     * @time {=Date} Optionally, provide a Date for the timestamp.
+     */
+    function toConsole({type, payload, time = new Date()}) {
+      const color = logTypes[type] || 'yellow';
+      const ts = timestamp(time);
+      const string = payloadToString(payload, ts.length);
+      console.log(`%c${ts} %c${string}`, `color: grey`, `color: ${color}`);
+    }
+    /**
+     * Generate a logging function.
+     * @param {string} type Title of the log.
+     */
+    function genericLog(type) {
+      return function log(payload = '', persist) {
+        toConsole({type, payload});
+        if (persist) {
+          addPersistent({type, payload});
+        }
+      }
+    }
+    const toExport = {print: printPersistent};
+    for (let type in logTypes) {
+      toExport[type] = genericLog(type);
+    }
+    return toExport;
   })();
 
   return {config, counter, flag, log};
@@ -959,7 +1054,6 @@ var {wrap, clearReactions} = (function domAccessModule() {
         return domElement.textContent;
       },
       set cssText(string) {
-        console.log(string);
         domElement.style.cssText = string;
       },
       click() {
@@ -1058,7 +1152,7 @@ var {wrap, clearReactions} = (function domAccessModule() {
 
 /**
  * @todo Create flowMethods object.
- * @todo Improve logging system.
+ * @todo Create Test.html
  */
 
 var {detectWorkflow, flows} = (function workflowModule() {
