@@ -210,14 +210,14 @@ function timestamp (d = new Date()) {
 
   /** Handle communication with localStorage */
   const localStore = {
-    baseName: 'twoTwenty',
+    BASENAME: 'twoTwenty',
     /**
      * @param {string} itemName - Name of the item in localStorage
      * @return {Object} Object
      * Will return undefined if no item by this name exists.
      */
     get(itemName) {
-      const item = localStorage.getItem(this.baseName + itemName);
+      const item = localStorage.getItem(this.BASENAME + itemName);
       return (item) ? JSON.parse(item) : {};
     },
     /**
@@ -226,7 +226,7 @@ function timestamp (d = new Date()) {
      * Will overwrite previously stored values.
      */
     set(itemName, obj = {}) {
-      localStorage.setItem(this.baseName + itemName, JSON.stringify(obj))
+      localStorage.setItem(this.BASENAME + itemName, JSON.stringify(obj))
     }
   };
 
@@ -347,12 +347,12 @@ function timestamp (d = new Date()) {
   */
   const log = (function loggingModule() {
 
+    const STORE_NAME = 'logBook';
     const LOG_LENGTH_MAX = 5000;
     const LOG_LENGTH_MIN = 4000;
     const NO_COLOR_FOUND = 'yellow';
     const TIMESTAMP_COLOR = 'color: grey';
-
-    const logTypes = {
+    const LOG_TYPES = {
       log: 'black',
       notice: 'DodgerBlue',
       warn: 'OrangeRed',
@@ -367,7 +367,7 @@ function timestamp (d = new Date()) {
      * @return {Array<Object>} Array of entries. 
      */
     function getPersistent() {
-      const logBook = localStore.get('logBook');
+      const logBook = localStore.get(STORE_NAME);
       return (logBook.entries || []).map(entry => {
         entry.time = new Date(entry.time);
         return entry;
@@ -381,7 +381,7 @@ function timestamp (d = new Date()) {
       if (entries.length > LOG_LENGTH_MAX) {
         entries = entries.slice(-LOG_LENGTH_MIN);
       }
-      localStore.set('logBook', {entries});
+      localStore.set(STORE_NAME, {entries});
     }
     /**
      * Add a single log entries to the persistent log.
@@ -445,7 +445,7 @@ function timestamp (d = new Date()) {
      * @time {=Date} Optionally, provide a Date for the timestamp.
      */
     function toConsole({type, payload, time = new Date()}) {
-      const color = logTypes[type] || NO_COLOR_FOUND;
+      const color = LOG_TYPES[type] || NO_COLOR_FOUND;
       const ts = timestamp(time);
       const string = payloadToString(payload, ts.length);
       console.log(`%c${ts} %c${string}`, TIMESTAMP_COLOR, `color: ${color}`);
@@ -463,7 +463,7 @@ function timestamp (d = new Date()) {
       }
     }
     const toExport = {print: printPersistent};
-    for (let type in logTypes) {
+    for (let type in LOG_TYPES) {
       toExport[type] = genericLog(type);
     }
     return toExport;
@@ -515,7 +515,7 @@ var gui =
     document.addEventListener('guiUpdate', ({detail}) => {
       const packet = detail;
       update(packet);
-    }, false);
+    }, {passive: true});
   }
   addGuiUpdateListener();
 
@@ -545,14 +545,9 @@ var {setReactions, setGlobalReactions} =
    */
 
   /**
-   * WeakMap - Maps DOM elements to reaction objects.
-   */
-  const reactionMap = new WeakMap();
-
-  /**
    * Array<string>} These are the events that can be set on a Dom element.
    */
-  const supportedEvents = Object.freeze([
+  const SUPPORTED_EVENTS = Object.freeze([
     'change',
     'click',
     'focusin',
@@ -564,10 +559,15 @@ var {setReactions, setGlobalReactions} =
   ]);
 
   /**
+   * WeakMap - Maps DOM elements to reaction objects.
+   */
+  const reactionMap = new WeakMap();
+
+  /**
    * Array<string>} These are the events that are triggered by the special
    * 'interact' event.
    */
-  const interactEvents = Object.freeze([
+  const INTERACT_EVENTS = Object.freeze([
     'click',
     'focusout',
     'keydown',
@@ -804,7 +804,7 @@ var {setReactions, setGlobalReactions} =
     const unpacked = {};
     const interactions =
         reactionsClone.interact.map(func => util.debounce(func, 500));
-    for (let type of interactEvents) {
+    for (let type of INTERACT_EVENTS) {
       unpacked[type] = interactions;
     }
     if (reactionsClone.load) {
@@ -907,13 +907,13 @@ var {setReactions, setGlobalReactions} =
    * Initialise document level event handlers.
    */
   function initGenericEventHandlers() {
-    for (let type of supportedEvents) {
-      document.addEventListener(type, genericEventHandler);
+    for (let type of SUPPORTED_EVENTS) {
+      document.addEventListener(type, genericEventHandler, {passive: true});
     }
   }
 
   (function addCheatCode() {
-    const code = [
+    const CODE = [
       'ArrowUp',
       'ArrowUp',
       'ArrowDown',
@@ -928,12 +928,12 @@ var {setReactions, setGlobalReactions} =
     ];
     let idx = 0;
     function cheatCodeHandler(e) {
-      (e.code === code[idx]) ? idx++ : idx = 0;
-      if (idx === code.length) {
+      (e.code === CODE[idx]) ? idx++ : idx = 0;
+      if (idx === CODE.length) {
         log.log('cheat mode');
       }
     }
-    document.addEventListener('keydown', cheatCodeHandler);
+    document.addEventListener('keydown', cheatCodeHandler, {passive: true});
   })();
 
   initGenericEventHandlers();
@@ -948,7 +948,7 @@ var {setReactions, setGlobalReactions} =
 ////////////////////////////////////////////////////////////////////////////////
 // DOM ACCESS module
 
-var {wrap, clearReactions} = (function domAccessModule() {
+var {wrap} = (function domAccessModule() {
   'use strict';
 
   /**
@@ -958,19 +958,10 @@ var {wrap, clearReactions} = (function domAccessModule() {
    * changes.
    */
 
-  let domElementWeakMap = new WeakMap(); // Should use const
+  const domElementWeakMap = new WeakMap(); // Should use const
 
-  /**
-   * Debug function. Clearing the weakmap should never be necessary
-   * in production.
-   */
-  function clearReactionsMap_debug() {
-    log.warn('clearReactions');
-    domElementWeakMap = new WeakMap();
-  }
-
-  const editableElementTypes =
-      Object.freeze(['textarea', 'select', 'text']);
+  const EDITABLE_ELEMENT_TYPES =
+      Object.freeze(['textarea', 'select-one', 'text']);
 
   /**
    * @param {Object}
@@ -1028,7 +1019,7 @@ var {wrap, clearReactions} = (function domAccessModule() {
     );
       return;
     }
-    if(!editableElementTypes.includes(domElement.type)) {
+    if(!EDITABLE_ELEMENT_TYPES.includes(domElement.type)) {
       throw new Error(`Cannot set value on ${domElement.type} elements`);
     }
     if (false && domElement.type === 'textarea') { // @todo
@@ -1075,6 +1066,9 @@ var {wrap, clearReactions} = (function domAccessModule() {
       },
       click() {
         domElement.click();
+      },
+      blur() {
+        domElement.blur();
       },
       focus() {
         domElement.focus();
@@ -1156,7 +1150,7 @@ var {wrap, clearReactions} = (function domAccessModule() {
     }
     return wrappers;
   }
-  return {wrap: findAndProcessDomElements, clearReactions: clearReactionsMap_debug};
+  return {wrap: findAndProcessDomElements};
 })();
 
 
@@ -1242,15 +1236,15 @@ var shared = (function workflowMethodsModule() {
   };
 
   function testDuplicates (wrapper, idx, group) {
-    const section = group.slice(0, idx + 1).map(d => d.value);
-    const uniqueElements = new Set(section).size;
-    const totalElements = section.length;
+    const filledIn = group.map(d => d.value).filter(v => v);
+    const uniqueElements = new Set(filledIn).size;
+    const totalElements = filledIn.length;
     const hit = (uniqueElements !== totalElements);
     const message = 'Duplicate values';
     return {wrapper, message, hit};
   };
 
-  var fallThrough = (wrapper, idx, group) => {
+  const fallThrough = (wrapper, idx, group) => {
     if (idx > 0) {
       return;
     }
@@ -1261,8 +1255,14 @@ var shared = (function workflowMethodsModule() {
     log.notice('Fallthrough');
   };
 
+  const toggleSelectYesNo = (wrapper) => {
+    wrapper.value = (wrapper.value === 'no') ? 'yes' : 'no';
+    wrapper.blur();
+  }
+
   return {
     fallThrough,
+    toggleSelectYesNo,
 
     addDashes: changeValue({
       to: '---',
@@ -1299,19 +1299,38 @@ var {detectWorkflow, flows} = (function workflowModule() {
   }
 
   function ratingHome() {
-    wrap('textarea', [1,2], 'programmable', 'Text', {
+    const textboxBundle = util.bundle(
+        shared.redAlertOnExceeding25Chars,
+        shared.redAlertOnDupe
+    );
+    wrap('textarea', [0,1,2], 'programmable', 'Text', {
+      onFocusOut: textboxBundle,
+      onLoad: textboxBundle,
+      onPaste: textboxBundle,
+    });
+
+    wrap('textarea', [6,7,8], 'programmable', 'Text', {
       onFocusIn: shared.removeDashes,
       onFocusOut: shared.addDashes,
       onLoad: shared.addDashes,
       onPaste: shared.redAlertOnExceeding25Chars,
-    })
+    });
+    
+    [[0,3],[1,4],[2,5]].forEach(pair => {
+      wrap('textarea', pair, 'programmable', 'Fall', {
+        onPaste: shared.fallThrough,
+      });
+    });
 
-    wrap('textarea', [3,4], 'programmable', 'Fall', {
-      onPaste: shared.fallThrough,
-    })
+    wrap('select', [0,1], 'programmable', 'Select', {
+      onClick: shared.toggleSelectYesNo,
+    });
 
     setGlobalReactions({
-      onKeydown_CtrlShiftA: () => log.low('CtrlShiftA'),
+      onKeydown_Backquote: () => log.ok('Start'),
+      onKeydown_Backslash: () => log.ok('Approve'),
+      onKeydown_BracketLeft: () => log.ok('Counter'),
+      onKeydown_BracketRight: () => log.ok('Skip'),
     });
   }
 
@@ -1328,18 +1347,13 @@ var {detectWorkflow, flows} = (function workflowModule() {
 // APP module
 
 function main() {
-  clearReactions();
   const name = detectWorkflow();
   if (!name) {
     return log.warn('No workflow identified');
   }
   const flowInit = flows[name];
   flowInit();
-  if (name === 'ratingHome') {
-    log.notice('ratingHome screen loaded');
-  } else {
-    log.notice('Task screen loaded');
-  }
+  log.notice(`${name} screen loaded`);
 };
 
 main();
