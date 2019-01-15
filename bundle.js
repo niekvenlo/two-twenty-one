@@ -143,7 +143,13 @@ var util =
     }
   }
 
-  return {isDomElement, debounce};
+  function bundle (...functions) {
+    return function(...params) {
+      functions.forEach(func => func(...params));    
+    }
+  }
+
+  return {isDomElement, debounce, bundle};
 })();
 
 
@@ -307,7 +313,7 @@ function timestamp (d = new Date()) {
   /**
    * Track incoming concerns, keep a running list of
    * unresolved unique issues.
-   * concerns look like this: {wrapper, desc, ok}
+   * concerns look like this: {wrapper, type, category, message}
    */
   const flag = (function flaggerMiniModule() {
     let concerns = [];
@@ -315,20 +321,21 @@ function timestamp (d = new Date()) {
     function removeMatching (newConcern) {
       return concerns.filter(concern => {
         const sameWrapper = (concern.wrapper === newConcern.wrapper);
-        const sameDesc = (concern.desc === newConcern.desc);
-        if (sameWrapper && sameDesc) {
+        const sameType = (concern.type === newConcern.type);
+        if (sameWrapper && sameType) {
           return false;
         }
         return true;
       })
     }
 
-    function update(concern) {
+    function flag(concern) {
       concerns = removeMatching(concern);
       concerns.push(concern);
+      concerns = concerns.filter(concern => concern.category !== 'ok');
       updateGui({concerns});
     }
-    return {update};
+    return flag;
   })();
 
   /**
@@ -339,6 +346,12 @@ function timestamp (d = new Date()) {
   * @return {Object}
   */
   const log = (function loggingModule() {
+
+    const LOG_LENGTH_MAX = 5000;
+    const LOG_LENGTH_MIN = 4000;
+    const NO_COLOR_FOUND = 'yellow';
+    const TIMESTAMP_COLOR = 'color: grey';
+
     const logTypes = {
       log: 'black',
       notice: 'DodgerBlue',
@@ -365,6 +378,9 @@ function timestamp (d = new Date()) {
      * @param {Object} An object containing an array of log entries. 
      */
     function setPersistent(entries) {
+      if (entries.length > LOG_LENGTH_MAX) {
+        entries = entries.slice(-LOG_LENGTH_MIN);
+      }
       localStore.set('logBook', {entries});
     }
     /**
@@ -375,7 +391,7 @@ function timestamp (d = new Date()) {
     function addPersistent({type, payload}) {
       const entries = getPersistent();
       const newEntry = {time: new Date(), type, payload};
-      const newEntries = [...entries, newEntry].slice(-20);
+      const newEntries = [...entries, newEntry];//.slice(-20);
       setPersistent(newEntries);
     }
     /**
@@ -388,6 +404,9 @@ function timestamp (d = new Date()) {
       let entries = getPersistent();
       if (filterBy.type) {
         entries = entries.filter(entry => entry.type === filterBy.type);
+      }
+      if (filterBy.notType) {
+        entries = entries.filter(entry => entry.type !== filterBy.notType);
       }
       if (filterBy.after) {
         entries = entries.filter(entry => entry.time > filterBy.after);
@@ -426,10 +445,10 @@ function timestamp (d = new Date()) {
      * @time {=Date} Optionally, provide a Date for the timestamp.
      */
     function toConsole({type, payload, time = new Date()}) {
-      const color = logTypes[type] || 'yellow';
+      const color = logTypes[type] || NO_COLOR_FOUND;
       const ts = timestamp(time);
       const string = payloadToString(payload, ts.length);
-      console.log(`%c${ts} %c${string}`, `color: grey`, `color: ${color}`);
+      console.log(`%c${ts} %c${string}`, TIMESTAMP_COLOR, `color: ${color}`);
     }
     /**
      * Generate a logging function.
@@ -486,7 +505,7 @@ var gui =
    */
   function update(packet) {
     guiState = {...guiState, ...packet};
-    console.log(JSON.stringify(guiState));
+    log.log(JSON.stringify(guiState));
   }
 
   /**
@@ -550,7 +569,7 @@ var {setReactions, setGlobalReactions} =
    */
   const interactEvents = Object.freeze([
     'click',
-    'focusin',
+    'focusout',
     'keydown',
     'paste',
   ]);
@@ -740,8 +759,8 @@ var {setReactions, setGlobalReactions} =
       if (!/^on/.test(type)) {
         continue;
       }
-      const simpleType =
-          type.replace(/^on/, '').toLowerCase();
+      const simpleType = // @todo Rewrite
+          type.replace(/^on([^_]+)/, (a,b) => b.toLowerCase());
       wrapped[simpleType] = wrapReaction(reactions[type]);
     }
     return wrapped;
@@ -848,7 +867,7 @@ var {setReactions, setGlobalReactions} =
   }
 
   function getTargetReactions(event) {
-    const target = event.relatedTarget || event.target;
+    const target = event.target;
     const targetReactions = reactionMap.get(target);
     const globalReactions = reactionMap.get(document);
 
@@ -864,20 +883,14 @@ var {setReactions, setGlobalReactions} =
       }
     }
     if (globalReactions) {
+      if (globalReactions[type_k]) {
+        collection.push(...globalReactions[type_k] || [])
+      }
       if (globalReactions[type]) {
         collection.push(...globalReactions[type] || [])
       }
     }
     return collection;
-
-    
-    
-//     const globalReactions = reactionMap.get(document);
-//     return [
-//       ...(targetReactions[specific] || []),
-//       ...(targetReactions[general] || []),
-//       ...(globalReactions[general] || []),
-//       ]
   }
 
   /**
@@ -917,7 +930,7 @@ var {setReactions, setGlobalReactions} =
     function cheatCodeHandler(e) {
       (e.code === code[idx]) ? idx++ : idx = 0;
       if (idx === code.length) {
-        console.log('cheat mode');
+        log.log('cheat mode');
       }
     }
     document.addEventListener('keydown', cheatCodeHandler);
@@ -952,6 +965,7 @@ var {wrap, clearReactions} = (function domAccessModule() {
    * in production.
    */
   function clearReactionsMap_debug() {
+    log.warn('clearReactions');
     domElementWeakMap = new WeakMap();
   }
 
@@ -1002,7 +1016,6 @@ var {wrap, clearReactions} = (function domAccessModule() {
     if (isHidden(domElement)) {
       throw new Error('Do not set value on hidden items');
     }
-    domElement.focus();
     domElement.select();
     document.execCommand('insertText', false, newValue);
   }
@@ -1011,20 +1024,21 @@ var {wrap, clearReactions} = (function domAccessModule() {
     const currentValue = domElement.value;
     if (currentValue === newValue) {
       log.low(
-      `No change to ${name}'.`
+      `No change to ${name}'.`,
     );
       return;
     }
     if(!editableElementTypes.includes(domElement.type)) {
       throw new Error(`Cannot set value on ${domElement.type} elements`);
     }
-    if (domElement.type === 'textarea') {
+    if (false && domElement.type === 'textarea') { // @todo
       safelySetTextarea(domElement, newValue);
     } else {
       domElement.value = newValue;
     }
     log.changeValue(
-      `Changing '${name}' from '${currentValue}' to '${newValue}'.`
+      `Changing '${name}' from '${currentValue}' to '${newValue}'.`,
+      true,
     );
   }
 
@@ -1034,7 +1048,10 @@ var {wrap, clearReactions} = (function domAccessModule() {
       mode = cached.mode;
     } else if (cached) {
       if (cached.mode !== mode) {
-        log.warn(`Didn't change ${name} element mode from ${cached.mode}.`)
+        log.warn(
+          `Didn't change ${name} element mode from ${cached.mode}.`,
+          true,
+        )
       }
       return cached;
     } else if (mode === 'fresh') {
@@ -1148,12 +1165,132 @@ var {wrap, clearReactions} = (function domAccessModule() {
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
-// WORKFLOW module
+// WORKFLOW METHODS module
 
-/**
- * @todo Create flowMethods object.
- * @todo Create Test.html
- */
+var shared = (function workflowMethodsModule() {
+  'use strict';
+ 
+  /**
+   * @fileoverview Exports an object packed with methods
+   * designed to add reactions to wrappers.
+   */
+
+  const {changeValue, redAlert, orangeAlert, yellowAlert} =
+      (function responseMiniModule() {
+    function changeValue({to, when}) {
+      if (typeof when !== 'function') {
+        throw new Error('ChangeValue requires a function');
+      }
+      if (typeof to !== 'string') {
+        throw new Error('ChangeValue requires a new string value');
+      }
+      return function (...params) {
+        const {hit, wrapper} = when(...params);
+        if (hit) {
+          wrapper.value = to;
+        }
+      }
+    }
+
+    function createAlert(color) {
+      return function colorAlert({type, when}) {
+        if (typeof when !== 'function') {
+          throw new Error('ChangeValue requires a function');
+        }
+        if (typeof type !== 'string') {
+          throw new Error('ChangeValue requires a new string value');
+        }
+        return function (...params) {
+          const {wrapper, hit, message} = when(...params);
+          const category = (hit) ? color : 'ok';
+          flag({wrapper, type, category, message});
+        }
+      }
+    }
+    return {
+      redAlert: createAlert('red'),
+      orangeAlert: createAlert('orange'),
+      yellowAlert: createAlert('yellow'),
+      changeValue,
+    }
+   })();
+
+  function testRegex (regex, shouldMatch) {
+    return (wrapper) => {
+      const hit = regex.test(wrapper.value) === shouldMatch;
+      const yesOrNo = shouldMatch ? '' : 'not';
+      const message = `${wrapper.value} should ${yesOrNo} match ${regex}`;
+      return {wrapper, message, hit};
+    }
+  };
+
+  function testLength ({min, max}) {
+    return (wrapper) => {
+      const length = wrapper.value.length;
+      let message = [];
+      let hit = false;
+      if (min && min > length) {
+        message.push('Value is too short');
+        hit = true;
+      }
+      if (max && max < length) {
+        message.push('Value is too long');
+        hit = true;
+      }
+      return {wrapper, hit, message: message.join(', ')}
+    }
+  };
+
+  function testDuplicates (wrapper, idx, group) {
+    const section = group.slice(0, idx + 1).map(d => d.value);
+    const uniqueElements = new Set(section).size;
+    const totalElements = section.length;
+    const hit = (uniqueElements !== totalElements);
+    const message = 'Duplicate values';
+    return {wrapper, message, hit};
+  };
+
+  var fallThrough = (wrapper, idx, group) => {
+    if (idx > 0) {
+      return;
+    }
+    setTimeout(() => {
+      group[1].value = wrapper.value;
+      group[0].value = 'Moved';
+    });
+    log.notice('Fallthrough');
+  };
+
+  return {
+    fallThrough,
+
+    addDashes: changeValue({
+      to: '---',
+      when: testRegex(/^$/, true),
+    }),
+    redAlertOnExceeding25Chars: redAlert({
+      type: 'More than 25 characters long',
+      when: testLength({max: 25}),
+    }),
+    redAlertOnDupe: redAlert({
+      type: 'Duplicate values',
+      when: testDuplicates,
+    }),
+    removeDashes: changeValue({
+      to: '',
+      when: testRegex(/---/, true),
+    }),
+  }
+}
+)();
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+// WORKFLOW module
 
 var {detectWorkflow, flows} = (function workflowModule() {
   // @todo Check the dom for signs (ideally using wrap).
@@ -1162,14 +1299,19 @@ var {detectWorkflow, flows} = (function workflowModule() {
   }
 
   function ratingHome() {
-    clearReactions();
-    wrap('input', [2], 'programmable', 'Search Box',{
-      onChange: (wrapper) => wrapper.value = wrapper.value + ':',
-    });
+    wrap('textarea', [1,2], 'programmable', 'Text', {
+      onFocusIn: shared.removeDashes,
+      onFocusOut: shared.addDashes,
+      onLoad: shared.addDashes,
+      onPaste: shared.redAlertOnExceeding25Chars,
+    })
+
+    wrap('textarea', [3,4], 'programmable', 'Fall', {
+      onPaste: shared.fallThrough,
+    })
 
     setGlobalReactions({
-      onClick: () => console.log(new Date()),
-      onPaste: () => console.log(new Date()),
+      onKeydown_CtrlShiftA: () => log.low('CtrlShiftA'),
     });
   }
 
@@ -1186,6 +1328,7 @@ var {detectWorkflow, flows} = (function workflowModule() {
 // APP module
 
 function main() {
+  clearReactions();
   const name = detectWorkflow();
   if (!name) {
     return log.warn('No workflow identified');
