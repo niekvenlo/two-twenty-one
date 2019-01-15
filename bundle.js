@@ -23,29 +23,36 @@ var test = (function testModule() {
 
   /**
    * @fileoverview Exports testing functions.
-   * Tests can be switched on or off with enableTests.
    * Define a new test with group.
    * Use ok, fizzle and solid to define test items:
    * - pass ok a true statement.
    * - pass fizzle a function that throws an error.
    * - pass solid a function that does not throw an error.
    * Results are logged to the console if there is an error.
+   * @example
+   * test.group('Name', () => {
+   *   test.ok(1===1, '1 equals 1');
+   * });
+   * which would record:
+   * ===== Name
+   * OK: 1 equals 1
    */
 
-  const logBook = [];
-  let /** boolean */ allGood = true;
+  const AUTO_PRINT_DELAY = 1000;
+  const PRINT_COLORS = {
+    header: 'color: grey',
+    ok: 'color: green',
+    fail: 'color: fail',
+  }
+  const testingLogBook = [];
+  let failuresRecorded = false;
+  let enclosedInGroup = false;
 
-  const print = () => logBook.forEach(el => console.log(...el));
+  const print = () => testingLogBook.forEach(el => console.log(...el));
 
-  setTimeout(() => {
-    if (!allGood) {
-      print();
-    }
-  }, 1000);
-
-  const header = (/** string */ m) => logBook.push([`%c${m}`, 'color: grey']);
-  const logOk = (/** string */ m) => logBook.push([`%c${m}`, 'color: green']);
-  const logFail = (/** string */ m) => logBook.push([`%c${m}`, 'color: red']);
+  const log = (type, message) => {
+    testingLogBook.push([`%c${message}`, PRINT_COLORS[type]]);
+  };
 
   /**
    * Define a test, which can include many test items.
@@ -56,60 +63,74 @@ var test = (function testModule() {
    */
   const group = (groupDesc, func) => {
     if (typeof func !== 'function') {
-      throw new Error('Test requires a function');
+      throw new Error('Test requires a function as its second parameter');
     }
-    header(`===== ${groupDesc}`);
+    log('header', '===== ' + groupDesc);
+    enclosedInGroup = true;
     func();
-    const verdict = (allGood) ? 'OK' : 'FAIL';
-    header(`===== ${verdict}`);
+    enclosedInGroup = false;
   };
+
+  const confirmEnclosure = () => {
+    if (!enclosedInGroup) {
+      throw new Error('Please enclose the test within a group');
+    }
+  }
 
   /**
    * @param {boolean} statement - Truthy or falsy statement
    * @param {?string} itemDesc - Description of test item.
    */
   const ok = (statement, itemDesc) => {
+    confirmEnclosure();
     if (statement === true) {
-      logOk(` OK: ${itemDesc}`);
+      log('ok', ' OK: ' + itemDesc);
     } else {
-      logFail(` FAIL: ${itemDesc}`);
-      allGood = false;
+      log('fail', ' FAIL: ' + itemDesc);
+      failuresRecorded = true;
     }
   }
 
   /**
-   *
    * @param {function} fizzleFunc - Function that is
    * expected to throw an error.
    * @param {?string} itemDesc - Description of test item.
    */
   const fizzle = (fizzleFunc, itemDesc) => {
+    confirmEnclosure();
     try {
       fizzleFunc();
-      logFail(` FAIL: ${itemDesc} didn't fizzle`);
-     allGood = false;
-   } catch (e) {
-     logOk(` OK: ${itemDesc} fizzled`);
-   }
- }
+      log('fail', ' FAIL: ' + itemDesc + ' did not fizzle');
+      failuresRecorded = true;
+    } catch (e) {
+      log('ok', ' OK: ' + itemDesc + ' fizzled');
+    }
+  }
 
-/**
-  *
-  * @param {function} throwingFunc - Function that is
-  * expected to run without throwing an error.
-  * @param {?string} itemDesc - Description of test item.
-  */
- const solid = (throwingFunc, itemDesc) => {
-   try {
-     throwingFunc();
-     logOk(` OK: ${itemDesc} is solid`);
-   } catch (e) {
-     logFail(` FAIL: ${itemDesc} is not solid`);
-     allGood = false;
-   }
- }
- 
- return {group, ok, fizzle, solid, print};
+  /**
+   * @param {function} throwingFunc - Function that is
+   * expected to run without throwing an error.
+   * @param {?string} itemDesc - Description of test item.
+   */
+  const solid = (throwingFunc, itemDesc) => {
+    confirmEnclosure();
+    try {
+      throwingFunc();
+      log('ok', ' OK: ' + itemDesc + ' is solid');
+    } catch (e) {
+      log('fail', ' FAIL: ' + itemDesc + ' is not solid');
+      failuresRecorded = true;
+    }
+  }
+
+  // Automatically print results if there's a fail result.
+  setTimeout(() => {
+    if (failuresRecorded) {
+      print();
+    }
+  }, AUTO_PRINT_DELAY);
+
+ return {fizzle, group, ok, print, solid};
 })();
 
 
@@ -125,31 +146,96 @@ var util =
   'use strict';
 
   /**
-   * @param {=object} domElement
+   * @fileoverview Exports utility functions.
+   */
+
+  const DEFAULT_DELAY = 10; //milliseconds
+
+  /**
+   * Call several functions with a single function call.
+   * @param {...function} functions - Functions to be bundled into a single
+   * callable function.
+   * @return {function} Calling this function calls all bundled function.
+   */
+  function bundle(...functions) {
+    /**
+     * @param {...params} 
+     */
+    function bundled(...params) {
+      functions.forEach(func => func(...params));
+    }
+    return bundled;
+  }
+  test.group('bundle', () => {
+    let count = 0;
+    const func1 = () => count++;
+    const func2 = () => count++;
+    const func3 = () => count++;
+    bundle(func1, func2, func3)();
+    test.ok(count === 3, 'Ran three bundled functions')
+  });
+
+  /**
+   * Debounce function calls. Calling the debounced function multiple times
+   * within the delay window will result in only a single call.
+   * @param {function} func - Function to be debounced.
+   * @param {number} delay - Delay in milliseconds.
+   */
+  function debounce(func, delay = DEFAULT_DELAY) {
+    let timer = false;
+    /**
+     * @param {...} params - Params passed to the debounced function are
+     * passed to the wrapped function when it is called.
+     * @return {} The debounced function returns whatever the wrapped function
+     * returns.
+     */
+    function debounced(...params) {
+      if (!timer) {
+        timer = true;
+        wait(delay).then(() => timer = false);
+        return func(...params);
+      }
+    }
+    return debounced;
+  }
+  test.group('debounce', () => {
+    let count = 0;
+    const func1 = () => count++;
+    const funct1deb = debounce(func1, 1000);
+    funct1deb();
+    funct1deb();
+    test.ok(count === 1, 'Ran debounced functions');
+    test.ok(DEFAULT_DELAY !== undefined, 'Default delay is set');
+  });
+
+  /**
+   * Test whether an object is a DOM element. Uses simple duck typing.
+   * @param {Object=} domElement - Object to be tested
    * @return {boolean} Returns true if a dom element is passed in.
    */
   function isDomElement(domElement) {
     return !!domElement && domElement.parentNode !== undefined;
   }
+  test.group('isDomElement', () => {
+    test.ok(!isDomElement({}), 'An object');
+    test.ok(isDomElement(document), 'The document');
+    test.ok(isDomElement({parentNode: 'quack'}), 'False positive');
+  });
 
-  function debounce(func, delay) {
-    let timer = false;
-    return function debounced(...params) {
-      if (!timer) {
-        return func(...params);
-      }
-      timer = true;
-      setTimeout(() => timer = false, delay);
-    }
+  /**
+   * @param {number=} ms - Time to wait before continuing, in milliseconds
+   * @return {Promise} Promise which will resolve automatically.
+   */
+  function wait(ms = DEFAULT_DELAY) {
+    return new Promise((resolve) => setTimeout(() => resolve(), ms));
   }
+  test.group('wait', () => {
+    const promise = wait();
+    test.ok(wait().then !== undefined, 'Wait returns a Promise');
+    test.ok(DEFAULT_DELAY !== undefined, 'Default delay is set');
+  });
 
-  function bundle (...functions) {
-    return function(...params) {
-      functions.forEach(func => func(...params));    
-    }
-  }
-
-  return {isDomElement, debounce, bundle};
+  return {bundle, debounce, isDomElement, wait};
 })();
 
 
@@ -160,8 +246,7 @@ var util =
 ////////////////////////////////////////////////////////////////////////////////
 // REPORTING module
 
-var {config, counter, flag, log} =
-    (function reportingModule() {
+var {config, counter, flag, log} = (function reportingModule() {
   'use strict';
 
   /**
@@ -180,27 +265,35 @@ var {config, counter, flag, log} =
    * For other Dates, returns a long format (MM/DD hh:mm:ss) 
    * @return {string}
    */
-function timestamp (d = new Date()) {
-  const lead = (/** number */n) /** string */ => ('0' + n).slice(-2);
-  const today = (new Date().getDate() - d.getDate() === 0);
-  const month = lead(d.getMonth() + 1);
-  const date = lead(d.getDate());
-  const hrs = lead(d.getHours());
-  const min = lead(d.getMinutes());
-  const sec = lead(d.getSeconds());
-  const long = `${month}/${date} ${hrs}:${min}:${sec}`;
-  const short = `${hrs}:${min}`;
-  return (today) ? short : long;
-}
+  function timestamp (d = new Date()) {
+    const lead = (/** number */n) /** string */ => ('0' + n).slice(-2);
+    const today = (new Date().getDate() - d.getDate() === 0);
+    const month = lead(d.getMonth() + 1);
+    const date = lead(d.getDate());
+    const hrs = lead(d.getHours());
+    const min = lead(d.getMinutes());
+    const sec = lead(d.getSeconds());
+    const long = `${month}/${date} ${hrs}:${min}:${sec}`;
+    const short = `${hrs}:${min}`;
+    return (today) ? short : long;
+  }
   test.group('timestamp', () => {
     const today = new Date();
-    const earlier = new Date('01-01-2019');
-    test.ok(timestamp(today).length === 5, 'Short length');
-    test.ok(timestamp(new Date(earlier)).length === 14, 'Long length');
+    const earlier = new Date('01-01-2019 12:34:56');
+    test.ok(
+      timestamp(today).length === 5,
+      'Short length: ' + timestamp(today)
+    );
+    test.ok(
+      timestamp(new Date(earlier)).length === 14,
+      'Long length: ' + timestamp(new Date(earlier)),
+    );
   });
 
   /**
-   * Dispatch Gui update packets.
+   * Dispatch GUI update packets. The GUI is reponsible for integrating packets
+   * into a consistent state.
+   * @example - updateGui({counters: {one: 21}});
    */
   function updateGui(packet) {
     document.dispatchEvent(
@@ -347,7 +440,7 @@ function timestamp (d = new Date()) {
   */
   const log = (function loggingModule() {
 
-    const STORE_NAME = 'logBook';
+    const STORE_NAME = 'LogBook';
     const LOG_LENGTH_MAX = 5000;
     const LOG_LENGTH_MIN = 4000;
     const NO_COLOR_FOUND = 'yellow';
@@ -375,7 +468,7 @@ function timestamp (d = new Date()) {
     }
     /**
      * Save an array of log entries.
-     * @param {Object} An object containing an array of log entries. 
+     * @param {Object} entries - An object containing an array of log entries. 
      */
     function setPersistent(entries) {
       if (entries.length > LOG_LENGTH_MAX) {
@@ -386,7 +479,7 @@ function timestamp (d = new Date()) {
     /**
      * Add a single log entries to the persistent log.
      * @param {string} type.
-     * @param {Object|string} payload Data associated with the log entry.
+     * @param {Object|string} payload - Data associated with the log entry.
      */
     function addPersistent({type, payload}) {
       const entries = getPersistent();
@@ -396,9 +489,9 @@ function timestamp (d = new Date()) {
     }
     /**
      * Get a filtered part of the persistent log.
-     * @param {=Object} filterBy Filter parameters.
+     * @param {=Object} filterBy - Filter parameters.
      * @return {Array<Object>}
-     * @example printPersistent({before: new Date()});
+     * @example - printPersistent({before: new Date()});
      */
     function getFilteredPersistent(filterBy = {}) {
       let entries = getPersistent();
@@ -413,7 +506,10 @@ function timestamp (d = new Date()) {
       }
       if (filterBy.before) {
         entries = entries.filter(entry => entry.time < filterBy.before);
-      }  
+      }
+      if (filterBy.regex) {
+        entries = entries.filter(entry => filterBy.regex.test(entry.payload));
+      }
       return entries;  
     }
     /**
@@ -807,9 +903,6 @@ var {setReactions, setGlobalReactions} =
     for (let type of INTERACT_EVENTS) {
       unpacked[type] = interactions;
     }
-    if (reactionsClone.load) {
-      runAll(reactionsClone.load);
-    }
     delete reactionsClone.interact;
     delete reactionsClone.load;
     return mergeReactions(reactionsClone, unpacked);
@@ -900,7 +993,7 @@ var {setReactions, setGlobalReactions} =
    */
   function genericEventHandler(event) {
     const targetReactions = getTargetReactions(event);
-    runAll(targetReactions);
+    util.wait().then(() => runAll(targetReactions));
   }
 
   /**
@@ -1003,30 +1096,17 @@ var {wrap} = (function domAccessModule() {
     return `${name} ${letter}`;
   }
 
-  function safelySetTextarea(domElement, newValue) {
-    if (isHidden(domElement)) {
-      throw new Error('Do not set value on hidden items');
-    }
-    domElement.select();
-    document.execCommand('insertText', false, newValue);
-  }
-
   function safeSetter(domElement, name, newValue) {
     const currentValue = domElement.value;
     if (currentValue === newValue) {
-      log.low(
-      `No change to ${name}'.`,
-    );
+      log.low(`No change to ${name}'.`);
       return;
     }
     if(!EDITABLE_ELEMENT_TYPES.includes(domElement.type)) {
       throw new Error(`Cannot set value on ${domElement.type} elements`);
     }
-    if (false && domElement.type === 'textarea') { // @todo
-      safelySetTextarea(domElement, newValue);
-    } else {
-      domElement.value = newValue;
-    }
+    domElement.value = newValue;
+    eventDispatcher(domElement, 'blur');
     log.changeValue(
       `Changing '${name}' from '${currentValue}' to '${newValue}'.`,
       true,
@@ -1150,6 +1230,14 @@ var {wrap} = (function domAccessModule() {
     }
     return wrappers;
   }
+
+  /**
+   * Dispatch simple events to DOM elements.
+   */
+  function eventDispatcher(domElement, type) {
+    util.wait(20).then(() => domElement.dispatchEvent(new Event(type)));
+  }
+
   return {wrap: findAndProcessDomElements};
 })();
 
@@ -1195,9 +1283,11 @@ var shared = (function workflowMethodsModule() {
           throw new Error('ChangeValue requires a new string value');
         }
         return function (...params) {
-          const {wrapper, hit, message} = when(...params);
-          const category = (hit) ? color : 'ok';
-          flag({wrapper, type, category, message});
+          util.wait(20).then(() => {
+            const {wrapper, hit, message} = when(...params);
+            const category = (hit) ? color : 'ok';
+            flag({wrapper, type, category, message});
+          });
         }
       }
     }
@@ -1221,17 +1311,17 @@ var shared = (function workflowMethodsModule() {
   function testLength ({min, max}) {
     return (wrapper) => {
       const length = wrapper.value.length;
-      let message = [];
+      let message;
       let hit = false;
       if (min && min > length) {
-        message.push('Value is too short');
+        message = 'Value is too short';
         hit = true;
       }
       if (max && max < length) {
-        message.push('Value is too long');
+        message = 'Value is too long';
         hit = true;
       }
-      return {wrapper, hit, message: message.join(', ')}
+      return {wrapper, hit, message: message};
     }
   };
 
@@ -1240,22 +1330,25 @@ var shared = (function workflowMethodsModule() {
     const uniqueElements = new Set(filledIn).size;
     const totalElements = filledIn.length;
     const hit = (uniqueElements !== totalElements);
-    const message = 'Duplicate values';
+    const message = `Duplicate values: ${filledIn.sort()}`;
     return {wrapper, message, hit};
   };
 
-  const fallThrough = (wrapper, idx, group) => {
+  function fallThrough (wrapper, idx, group) {
     if (idx > 0) {
       return;
     }
-    setTimeout(() => {
+    util.wait(0).then(() => {
       group[1].value = wrapper.value;
       group[0].value = 'Moved';
+      log.notice(
+        `Fallthrough: '${group[1].value}' became '${group[0].value}'`,
+        true,
+      );
     });
-    log.notice('Fallthrough');
   };
 
-  const toggleSelectYesNo = (wrapper) => {
+  function toggleSelectYesNo (wrapper) {
     wrapper.value = (wrapper.value === 'no') ? 'yes' : 'no';
     wrapper.blur();
   }
@@ -1280,6 +1373,10 @@ var shared = (function workflowMethodsModule() {
       to: '',
       when: testRegex(/---/, true),
     }),
+    removeUrl: changeValue({
+      to: '',
+      when: testRegex(/^http/, true),
+    }),
   }
 }
 )();
@@ -1301,7 +1398,7 @@ var {detectWorkflow, flows} = (function workflowModule() {
   function ratingHome() {
     const textboxBundle = util.bundle(
         shared.redAlertOnExceeding25Chars,
-        shared.redAlertOnDupe
+        shared.redAlertOnDupe,
     );
     wrap('textarea', [0,1,2], 'programmable', 'Text', {
       onFocusOut: textboxBundle,
@@ -1309,11 +1406,15 @@ var {detectWorkflow, flows} = (function workflowModule() {
       onPaste: textboxBundle,
     });
 
-    wrap('textarea', [6,7,8], 'programmable', 'Text', {
+    wrap('textarea', [3,4,5], 'programmable', 'NoUrl', {
+      onFocusOut: shared.removeUrl,
+      onPaste: shared.removeUrl,
+    });
+
+    wrap('textarea', [6,7,8], 'programmable', 'Dashes', {
       onFocusIn: shared.removeDashes,
       onFocusOut: shared.addDashes,
       onLoad: shared.addDashes,
-      onPaste: shared.redAlertOnExceeding25Chars,
     });
     
     [[0,3],[1,4],[2,5]].forEach(pair => {
