@@ -28,7 +28,7 @@ var test = (function testModule() {
    * - pass ok a true statement.
    * - pass fizzle a function that throws an error.
    * - pass solid a function that does not throw an error.
-   * Results are logged to the console if there is an error.
+   * Results are logged to the console if there is a failure.
    * @example
    * test.group('Name', () => {
    *   test.ok(1===1, '1 equals 1');
@@ -57,6 +57,7 @@ var test = (function testModule() {
 
   /**
    * Define a test, which can include many test items.
+   * 
    * @param {?string} groupDesc - Commonly the name of the
    * function being tested.
    * @param {function} func - Function body that contains the
@@ -82,6 +83,8 @@ var test = (function testModule() {
   }
 
   /**
+   * Test a statement for truth.
+   *
    * @param {boolean} statement - Truthy or falsy statement
    * @param {?string} itemDesc - Description of test item.
    */
@@ -96,6 +99,8 @@ var test = (function testModule() {
   }
 
   /**
+   * Test that a function throws an error.
+   *
    * @param {function} fizzleFunc - Function that is
    * expected to throw an error.
    * @param {?string} itemDesc - Description of test item.
@@ -112,6 +117,8 @@ var test = (function testModule() {
   }
 
   /**
+   * Test that a function does not throw an error.
+   *
    * @param {function} throwingFunc - Function that is
    * expected to run without throwing an error.
    * @param {?string} itemDesc - Description of test item.
@@ -157,6 +164,7 @@ var util =
 
   /**
    * Call several functions with a single function call.
+   *
    * @param {...function} functions - Functions to be bundled into a single
    * callable function.
    * @return {function} Calling this function calls all bundled function.
@@ -180,17 +188,17 @@ var util =
   });
 
   /**
-   * Debounce function calls. Calling the debounced function multiple times
-   * within the delay window will result in only a single call.
+   * Debounce function calls.
+   *
    * @param {function} func - Function to be debounced.
    * @param {number} delay - Delay in milliseconds.
    */
   function debounce(func, delay = DEFAULT_DELAY) {
     let timer = false;
     /**
-     * @param {...} params - Params passed to the debounced function are
+     * @param {...*} params - Params passed to the debounced function are
      * passed to the wrapped function when it is called.
-     * @return {} The debounced function returns whatever the wrapped function
+     * @return {*} The debounced function returns whatever the wrapped function
      * returns.
      */
     function debounced(...params) {
@@ -214,6 +222,7 @@ var util =
 
   /**
    * Test whether an object exposes the same properties as a template object.
+   *
    * @param {object} template - Object that exposes all required properties.
    * @param {object} toTest - Object to test.
    * @return {boolean} Does the toTest object expose all the properties exposed
@@ -230,7 +239,8 @@ var util =
   }
 
   /**
-   * Test whether an object is a DOM element.
+   * Test whether an object is a DOM element. Uses simple duck typing.
+   *
    * @param {Object=} domElement - Object to be tested
    * @return {boolean} Returns true if a dom element is passed in.
    */
@@ -244,6 +254,8 @@ var util =
   });
 
   /**
+   * Returns a promise that will resolve after a delay.
+   *
    * @param {number=} ms - Time to wait before continuing, in milliseconds
    * @return {Promise} Promise which will resolve automatically.
    */
@@ -271,14 +283,12 @@ var {config, counter, flag, log} = (function reportingModule() {
   'use strict';
 
   /**
-   * @fileoverview Exposes objects to keep track
-   * of things.
-   * - counter to count things.
-   * - flagger to flag issues.
-   * - log to log things.
-   * This module is a semi-functional stub.
+   * @fileoverview Exposes objects to keep track of things.
+   * * config - manage configuration settings.
+   * * counter - count things.
+   * * flag - flag issues.
+   * * log - log things.
    */
-
 
   const LOCALSTORE_BASENAME = 'twoTwenty';
   const CONFIG_STORE_NAME = 'Configuration';
@@ -286,6 +296,7 @@ var {config, counter, flag, log} = (function reportingModule() {
 
   /**
    * Create a human readable string timestamp.
+   *
    * @param {Date} d - A date to turn into a matching timestamp.
    * For today's Date, returns a short format (hh:mm)
    * For other Dates, returns a long format (MM/DD hh:mm:ss) 
@@ -322,8 +333,9 @@ var {config, counter, flag, log} = (function reportingModule() {
   });
 
   /**
-   * Dispatch GUI update packets. The GUI is reponsible for integrating packets
-   * into a consistent state.
+   * Dispatch GUI update packets. The GUI module  is reponsible for integrating
+   * packets into a consistent state.
+   *
    * @param {Object} packet - A packet containing a state update to the GUI.
    * @example - updateGui({counters: {one: 21}});
    */
@@ -394,8 +406,9 @@ var {config, counter, flag, log} = (function reportingModule() {
       }
     }
     /**
-     * @return {Object} - The raw config object as it exists in memory. Exists
-     * mainly for debugging purposes.
+     * Return the raw config object. Exists mainly for debugging purposes.
+     *
+     * @return {Object} - The raw config object as it exists in memory.
      */
     function raw() {
       return config;
@@ -413,8 +426,10 @@ var {config, counter, flag, log} = (function reportingModule() {
    */
   const counter = (function counterMiniModule() {
     /**
-     * @param {string} name - Add one to the count of an existing counter, or
-     * create a new counter starting at 1. 
+     * Add one to the count of an existing counter, or create a new counter
+     * starting at 1.
+     *
+     * @param {string} name - Name of counter to be incremented or created. 
      */
     function add(name) {
       if (typeof name !== 'string') {
@@ -484,6 +499,9 @@ var {config, counter, flag, log} = (function reportingModule() {
   let flaggedConcerns = [];
 
   /**
+   * Issue tracker. Integrates updates into a consistent list of currently
+   * unresolved concerns.
+   * 
    * @param {Object} newConcern - Incoming message. This may refer to a new
    * concern, or update the status of a previous issue.
    * @param {Object} newConcern.wrapper - DOM element wrapper.
@@ -499,8 +517,9 @@ var {config, counter, flag, log} = (function reportingModule() {
       throw Error('Not a valid concern.');
     }
     /**
-     * Filter out concerns that match the incoming concern. Compares wrapper
+     * Filter function to remove concerns that match the incoming concern. Compares wrapper
      * type properties.
+     *
      * @param {Object} concern
      */
     const removeMatching = (concern) => {
@@ -510,6 +529,7 @@ var {config, counter, flag, log} = (function reportingModule() {
     };
     /**
      * Filter out concerns that with a category property of 'ok'.
+     *
      * @param {Object} concern
      */
     const removeOk = (concern => concern.category !== 'ok');
@@ -524,11 +544,9 @@ var {config, counter, flag, log} = (function reportingModule() {
   });
 
   /**
-  * Object with methods to log events.
-  * The following is true for each method:
+  * Object with methods to log events. The following is true for most methods:
   * * @param {Object|string} payload
   * * @param {Boolean} persist Should the event be persisted to localstorage?
-  * @return {Object}
   */
   const log = (function loggingModule() {
     const STORE_NAME = 'LogBook';
@@ -548,101 +566,8 @@ var {config, counter, flag, log} = (function reportingModule() {
     };
 
     /**
-     * Retrieve an array of log entries. Timestamps are recast into Date objects.
-     * @return {Array<Object>} Array of entries. 
-     */
-    function getPersistent() {
-      const logBook = localStore.get(STORE_NAME);
-      return (logBook.entries || []).map(entry => {
-        entry.time = new Date(entry.time);
-        return entry;
-      });
-    }
-    test.group('getPersistent', () => {
-      test.ok(Array.isArray(getPersistent()), 'Returns an array');
-    });
-
-    /**
-     * Save an array of log entries.
-     * @param {Object} entries - An object containing an array of log entries. 
-     */
-    function setPersistent(entries) {
-      if (entries.length > LOG_LENGTH_MAX) {
-        entries = entries.slice(-LOG_LENGTH_MIN);
-      }
-      localStore.set(STORE_NAME, {entries});
-    }
-
-    /**
-     * Add a single log entries to the persistent log.
-     * @param {Object} entry - Log entry object.
-     * @param {string} entry.type - Type of log entry.
-     * @param {Object|string} entry.payload - Data associated with the log entry.
-     */
-    function addPersistent({type, payload}) {
-      const entries = getPersistent();
-      const newEntry = {time: new Date(), type, payload};
-      const newEntries = [...entries, newEntry];
-      setPersistent(newEntries);
-    }
-    test.group('addPersistent', () => {
-      const length = getPersistent().length;
-      addPersistent({type: 'testing', payload: '1,2,3'});
-      test.ok((length + 1) === getPersistent().length), 'Added one entry';
-    }, true);
-
-    /**
-     * Get a filtered part of the persistent log.
-     * @param {Object=} filterBy - Filter parameters.
-     * @return {Array<Object>}
-     * @example - printPersistent({before: new Date()});
-     */
-    function getFilteredPersistent(filterBy = {}) {
-      let entries = getPersistent();
-      if (filterBy.type) {
-        entries = entries.filter(entry => entry.type === filterBy.type);
-      }
-      if (filterBy.notType) {
-        entries = entries.filter(entry => entry.type !== filterBy.notType);
-      }
-      if (filterBy.after) {
-        entries = entries.filter(entry => entry.time > filterBy.after);
-      }
-      if (filterBy.before) {
-        entries = entries.filter(entry => entry.time < filterBy.before);
-      }
-      if (filterBy.regex) {
-        entries = entries.filter(entry => filterBy.regex.test(entry.payload));
-      }
-      if (filterBy.page !== undefined) {
-        const page = filterBy.page;
-        const start = LOG_PAGE_SIZE * (filterBy.page);
-        const end = LOG_PAGE_SIZE * (filterBy.page + 1);
-        entries = entries.slice(-end, -start || undefined);
-      }
-      return entries;
-    }
-    test.group('getFilteredPersistent', () => {
-      const entries = getFilteredPersistent();
-      test.ok(
-        (entries.length === LOG_PAGE_SIZE) ||
-        (getPersistent.length < LOG_PAGE_SIZE),
-        'Get a full page from the log',
-      );
-    });
-
-    /**
-     * Print a filtered part of the persistent log.
-     * @param {Object=} filterBy Filter parameters.
-     * @return {Array<Object>}
-     * @example printPersistent({before: new Date()});
-     */
-    function printPersistent(filterBy = {page: 0}) {
-      getFilteredPersistent(filterBy).forEach(entry => toConsole(entry));
-    }
-
-    /**
      * Generate a string from a log entry, in order to print to the console.
+     *
      * @param {Object | string} payload Data associated with the log entry.
      * @param {number} space Number of spaces to include in front of new lines.
      */
@@ -665,6 +590,7 @@ var {config, counter, flag, log} = (function reportingModule() {
 
     /**
      * Print a log entry to the console, with a timestamp.
+     *
      * @param {string} type
      * @param {Object|string} payload
      * @time {=Date} Optionally, provide a Date for the timestamp.
@@ -677,11 +603,110 @@ var {config, counter, flag, log} = (function reportingModule() {
     }
 
     /**
+     * Retrieve an array of all log entries. Timestamps are recast into Date
+     * objects.
+     *
+     * @return {Array<Object>} Array of entries. 
+     */
+    function getPersistent() {
+      const logBook = localStore.get(STORE_NAME);
+      return (logBook.entries || []).map(entry => {
+        entry.time = new Date(entry.time);
+        return entry;
+      });
+    }
+    test.group('getPersistent', () => {
+      test.ok(Array.isArray(getPersistent()), 'Returns an array');
+    });
+
+    /**
+     * Persistently save an array of log entries.
+     *
+     * @param {Object} entries - An object containing an array of log entries. 
+     */
+    function setPersistent(entries) {
+      if (entries.length > LOG_LENGTH_MAX) {
+        entries = entries.slice(-LOG_LENGTH_MIN);
+      }
+      localStore.set(STORE_NAME, {entries});
+    }
+
+    /**
+     * Add a single log entry to the persistent log.
+     *
+     * @param {Object} entry - Log entry object.
+     * @param {string} entry.type - Type of log entry.
+     * @param {Object|string} entry.payload - Data associated with the log entry.
+     */
+    function addPersistent({type, payload}) {
+      const entries = getPersistent();
+      const newEntry = {time: new Date(), type, payload};
+      const newEntries = [...entries, newEntry];
+      setPersistent(newEntries);
+    }
+    test.group('addPersistent', () => {
+      const length = getPersistent().length;
+      addPersistent({type: 'testing', payload: '1,2,3'});
+      test.ok((length + 1) === getPersistent().length), 'Added one entry';
+    }, true);
+
+    /**
+     * Get a filtered part of the persistent log as an array of entries.
+     *
+     * @param {Object=} filterBy - Filter parameters.
+     * @return {Array<Object>}
+     * @example - printPersistent({before: new Date('2019-01-17')});
+     */
+    function getFilteredPersistent(filterBy = {}) {
+      const filters = {
+        type: entry => entry.type === filterBy.type,
+        notType: entry => entry.type !== filterBy.notType,
+        after: entry => entry.time > filterBy.after,
+        before: entry => entry.time < filterBy.before,
+        regex: entry => filterBy.regex.test(entry.payload),
+      }
+      let entries = getPersistent();
+      for (let filterType in filterBy) {
+        if (filterType === 'page') {
+          continue;
+        }
+        entries = entries.filter(filters[filterType]);
+      }
+      const page = (filterBy.page > 0) ? filterBy.page : 0;
+      const start = LOG_PAGE_SIZE * (page);
+      const end = LOG_PAGE_SIZE * (page + 1);
+      entries = entries.slice(-end, -start || undefined);
+      return entries;
+    }
+    test.group('getFilteredPersistent', () => {
+      const entries = getFilteredPersistent();
+      test.ok(
+        (entries.length === LOG_PAGE_SIZE) ||
+        (getPersistent.length < LOG_PAGE_SIZE),
+        'Get a full page from the log, if possible',
+      );
+    });
+
+    /**
+     * Print a filtered part of the persistent log.
+     *
+     * @param {Object=} filterBy Filter parameters.
+     * @return {Array<Object>}
+     * @example printPersistent({before: new Date()});
+     */
+    function printPersistent(filterBy = {}) {
+      getFilteredPersistent(filterBy).forEach(entry => toConsole(entry));
+    }
+
+    /**
      * Generate a logging function.
+     *
      * @param {string} type Title of the log.
      */
     function genericLog(type) {
       /**
+       * Write to the console, and optionally to persistent log.
+       *
        * @param {(Object|string|number)=} payload - Data associated with the
        * log entry.
        * @param {persist} boolean - Should the log entry be persisted to
@@ -735,11 +760,14 @@ var gui =
   /**
    * Merges new data into the local gui state, and triggers and update of
    * the gui.
+   *
    * @param {Object} packet - Data to be merged into the gui's state.
    */
   function update(packet) {
     guiState = {...guiState, ...packet};
-    log.log(JSON.stringify(guiState));
+    if (guiState.concerns.length > 0) {
+      log.log(JSON.stringify(guiState));
+    }
   }
 
   /**
@@ -844,32 +872,16 @@ var {setReactions, setGlobalReactions} = (function eventListenersModule() {
     }
   }
   test.group('eventToString', () => {
-    let result = eventToString({
-      type: 'keydown', ctrlKey: true, shiftKey: false, code: 'KeyP'
-    });
-    test.ok(
-      result === 'CtrlP',
-      'test 1'
-    );
-    result = eventToString({
-      type: 'keydown', ctrlKey: false, shiftKey: false, code: 'KeyP'
-    });
-    test.ok(
-      result === 'P',
-      'test 2'
-    );
-    result = eventToString({
-      type: 'keydown', ctrlKey: true, code: 'Enter'
-    });
-    test.ok(
-      result === 'CtrlEnter',
-      'test 3'
-    );
-    result  = eventToString({type: 'click'});
-    test.ok(
-      result === '',
-      'test 4'
-    );
+    const events = {
+      ctrlP: {type: 'keydown', ctrlKey: true, shiftKey: false, code: 'KeyP'},
+      p: {type: 'keydown', ctrlKey: false, shiftKey: false, code: 'KeyP'},
+      ctrlEnter: {type: 'keydown', ctrlKey: true, code: 'Enter'},
+      click: {type: 'click'},
+    };
+    test.ok(eventToString(events.ctrlP) === 'CtrlP', 'CtrlP');
+    test.ok(eventToString(events.p) === 'P', 'P');
+    test.ok(eventToString(events.ctrlEnter) === 'CtrlEnter', 'CtrlEnter');
+    test.ok(eventToString(events.click) === '', 'Click');
   });
 
   /**
