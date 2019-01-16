@@ -38,11 +38,12 @@ var test = (function testModule() {
    * OK: 1 equals 1
    */
 
+  const RUN_UNSAFE_TESTS = false;
   const AUTO_PRINT_DELAY = 1000;
   const PRINT_COLORS = {
     header: 'color: grey',
     ok: 'color: green',
-    fail: 'color: fail',
+    fail: 'color: red',
   }
   const testingLogBook = [];
   let failuresRecorded = false;
@@ -61,7 +62,10 @@ var test = (function testModule() {
    * @param {function} func - Function body that contains the
    * test items.
    */
-  const group = (groupDesc, func) => {
+  const group = (groupDesc, func, unsafe) => {
+    if (unsafe && !RUN_UNSAFE_TESTS) {
+      return;
+    }
     if (typeof func !== 'function') {
       throw new Error('Test requires a function as its second parameter');
     }
@@ -209,17 +213,34 @@ var util =
   });
 
   /**
-   * Test whether an object is a DOM element. Uses simple duck typing.
+   * Test whether an object exposes the same properties as a template object.
+   * @param {object} template - Object that exposes all required properties.
+   * @param {object} toTest - Object to test.
+   * @return {boolean} Does the toTest object expose all the properties exposed
+   * by the template?
+   */
+  function objectMatchesTemplate(template, toTest = {}) {
+    for (let property in
+     template) {
+      if (toTest[property] === undefined) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /**
+   * Test whether an object is a DOM element.
    * @param {Object=} domElement - Object to be tested
    * @return {boolean} Returns true if a dom element is passed in.
    */
   function isDomElement(domElement) {
-    return !!domElement && domElement.parentNode !== undefined;
+    return objectMatchesTemplate({parentNode: 5}, domElement);
   }
   test.group('isDomElement', () => {
-    test.ok(!isDomElement({}), 'An object');
+    test.ok(!isDomElement({}), 'An object is not');
     test.ok(isDomElement(document), 'The document');
-    test.ok(isDomElement({parentNode: 'quack'}), 'False positive');
+    test.ok(isDomElement(document.body), 'Document body');
   });
 
   /**
@@ -235,7 +256,7 @@ var util =
     test.ok(DEFAULT_DELAY !== undefined, 'Default delay is set');
   });
 
-  return {bundle, debounce, isDomElement, wait};
+  return {bundle, debounce, isDomElement, objectMatchesTemplate, wait};
 })();
 
 
@@ -258,6 +279,11 @@ var {config, counter, flag, log} = (function reportingModule() {
    * This module is a semi-functional stub.
    */
 
+
+  const LOCALSTORE_BASENAME = 'twoTwenty';
+  const CONFIG_STORE_NAME = 'Configuration';
+  const COUNTER_STORE_NAME = 'Counter';
+
   /**
    * Create a human readable string timestamp.
    * @param {Date} d - A date to turn into a matching timestamp.
@@ -266,23 +292,28 @@ var {config, counter, flag, log} = (function reportingModule() {
    * @return {string}
    */
   function timestamp (d = new Date()) {
-    const lead = (/** number */n) /** string */ => ('0' + n).slice(-2);
-    const today = (new Date().getDate() - d.getDate() === 0);
-    const month = lead(d.getMonth() + 1);
-    const date = lead(d.getDate());
-    const hrs = lead(d.getHours());
-    const min = lead(d.getMinutes());
-    const sec = lead(d.getSeconds());
-    const long = `${month}/${date} ${hrs}:${min}:${sec}`;
-    const short = `${hrs}:${min}`;
-    return (today) ? short : long;
+    /** Cast numbers into a zero prefixed two digit string format */
+    const cast = (/** number */n) /** string */ => ('0' + n).slice(-2);
+    const isTodaysDate = (new Date().getDate() - d.getDate() === 0);
+    const month = cast(d.getMonth() + 1);
+    const date = cast(d.getDate());
+    const hrs = cast(d.getHours());
+    const min = cast(d.getMinutes());
+    const sec = cast(d.getSeconds());
+    const longForm = `${month}/${date} ${hrs}:${min}:${sec}`;
+    const shortForm = `${hrs}:${min}`;
+    return (isTodaysDate) ? shortForm : longForm;
   }
   test.group('timestamp', () => {
     const today = new Date();
     const earlier = new Date('01-01-2019 12:34:56');
     test.ok(
       timestamp(today).length === 5,
-      'Short length: ' + timestamp(today)
+      'Without a parameter',
+    );
+    test.ok(
+      timestamp(today).length === 5,
+      'Short length: ' + timestamp(today),
     );
     test.ok(
       timestamp(new Date(earlier)).length === 14,
@@ -293,6 +324,7 @@ var {config, counter, flag, log} = (function reportingModule() {
   /**
    * Dispatch GUI update packets. The GUI is reponsible for integrating packets
    * into a consistent state.
+   * @param {Object} packet - A packet containing a state update to the GUI.
    * @example - updateGui({counters: {one: 21}});
    */
   function updateGui(packet) {
@@ -300,17 +332,23 @@ var {config, counter, flag, log} = (function reportingModule() {
         new CustomEvent('guiUpdate', {detail: packet})
     );
   }
+  test.group('updateGui', () => {
+    let received;
+    let testPacket = {packet: 'packet'};
+    document.addEventListener('guiUpdate', ({detail}) => received = detail);
+    updateGui(testPacket);
+    test.ok(received === testPacket, 'Packet succesfully sent');
+  }, true);
 
   /** Handle communication with localStorage */
   const localStore = {
-    BASENAME: 'twoTwenty',
     /**
      * @param {string} itemName - Name of the item in localStorage
-     * @return {Object} Object
-     * Will return undefined if no item by this name exists.
+     * @return {(Object|string|number)} Data restored from string in storage,
+     * or empty object. Strings and numbers are supported.
      */
     get(itemName) {
-      const item = localStorage.getItem(this.BASENAME + itemName);
+      const item = localStorage.getItem(LOCALSTORE_BASENAME + itemName);
       return (item) ? JSON.parse(item) : {};
     },
     /**
@@ -319,32 +357,46 @@ var {config, counter, flag, log} = (function reportingModule() {
      * Will overwrite previously stored values.
      */
     set(itemName, obj = {}) {
-      localStorage.setItem(this.BASENAME + itemName, JSON.stringify(obj))
+      localStorage.setItem(LOCALSTORE_BASENAME + itemName, JSON.stringify(obj))
     }
   };
 
   /**
    * Track configuration settings. Settings are loaded from localStorage on
    * load, but changes are not persisted by default.
-   * #get(name) returns a value if a config setting is loaded or undefined.
-   * #set(name) adds a value to the config object in memory and optionally
-   * updates the config options stored in localStorage.
+   * #get(name) returns a value if a config setting is loaded, or undefined.
+   * #set(name, newValue, save) adds a value to the config object in memory
+   * and optionally updates the config options stored in localStorage.
    * #raw() returns the config object in memory and exists mostly for debugging.
    */
   const config = (function configMiniModule() {
     const defaults = {};
-    const stored = localStore.get('Configuration');
+    const stored = localStore.get(CONFIG_STORE_NAME);
     const config = {...defaults, ...stored};
+    /**
+     * @param {string} name - The name of the configuration option to find.
+     * @return {(Object|string|number)} The associated value, or undefined if
+     * none is found.
+     */
     function get(name) {
       return config[name];
     }
+    /**
+     * @param {string} name - The name of the configuration option to set.
+     * @param {(Object|string|number)} newValue
+     * @param {boolean} save - Should the value be persisted to localstorage?
+     */
     function set(name, newValue, save) {
       log.changeConfig(`${name} changed to '${newValue}'`)
       config[name] = newValue;
       if (save) {
-        localStore.set('Configuration', config);
+        localStore.set(CONFIG_STORE_NAME, config);
       }
     }
+    /**
+     * @return {Object} - The raw config object as it exists in memory. Exists
+     * mainly for debugging purposes.
+     */
     function raw() {
       return config;
     }
@@ -354,40 +406,57 @@ var {config, counter, flag, log} = (function reportingModule() {
   /**
    * Object with methods to create and manage counters.
    * #add(name) create a new counter or increments it if it already exists.
-   * #get(=name) returns the count of a named counter (or -1 if no such counter
-   * exists)(or all counters if no name is provided).
+   * #get(name) returns the count of a named counter (or -1 if no such counter
+   * exists).
    * #reset(=name) resets a named counter (or all counters if no name is
    * provided).
    */
   const counter = (function counterMiniModule() {
+    /**
+     * @param {string} name - Add one to the count of an existing counter, or
+     * create a new counter starting at 1. 
+     */
     function add(name) {
       if (typeof name !== 'string') {
-        throw new Error('Counter expects a name string');
+        throw new Error('Counter add expects a name string');
       }
-      const /** object */ allCounts = localStore.get('Counter');
+      const /** object */ allCounts = localStore.get(COUNTER_STORE_NAME);
       const /** number */ newCount = (allCounts[name] + 1) || 1;
       allCounts[name] = newCount;
-      localStore.set('Counter', allCounts);
+      localStore.set(COUNTER_STORE_NAME, allCounts);
       updateGui({counters: allCounts});
       return newCount;
     }
 
+    /**
+     * @param {string} name - Name of the counter to find.
+     * @return {number} The count of the counter, or -1 if the counter
+     * does not exist.
+     */
     function get(name) {
-      const allCounts = localStore.get('Counter');
-      if (name) {
-        return allCounts[name] || -1;
-      } else {
-        return allCounts;
+      if (typeof name !== 'string') {
+        throw new Error('Counter get expects a name string');
       }
+      const allCounts = localStore.get(COUNTER_STORE_NAME);
+        return allCounts[name] || -1;
     }
 
+    /**
+     * @param {string=} name - Name of the counter to reset.
+     */
     function reset(name) {
-      const allCounts = localStore.get('Counter');
+      if (typeof name !== 'string' && name !== undefined) {
+        throw new Error('Counter reset expects a name string or nothing');
+      }
+      const allCounts = localStore.get(COUNTER_STORE_NAME);
       if (name) {
-        log.notice(
-          `Resetting counter ${name} from ${allCounts[name]}`,
-          true,
-        );
+        const currentCount = allCounts[name];
+        util.wait().then(() => { // @todo Fix wait hack. Used for testing only.
+          log.notice(
+            `Resetting counter ${name} from ${currentCount}`,
+            true,
+          ), 0
+        });
         allCounts[name] = 0;
       } else {
         log.notice(
@@ -396,40 +465,63 @@ var {config, counter, flag, log} = (function reportingModule() {
         );
         allCounts = {};
       }
-      localStore.set('Counter', allCounts);
+      localStore.set(COUNTER_STORE_NAME, allCounts);
       updateGui({counters: allCounts});
       return 0;
     }
     return {add, get, reset};
   })();
+  test.group('counter', () => {
+    const complex = 'aG9yc2ViYXR0ZXJ5c3RhYmxl';
+    test.ok(counter.get(complex) === -1, 'Undefined counter');
+    test.ok(counter.add(complex) === 1, 'Initialised counter');
+    test.ok(counter.add(complex) === 2, 'Counter is counting');
+    test.ok(counter.get(complex) === 2, 'Counter is consistent');
+    test.ok(counter.reset(complex) === 0, 'Reset returns 0');
+    test.ok(counter.get(complex) === -1, 'Counter is gone');
+  }, true);
+
+  let flaggedConcerns = [];
 
   /**
-   * Track incoming concerns, keep a running list of
-   * unresolved unique issues.
-   * concerns look like this: {wrapper, type, category, message}
+   * @param {Object} newConcern - Incoming message. This may refer to a new
+   * concern, or update the status of a previous issue.
+   * @param {Object} newConcern.wrapper - DOM element wrapper.
+   * @param {string} newConcern.type - The type of concern.
+   * @param {string} newConcern.category - How critical is this concern?
+   * @param {string} newConcern.message - Describes the details of the concern.
+   * @example
+   * {wrapper, type: 'Typo', category: 'red', message: 'Wrod is misspelled'}
    */
-  const flag = (function flaggerMiniModule() {
-    let concerns = [];
-
-    function removeMatching (newConcern) {
-      return concerns.filter(concern => {
-        const sameWrapper = (concern.wrapper === newConcern.wrapper);
-        const sameType = (concern.type === newConcern.type);
-        if (sameWrapper && sameType) {
-          return false;
-        }
-        return true;
-      })
+  function flag(newConcern) {
+    const template = {wrapper: true, type: true, category: true};
+    if (!util.objectMatchesTemplate(template, newConcern)) {
+      throw Error('Not a valid concern.');
     }
-
-    function flag(concern) {
-      concerns = removeMatching(concern);
-      concerns.push(concern);
-      concerns = concerns.filter(concern => concern.category !== 'ok');
-      updateGui({concerns});
-    }
-    return flag;
-  })();
+    /**
+     * Filter out concerns that match the incoming concern. Compares wrapper
+     * type properties.
+     * @param {Object} concern
+     */
+    const removeMatching = (concern) => {
+      const sameWrapper = (concern.wrapper === newConcern.wrapper);
+      const sameType = (concern.type === newConcern.type);
+      return !(sameWrapper && sameType);
+    };
+    /**
+     * Filter out concerns that with a category property of 'ok'.
+     * @param {Object} concern
+     */
+    const removeOk = (concern => concern.category !== 'ok');
+    flaggedConcerns = flaggedConcerns.filter(removeMatching);
+    flaggedConcerns.push(newConcern);
+    flaggedConcerns = flaggedConcerns.filter(removeOk);
+    updateGui({concerns: flaggedConcerns});
+  }
+  test.group('flag', () => {
+    test.fizzle(() => flag(), 'Without a concern');
+    // @todo Better tests.
+  });
 
   /**
   * Object with methods to log events.
@@ -439,10 +531,10 @@ var {config, counter, flag, log} = (function reportingModule() {
   * @return {Object}
   */
   const log = (function loggingModule() {
-
     const STORE_NAME = 'LogBook';
     const LOG_LENGTH_MAX = 5000;
     const LOG_LENGTH_MIN = 4000;
+    const LOG_PAGE_SIZE = 25;
     const NO_COLOR_FOUND = 'yellow';
     const TIMESTAMP_COLOR = 'color: grey';
     const LOG_TYPES = {
@@ -450,13 +542,13 @@ var {config, counter, flag, log} = (function reportingModule() {
       notice: 'DodgerBlue',
       warn: 'OrangeRed',
       ok: 'LimeGreen',
-      low: 'Gainsboro',
+      lowLevel: 'Gainsboro',
       changeValue: 'LightPink',
       changeConfig: 'MediumOrchid',
     };
 
     /**
-     * Retrieve an array of log entries.
+     * Retrieve an array of log entries. Timestamps are recast into Date objects.
      * @return {Array<Object>} Array of entries. 
      */
     function getPersistent() {
@@ -466,6 +558,10 @@ var {config, counter, flag, log} = (function reportingModule() {
         return entry;
       });
     }
+    test.group('getPersistent', () => {
+      test.ok(Array.isArray(getPersistent()), 'Returns an array');
+    });
+
     /**
      * Save an array of log entries.
      * @param {Object} entries - An object containing an array of log entries. 
@@ -476,20 +572,28 @@ var {config, counter, flag, log} = (function reportingModule() {
       }
       localStore.set(STORE_NAME, {entries});
     }
+
     /**
      * Add a single log entries to the persistent log.
-     * @param {string} type.
-     * @param {Object|string} payload - Data associated with the log entry.
+     * @param {Object} entry - Log entry object.
+     * @param {string} entry.type - Type of log entry.
+     * @param {Object|string} entry.payload - Data associated with the log entry.
      */
     function addPersistent({type, payload}) {
       const entries = getPersistent();
       const newEntry = {time: new Date(), type, payload};
-      const newEntries = [...entries, newEntry];//.slice(-20);
+      const newEntries = [...entries, newEntry];
       setPersistent(newEntries);
     }
+    test.group('addPersistent', () => {
+      const length = getPersistent().length;
+      addPersistent({type: 'testing', payload: '1,2,3'});
+      test.ok((length + 1) === getPersistent().length), 'Added one entry';
+    }, true);
+
     /**
      * Get a filtered part of the persistent log.
-     * @param {=Object} filterBy - Filter parameters.
+     * @param {Object=} filterBy - Filter parameters.
      * @return {Array<Object>}
      * @example - printPersistent({before: new Date()});
      */
@@ -510,17 +614,33 @@ var {config, counter, flag, log} = (function reportingModule() {
       if (filterBy.regex) {
         entries = entries.filter(entry => filterBy.regex.test(entry.payload));
       }
-      return entries;  
+      if (filterBy.page !== undefined) {
+        const page = filterBy.page;
+        const start = LOG_PAGE_SIZE * (filterBy.page);
+        const end = LOG_PAGE_SIZE * (filterBy.page + 1);
+        entries = entries.slice(-end, -start || undefined);
+      }
+      return entries;
     }
+    test.group('getFilteredPersistent', () => {
+      const entries = getFilteredPersistent();
+      test.ok(
+        (entries.length === LOG_PAGE_SIZE) ||
+        (getPersistent.length < LOG_PAGE_SIZE),
+        'Get a full page from the log',
+      );
+    });
+
     /**
      * Print a filtered part of the persistent log.
-     * @param {=Object} filterBy Filter parameters.
+     * @param {Object=} filterBy Filter parameters.
      * @return {Array<Object>}
      * @example printPersistent({before: new Date()});
      */
-    function printPersistent(filterBy) {
+    function printPersistent(filterBy = {page: 0}) {
       getFilteredPersistent(filterBy).forEach(entry => toConsole(entry));
     }
+
     /**
      * Generate a string from a log entry, in order to print to the console.
      * @param {Object | string} payload Data associated with the log entry.
@@ -534,6 +654,15 @@ var {config, counter, flag, log} = (function reportingModule() {
         return JSON.stringify(payload);
       }
     }
+    test.group('payloadToString', () => {
+      let payload = 'one\ntwo';
+      let resultString = 'one\n   two';
+      test.ok(payloadToString(payload, 2) === resultString, 'Two spaces');
+      payload = {test: '1,2,3'};
+      resultString = '{"test":"1,2,3"}';
+      test.ok(payloadToString(payload, 2) === resultString, 'JSON');
+    });
+
     /**
      * Print a log entry to the console, with a timestamp.
      * @param {string} type
@@ -546,18 +675,27 @@ var {config, counter, flag, log} = (function reportingModule() {
       const string = payloadToString(payload, ts.length);
       console.log(`%c${ts} %c${string}`, TIMESTAMP_COLOR, `color: ${color}`);
     }
+
     /**
      * Generate a logging function.
      * @param {string} type Title of the log.
      */
     function genericLog(type) {
-      return function log(payload = '', persist) {
+      /**
+       * @param {(Object|string|number)=} payload - Data associated with the
+       * log entry.
+       * @param {persist} boolean - Should the log entry be persisted to
+       * localstorage.
+       */
+      function log(payload = '', persist) {
         toConsole({type, payload});
         if (persist) {
           addPersistent({type, payload});
         }
       }
+      return log;
     }
+
     const toExport = {print: printPersistent};
     for (let type in LOG_TYPES) {
       toExport[type] = genericLog(type);
@@ -589,7 +727,7 @@ var gui =
    */
 
   let guiState = {
-    stage: undefined,
+    stage: 0,
     counters: {},
     concerns: [],
   };
@@ -597,7 +735,7 @@ var gui =
   /**
    * Merges new data into the local gui state, and triggers and update of
    * the gui.
-   * @param {Object} packet Data to be merged into the gui's state.
+   * @param {Object} packet - Data to be merged into the gui's state.
    */
   function update(packet) {
     guiState = {...guiState, ...packet};
@@ -626,8 +764,7 @@ var gui =
 ////////////////////////////////////////////////////////////////////////////////
 // EVENT LISTENER module
 
-var {setReactions, setGlobalReactions} =
-    (function eventListenersModule() {
+var {setReactions, setGlobalReactions} = (function eventListenersModule() {
   'use strict';
 
   /**
@@ -641,7 +778,7 @@ var {setReactions, setGlobalReactions} =
    */
 
   /**
-   * Array<string>} These are the events that can be set on a Dom element.
+   * Array<string>} The events that can be set on a DOM element.
    */
   const SUPPORTED_EVENTS = Object.freeze([
     'change',
@@ -655,12 +792,7 @@ var {setReactions, setGlobalReactions} =
   ]);
 
   /**
-   * WeakMap - Maps DOM elements to reaction objects.
-   */
-  const reactionMap = new WeakMap();
-
-  /**
-   * Array<string>} These are the events that are triggered by the special
+   * Array<string>} The events that are triggered by the special
    * 'interact' event.
    */
   const INTERACT_EVENTS = Object.freeze([
@@ -669,6 +801,11 @@ var {setReactions, setGlobalReactions} =
     'keydown',
     'paste',
   ]);
+
+  /**
+   * WeakMap - Maps DOM elements to reaction objects.
+   */
+  const reactionMap = new WeakMap();
 
   /**
    * Maps a browser event to a descriptive string, if possible.
@@ -706,7 +843,6 @@ var {setReactions, setGlobalReactions} =
         return '';
     }
   }
-
   test.group('eventToString', () => {
     let result = eventToString({
       type: 'keydown', ctrlKey: true, shiftKey: false, code: 'KeyP'
@@ -1099,7 +1235,7 @@ var {wrap} = (function domAccessModule() {
   function safeSetter(domElement, name, newValue) {
     const currentValue = domElement.value;
     if (currentValue === newValue) {
-      log.low(`No change to ${name}'.`);
+      log.lowLevel(`No change to ${name}'.`);
       return;
     }
     if(!EDITABLE_ELEMENT_TYPES.includes(domElement.type)) {
