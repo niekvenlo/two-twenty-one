@@ -44,6 +44,7 @@ var test = (function testModule() {
     header: 'color: grey',
     ok: 'color: green',
     fail: 'color: red',
+    todo: 'color: purple',
   }
   const testingLogBook = [];
   let failuresRecorded = false;
@@ -134,6 +135,10 @@ var test = (function testModule() {
     }
   }
 
+  const todo = (message) => {
+    log('todo', 'TODO: ' + message);
+  };
+
   // Automatically print results if there's a fail result.
   setTimeout(() => {
     if (failuresRecorded) {
@@ -141,7 +146,7 @@ var test = (function testModule() {
     }
   }, AUTO_PRINT_DELAY);
 
- return {fizzle, group, ok, print, solid};
+ return {fizzle, group, ok, print, solid, todo};
 })();
 
 
@@ -220,6 +225,13 @@ var util =
     test.ok(DEFAULT_DELAY !== undefined, 'Default delay is set');
   });
 
+  function delay(func, ms = DEFAULT_DELAY) {
+    function delayed(...params) {
+      wait(ms).then(() => func(...params));
+    }
+    return delayed;
+  }
+
   /**
    * Test whether an object exposes the same properties as a template object.
    *
@@ -253,6 +265,11 @@ var util =
     test.ok(isDomElement(document.body), 'Document body');
   });
 
+  function mapToBulletedList(arrOrObj, spaces = 4) {
+    const arr = (Array.isArray(arrOrObj)) ? arrOrObj : Object.keys(arrOrObj);
+    return arr.map(el => '\n' + ' '.repeat(spaces) + '* ' + el).join('');
+  }
+
   /**
    * Returns a promise that will resolve after a delay.
    *
@@ -268,7 +285,15 @@ var util =
     test.ok(DEFAULT_DELAY !== undefined, 'Default delay is set');
   });
 
-  return {bundle, debounce, isDomElement, objectMatchesTemplate, wait};
+  return {
+    bundle,
+    debounce,
+    delay,
+    isDomElement,
+    mapToBulletedList,
+    objectMatchesTemplate,
+    wait,
+    };
 })();
 
 
@@ -496,52 +521,63 @@ var {config, counter, flag, log} = (function reportingModule() {
     test.ok(counter.get(complex) === -1, 'Counter is gone');
   }, true);
 
-  let flaggedConcerns = [];
+  let flaggedIssues = [];
 
   /**
    * Issue tracker. Integrates updates into a consistent list of currently
-   * unresolved concerns.
+   * unresolved issues.
    * 
-   * @param {Object} newConcern - Incoming message. This may refer to a new
-   * concern, or update the status of a previous issue.
-   * @param {Object} newConcern.wrapper - DOM element wrapper.
-   * @param {string} newConcern.type - The type of concern.
-   * @param {string} newConcern.category - How critical is this concern?
-   * @param {string} newConcern.message - Describes the details of the concern.
+   * @param {Object} issueUpdate - Incoming message. This may refer to a new
+   * issue, or update the status of a previous issue.
+   * @param {Object} issueUpdate.wrapper - DOM element wrapper.
+   * @param {string} issueUpdate.issueType - The type of issue.
+   * @param {string} issueUpdate.issueLevel - How critical is this issue?
+   * @param {string} issueUpdate.message - Describes the details of the issue.
    * @example
-   * {wrapper, type: 'Typo', category: 'red', message: 'Wrod is misspelled'}
+   * {wrapper, issueType: 'Typo', issueLevel: 'red', message: 'Wrod misspelled'}
    */
-  function flag(newConcern) {
-    const template = {wrapper: true, type: true, category: true};
-    if (!util.objectMatchesTemplate(template, newConcern)) {
-      throw Error('Not a valid concern.');
+  function flag(issueUpdate) {
+    const template = {wrapper: true, issueType: true};
+    if (!util.objectMatchesTemplate(template, issueUpdate)) {
+      throw new Error('Not a valid issue.');
     }
     /**
-     * Filter function to remove concerns that match the incoming concern. Compares wrapper
+     * Filter function to remove issues that match the incoming issue. Compares wrapper
      * type properties.
      *
-     * @param {Object} concern
+     * @param {Object} issue
      */
-    const removeMatching = (concern) => {
-      const sameWrapper = (concern.wrapper === newConcern.wrapper);
-      const sameType = (concern.type === newConcern.type);
+    const removeMatching = (issue) => {
+      const sameWrapper = (issue.wrapper === issueUpdate.wrapper);
+      const sameType = (issue.issueType === issueUpdate.issueType);
       return !(sameWrapper && sameType);
     };
     /**
-     * Filter out concerns that with a category property of 'ok'.
+     * Filter out issues that without a issueLevel.
      *
-     * @param {Object} concern
+     * @param {Object} issue
      */
-    const removeOk = (concern => concern.category !== 'ok');
-    flaggedConcerns = flaggedConcerns.filter(removeMatching);
-    flaggedConcerns.push(newConcern);
-    flaggedConcerns = flaggedConcerns.filter(removeOk);
-    updateGui({concerns: flaggedConcerns});
+    const removeOk = (issue => issue.issueLevel !== undefined);
+    flaggedIssues = flaggedIssues.filter(removeMatching);
+    flaggedIssues.push(issueUpdate);
+    flaggedIssues = flaggedIssues.filter(removeOk);
+    updateGui({issues: flaggedIssues});
   }
   test.group('flag', () => {
-    test.fizzle(() => flag(), 'Without a concern');
+    test.fizzle(() => flag(), 'Without a issue');
     // @todo Better tests.
   });
+
+  /**
+   * Sets a listener on the document for issue updates.
+   */
+  function addissueUpdateListener() {
+    document.addEventListener('issueUpdate', ({detail}) => {
+      const issueUpdate = detail;
+      flag(issueUpdate);
+    }, {passive: true});
+  }
+  addissueUpdateListener();
 
   /**
   * Object with methods to log events. The following is true for most methods:
@@ -550,19 +586,18 @@ var {config, counter, flag, log} = (function reportingModule() {
   */
   const log = (function loggingModule() {
     const STORE_NAME = 'LogBook';
-    const LOG_LENGTH_MAX = 5000;
-    const LOG_LENGTH_MIN = 4000;
+    const MAX_LOG_LENGTH = 5000;
     const LOG_PAGE_SIZE = 25;
     const NO_COLOR_FOUND = 'yellow';
     const TIMESTAMP_COLOR = 'color: grey';
     const LOG_TYPES = {
-      log: 'black',
-      notice: 'DodgerBlue',
-      warn: 'OrangeRed',
-      ok: 'LimeGreen',
-      lowLevel: 'Gainsboro',
-      changeValue: 'LightPink',
-      changeConfig: 'MediumOrchid',
+      log: {color:'black', print: true},
+      notice: {color:'DodgerBlue', print: true},
+      warn: {color:'OrangeRed', print: true},
+      ok: {color:'LimeGreen', print: true},
+      lowLevel: {color:'Gainsboro', print: true},
+      changeValue: {color:'LightPink', print: false},
+      changeConfig: {color:'MediumOrchid', print: true},
     };
 
     /**
@@ -596,7 +631,7 @@ var {config, counter, flag, log} = (function reportingModule() {
      * @time {=Date} Optionally, provide a Date for the timestamp.
      */
     function toConsole({type, payload, time = new Date()}) {
-      const color = LOG_TYPES[type] || NO_COLOR_FOUND;
+      const color = LOG_TYPES[type].color || NO_COLOR_FOUND;
       const ts = timestamp(time);
       const string = payloadToString(payload, ts.length);
       console.log(`%c${ts} %c${string}`, TIMESTAMP_COLOR, `color: ${color}`);
@@ -606,7 +641,7 @@ var {config, counter, flag, log} = (function reportingModule() {
      * Retrieve an array of all log entries. Timestamps are recast into Date
      * objects.
      *
-     * @return {Array<Object>} Array of entries. 
+     * @return {Object[]} Array of entries. 
      */
     function getPersistent() {
       const logBook = localStore.get(STORE_NAME);
@@ -625,9 +660,7 @@ var {config, counter, flag, log} = (function reportingModule() {
      * @param {Object} entries - An object containing an array of log entries. 
      */
     function setPersistent(entries) {
-      if (entries.length > LOG_LENGTH_MAX) {
-        entries = entries.slice(-LOG_LENGTH_MIN);
-      }
+      entries = entries.slice(-MAX_LOG_LENGTH);
       localStore.set(STORE_NAME, {entries});
     }
 
@@ -654,23 +687,35 @@ var {config, counter, flag, log} = (function reportingModule() {
      * Get a filtered part of the persistent log as an array of entries.
      *
      * @param {Object=} filterBy - Filter parameters.
-     * @return {Array<Object>}
+     * @return {Object[]}
      * @example - printPersistent({before: new Date('2019-01-17')});
      */
     function getFilteredPersistent(filterBy = {}) {
       const filters = {
-        type: entry => entry.type === filterBy.type,
-        notType: entry => entry.type !== filterBy.notType,
         after: entry => entry.time > filterBy.after,
         before: entry => entry.time < filterBy.before,
+        contains: entry => new RegExp(filterBy.contains).test(entry.payload),
         regex: entry => filterBy.regex.test(entry.payload),
+        type: entry => entry.type === filterBy.type,
+        typeExclude: entry => entry.type !== filterBy.typeExclude,
       }
       let entries = getPersistent();
       for (let filterType in filterBy) {
         if (filterType === 'page') {
           continue;
         }
-        entries = entries.filter(filters[filterType]);
+        try {
+          entries = entries.filter(filters[filterType]);
+        } catch (e) {
+          if (e instanceof TypeError) {
+            log.warn(
+              `'${filterType}' is not a valid log filter. Please use:` +
+              util.mapToBulletedList(filters),
+              true,
+            );
+            return [];
+          }
+        }
       }
       const page = (filterBy.page > 0) ? filterBy.page : 0;
       const start = LOG_PAGE_SIZE * (page);
@@ -682,8 +727,14 @@ var {config, counter, flag, log} = (function reportingModule() {
       const entries = getFilteredPersistent();
       test.ok(
         (entries.length === LOG_PAGE_SIZE) ||
-        (getPersistent.length < LOG_PAGE_SIZE),
+        (getPersistent().length < LOG_PAGE_SIZE),
         'Get a full page from the log, if possible',
+      );
+      const randomString = Math.random().toString();
+      const filtered = getFilteredPersistent({contains: randomString});
+      test.ok(
+        filtered.length === 0,
+        'Succesfully filter out all entries',
       );
     });
 
@@ -691,12 +742,15 @@ var {config, counter, flag, log} = (function reportingModule() {
      * Print a filtered part of the persistent log.
      *
      * @param {Object=} filterBy Filter parameters.
-     * @return {Array<Object>}
+     * @return {Object[]}
      * @example printPersistent({before: new Date()});
      */
     function printPersistent(filterBy = {}) {
       getFilteredPersistent(filterBy).forEach(entry => toConsole(entry));
     }
+    test.group('printPersistent', () => {
+      test.todo('XXXXX');
+    });
 
     /**
      * Generate a logging function.
@@ -713,7 +767,9 @@ var {config, counter, flag, log} = (function reportingModule() {
        * localstorage.
        */
       function log(payload = '', persist) {
-        toConsole({type, payload});
+        if (LOG_TYPES[type].print) {
+          toConsole({type, payload});        
+        }
         if (persist) {
           addPersistent({type, payload});
         }
@@ -739,8 +795,7 @@ var {config, counter, flag, log} = (function reportingModule() {
 ////////////////////////////////////////////////////////////////////////////////
 // GUI module
 
-var gui =
-    (function guiModule() {
+var gui = (function guiModule() {
   'use strict';
 
   /**
@@ -754,8 +809,19 @@ var gui =
   let guiState = {
     stage: 0,
     counters: {},
-    concerns: [],
+    issues: [],
   };
+
+  const floatingGui = document.createElement('div');
+
+  function addFloatingGui() {
+    floatingGui.style.cssText =
+      `position: fixed; width: 100%;
+      bottom: 0px; left: 0px; z-index: 2000; pointer-events: none;
+      background: rgba(240,240,200,0.5);`;
+    document.body.append(floatingGui);
+  }
+  addFloatingGui();
 
   /**
    * Merges new data into the local gui state, and triggers and update of
@@ -765,9 +831,10 @@ var gui =
    */
   function update(packet) {
     guiState = {...guiState, ...packet};
-    if (guiState.concerns.length > 0) {
-      log.log(JSON.stringify(guiState));
-    }
+    floatingGui.innerText = JSON.stringify(guiState);
+//     if (guiState.issues.length > 0) {
+//       log.log(JSON.stringify(guiState));
+//     }
   }
 
   /**
@@ -806,7 +873,7 @@ var {setReactions, setGlobalReactions} = (function eventListenersModule() {
    */
 
   /**
-   * Array<string>} The events that can be set on a DOM element.
+   * string[] - The events that can be set on a DOM element.
    */
   const SUPPORTED_EVENTS = Object.freeze([
     'change',
@@ -820,7 +887,7 @@ var {setReactions, setGlobalReactions} = (function eventListenersModule() {
   ]);
 
   /**
-   * Array<string>} The events that are triggered by the special
+   * string[] - The events that are triggered by the special
    * 'interact' event.
    */
   const INTERACT_EVENTS = Object.freeze([
@@ -887,7 +954,7 @@ var {setReactions, setGlobalReactions} = (function eventListenersModule() {
   /**
    * Maps a browser event to two descriptive strings, if possible.
    * @param {Event} event - Browser event
-   * @return {Array<string>}
+   * @return {string[]}
    * @example. A click event may be converted to ['click', 'click_'].
    * @example. A keydown event may be converted to ['keydown', 'keydown_CtrlA'].
    */
@@ -900,7 +967,7 @@ var {setReactions, setGlobalReactions} = (function eventListenersModule() {
 
   /**
    * Run an array of functions.
-   * @param {Array<function>} functions.
+   * @param {function[]} functions.
    */
   function runAll(functions) {
     if (!functions) {
@@ -914,7 +981,6 @@ var {setReactions, setGlobalReactions} = (function eventListenersModule() {
       }
     });
   }
-
   test.group('runAll', () => {
     let sum = 0;
     const func = () => sum++;
@@ -972,8 +1038,8 @@ var {setReactions, setGlobalReactions} = (function eventListenersModule() {
    */
   function wrapReactions(reactions, context) {
     /**
-     * @param {Array<function>} reactions
-     * return {Array<function>}
+     * @param {function[]} reactions
+     * return {function[]}
      */
     function wrapReaction(reaction) {
       /**
@@ -1079,7 +1145,7 @@ var {setReactions, setGlobalReactions} = (function eventListenersModule() {
    * For a DOM element, attach additional reaction functions.
    * @param {DomElement} domElement - The element to which
    * the reactions should be attached.
-   * @param {Object<string: Array<function>>} reactions - A
+   * @param {Object<string: function[]>} reactions - A
    * map of event types to arrays of functions.
    * @param {Object} - Context about the way in which the
    + functions should be invoked, i.e. what group of wrappers
@@ -1206,7 +1272,7 @@ var {wrap} = (function domAccessModule() {
 
   /**
    * @param {Object}
-   * @return {Array<DomElement>}
+   * @return {DomElement[]}
    */
   function findInDom(querySelector, pickElements) {
     let greedy = (() => {
@@ -1405,118 +1471,232 @@ var shared = (function workflowMethodsModule() {
    * designed to add reactions to wrappers.
    */
 
-  const {changeValue, redAlert, orangeAlert, yellowAlert} =
-      (function responseMiniModule() {
-    function changeValue({to, when}) {
-      if (typeof when !== 'function') {
-        throw new Error('ChangeValue requires a function');
-      }
-      if (typeof to !== 'string') {
-        throw new Error('ChangeValue requires a new string value');
-      }
-      return function (...params) {
-        const {hit, wrapper} = when(...params);
-        if (hit) {
-          wrapper.value = to;
-        }
-      }
-    }
+  const ALERT_LEVELS = ['red', 'orange', 'yellow'];
 
-    function createAlert(color) {
-      return function colorAlert({type, when}) {
-        if (typeof when !== 'function') {
-          throw new Error('ChangeValue requires a function');
-        }
-        if (typeof type !== 'string') {
-          throw new Error('ChangeValue requires a new string value');
-        }
-        return function (...params) {
-          util.wait(20).then(() => {
-            const {wrapper, hit, message} = when(...params);
-            const category = (hit) ? color : 'ok';
-            flag({wrapper, type, category, message});
-          });
-        }
+  /**
+   * Conditionally set a new value to a wrapper.
+   *
+   * @param {Object} o
+   * @param {string} o.to - The new value.
+   * @param {function} o.when - A function that returns an object containing
+   * a hit property, a wrapper property and optionally a message property.
+   * If the hit property is true, the wrapper value is changed.
+   * The message property is ignored. 
+   */
+  function changeValue({to, when}) {
+    if (typeof to !== 'string') {
+      throw new Error('ChangeValue requires a new string value');
+    }
+    if (typeof when !== 'function') {
+      throw new Error('ChangeValue requires a function');
+    }
+    return function (...params) {
+      const {hit, wrapper} = when(...params);
+      if (hit) {
+        wrapper.value = to;
       }
     }
-    return {
-      redAlert: createAlert('red'),
-      orangeAlert: createAlert('orange'),
-      yellowAlert: createAlert('yellow'),
-      changeValue,
-    }
-   })();
+  }
+  test.group('changeValue', () => {
+    const wrapper = {value: 'z'};
+    const tester = (wrapper) => ({hit: true, wrapper}); 
+    changeValue({to: 'x', when: tester})(wrapper);
+    test.ok(wrapper.value === 'x', 'Changed value');
+  });
 
-  function testRegex (regex, shouldMatch) {
+  /**
+   * Report a new issue or update the status of an issue.
+   *
+   * @param {Object} o
+   * @param {string} o.issueLevel - The potential issueLevel of the issue.
+   * @param {string} o.issueType - The type of the issue.
+   * @param {function} o.when - A function that returns an object containing
+   * a hit property, a wrapper property and optionally a message property.
+   * If the hit property is true, the issue is flagged according to the color
+   * parameter, else it is flagged as 'ok'.
+   * The message property is attached to the issue.
+   */
+  function flagIssue({issueLevel, issueType, when}) {
+    if (!ALERT_LEVELS.includes(issueLevel)) {
+      throw new Error(
+        issueLevel + ' is not a known issueLevel. Please use:' +
+        util.mapToBulletedList(ALERT_LEVELS),
+      );
+    }
+    if (typeof when !== 'function') {
+      throw new Error('ChangeValue requires a function');
+    }
+    if (typeof issueType !== 'string') {
+      throw new Error('ChangeValue requires a new string value');
+    }
+    function flagThis(...params) {
+      const {wrapper, hit, message} = when(...params);
+      if (hit) {
+        flag({wrapper, issueType, issueLevel, message});
+      } else {
+        flag({wrapper, issueType});
+      }
+    };
+    return util.delay(flagThis, 20);
+  }
+
+  /**
+   * A function that returns an object containing a hit property, a wrapper
+   * property and optionally a message property.
+   *
+   * @param {RegExp} regex - Regular expression that will be matched with the
+   * wrapper value.
+   * @param {boolean} shouldMatch - Is a match between regex and wrapper
+   * value considered a successful hit?
+   * @return {Object} o
+   * @return {Object} o.wrapper - The matched wrapper
+   * @return {Object} o.hit - Was the match successful?
+   * @return {Object} o.message - 
+   * @example - Using testRegex(/x/, true) on a wrapper with a value of 'x'
+   * would return an object with hit = true, message = 'x did match /x/'
+   */
+  function testRegex(regex, shouldMatch) {
     return (wrapper) => {
       const hit = regex.test(wrapper.value) === shouldMatch;
-      const yesOrNo = shouldMatch ? '' : 'not';
-      const message = `${wrapper.value} should ${yesOrNo} match ${regex}`;
-      return {wrapper, message, hit};
+      const didOrShouldNot = shouldMatch ? 'did' : 'should not';
+      const message = `${wrapper.value} ${didOrShouldNot} match ${regex}`;
+      return {wrapper, hit, message};
     }
   };
+  test.group('textRegex', () => {
+    const wrapper = {value: 'x'};
+    const one = testRegex(/x/, true)(wrapper);
+    test.ok(one.hit === true, 'one: hit');
+    test.ok(one.message === 'x did match /x/', 'one message');
+    const two = testRegex(/x/, false)(wrapper);
+    test.ok(two.hit === false, 'two: no hit');
+    test.ok(two.message === 'x should not match /x/', 'two: message');
+    const three = testRegex(/c/, false)(wrapper);
+    test.ok(three.hit === true, 'three: hit');
+    test.ok(three.message === 'x should not match /c/', 'three: message');
+  });
 
   function testLength ({min, max}) {
     return (wrapper) => {
       const length = wrapper.value.length;
-      let message;
       let hit = false;
       if (min && min > length) {
-        message = 'Value is too short';
-        hit = true;
+        return {wrapper, hit: true, message: 'Value is too short'}
       }
       if (max && max < length) {
-        message = 'Value is too long';
-        hit = true;
+        return {wrapper, hit: true, message: 'Value is too long'}
       }
-      return {wrapper, hit, message: message};
+      return {wrapper, hit: false};
     }
   };
+  test.group('textLength', () => {
+    const one = testLength({min: 2})({value: 'x'});
+    test.ok(one.hit === true, 'one: hit');
+    test.ok(one.message === 'Value is too short', 'one: message');
+    const two = testLength({max: 3})({value: 'x'});
+    test.ok(two.hit === false, 'two: no hit');
+    test.ok(two.message === undefined, 'two: message');
+    const three = testLength({min: 2, max: 5})({value: 'x x x'});
+    test.ok(three.hit === false, 'one: no hit');
+    test.ok(three.message === undefined, 'two: message');
+  }, true);
 
-  function testDuplicates (wrapper, idx, group) {
-    const filledIn = group.map(d => d.value).filter(v => v);
-    const uniqueElements = new Set(filledIn).size;
-    const totalElements = filledIn.length;
-    const hit = (uniqueElements !== totalElements);
-    const message = `Duplicate values: ${filledIn.sort()}`;
-    return {wrapper, message, hit};
+  /**
+   * Tests whether any wrappers in a group have the same value, and flags
+   * wrappers that repeat previous values.
+   *
+   * @param {Object} _ - Unused parameter. The triggering wrapper.
+   * @param {number} __ - Unused parameter. The index of the triggering wrapper.
+   * @param {Object[]} group - Array of wrappers to check for duplicate values.
+   */
+  function alertOnDuplicateValues (_, __, group) {
+      const values = [];
+      for (let i = 0; i < group.length; i++) {
+        const value = group[i].value;
+        if (values.includes(value)) {
+          const message = 'Duplicate values: ' + value;
+          flag({wrapper: group[i], issueType: 'Dupes', issueLevel: 'red', message});
+        } else {
+          flag({wrapper: group[i], issueType: 'Dupes'});
+        }
+        if (value) {
+          values.push(value);
+        }
+      }
   };
+  alertOnDuplicateValues = util.delay(alertOnDuplicateValues, 1000);
 
-  function fallThrough (wrapper, idx, group) {
+  /**
+   * @param {Object} _ - Unused parameter. The triggering wrapper.
+   * @param {number} idx - Index of the wrapper in the group.
+   * @param {Object[]} group - Array of two wrappers.
+   */
+  function fallThrough (_, idx, group) {
+    if (group.length !== 2) {
+      throw new Error('fallThrough requires two wrappers.')
+    }
     if (idx > 0) {
       return;
     }
-    util.wait(0).then(() => {
-      group[1].value = wrapper.value;
-      group[0].value = 'Moved';
-      log.notice(
-        `Fallthrough: '${group[1].value}' became '${group[0].value}'`,
-        true,
-      );
-    });
+    group[1].value = group[0].value;
+    group[0].value = 'Moved';
+    log.notice(
+      `Fallthrough: '${group[1].value}' became '${group[0].value}'`,
+      true,
+    );
   };
+  test.group('fallThrough', () => {
+    const a = {value: 'a'};
+    const b = {value: 'b'};
+    fallThrough(1,0,[a,b]);
+    test.ok(a.value === 'Moved', 'a.value = Moved');
+    test.ok(b.value === 'a', 'b.value = a');
+  }, true);
+  fallThrough = util.delay(fallThrough, 0);
 
-  function toggleSelectYesNo (wrapper) {
-    wrapper.value = (wrapper.value === 'no') ? 'yes' : 'no';
-    wrapper.blur();
+  /**
+   * Cycle a select DOM element through a series of options.
+   *
+   * @param {string[]} options - Options to cycle through.
+   */
+  function cycleSelect(options) {
+    /**
+     * @param {Object} wrapper - Select DOM element wrapper.
+     */
+    function cycle(wrapper) {
+      if (!options.includes(wrapper.value)) {
+        throw new Error('Element does not have a matching value.');
+      }
+      const idx = options.findIndex((option) => option === wrapper.value);
+      const nextIdx = (idx + 1) % options.length;
+      wrapper.value = options[nextIdx];
+      wrapper.blur();
+    }
+    return cycle;
   }
+  test.group('cycleSelect', () => {
+    const toggleSelectYesNo = cycleSelect(['yes', 'no']);
+    const wrapper = {value: 'no', blur: () => {}};
+    toggleSelectYesNo(wrapper);
+    test.ok(wrapper.value === 'yes', 'Changed to yes');
+    toggleSelectYesNo(wrapper);
+    test.ok(wrapper.value === 'no', 'Changed back');
+  });
 
   return {
     fallThrough,
-    toggleSelectYesNo,
+    redAlertOnDupe: alertOnDuplicateValues,
 
     addDashes: changeValue({
       to: '---',
       when: testRegex(/^$/, true),
     }),
-    redAlertOnExceeding25Chars: redAlert({
-      type: 'More than 25 characters long',
+    redAlertExceed25Chars: flagIssue({
+      issueLevel: 'red',
+      issueType: 'More than 25 characters long',
       when: testLength({max: 25}),
     }),
-    redAlertOnDupe: redAlert({
-      type: 'Duplicate values',
-      when: testDuplicates,
-    }),
+
     removeDashes: changeValue({
       to: '',
       when: testRegex(/---/, true),
@@ -1525,6 +1705,7 @@ var shared = (function workflowMethodsModule() {
       to: '',
       when: testRegex(/^http/, true),
     }),
+    toggleSelectYesNo: cycleSelect(['yes', 'no']),
   }
 }
 )();
@@ -1545,13 +1726,12 @@ var {detectWorkflow, flows} = (function workflowModule() {
 
   function ratingHome() {
     const textboxBundle = util.bundle(
-        shared.redAlertOnExceeding25Chars,
+        shared.redAlertExceed25Chars,
         shared.redAlertOnDupe,
     );
     wrap('textarea', [0,1,2], 'programmable', 'Text', {
-      onFocusOut: textboxBundle,
+      onInteract: textboxBundle,
       onLoad: textboxBundle,
-      onPaste: textboxBundle,
     });
 
     wrap('textarea', [3,4,5], 'programmable', 'NoUrl', {
@@ -1578,7 +1758,7 @@ var {detectWorkflow, flows} = (function workflowModule() {
     setGlobalReactions({
       onKeydown_Backquote: () => log.ok('Start'),
       onKeydown_Backslash: () => log.ok('Approve'),
-      onKeydown_BracketLeft: () => log.ok('Counter'),
+      onKeydown_BracketLeft: () => log.ok('CounterReset'),
       onKeydown_BracketRight: () => log.ok('Skip'),
     });
   }
@@ -1606,3 +1786,21 @@ function main() {
 };
 
 main();
+
+
+/**
+ * @todo Build out functional GUI
+ *
+ * @todo Save function (get several elements)
+ *
+ * @todo Find prefill (check key elements for matching values,
+ * write to other elements)
+ *
+ * @todo Skip function
+ *
+ * @todo CounterReset
+ *
+ * @todo Change wrap API to use a single Object as input
+ *
+ * @todo Wrappers should expose coordinates
+ */
