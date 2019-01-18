@@ -303,7 +303,14 @@ var util =
     test.ok(doesObjectMatchTemplate(a, d) === true, 'Empty template');
     test.ok(doesObjectMatchTemplate(d, a) === false, 'Non-empty template');
     test.ok(doesObjectMatchTemplate(c, d) === true, 'Different values match');
-  })
+  });
+
+  function ensureIsArray(input) {
+    if (Array.isArray(input)) {
+      return input;
+    }
+    return [input];
+  }
 
   /**
    * Test whether an object is a DOM element. Uses simple duck typing.
@@ -346,6 +353,7 @@ var util =
     delay,
     doArraysMatch,
     doesObjectMatchTemplate,
+    ensureIsArray,
     isDomElement,
     mapToBulletedList,
     wait,
@@ -997,32 +1005,98 @@ var {setReactions, setGlobalReactions} = (function eventListenersModule() {
   /**
    * string[] - The events that can be set on a DOM element.
    */
-  const SUPPORTED_EVENTS = Object.freeze([
-    'change',
-    'click',
-    'focusin',
-    'focusout',
-    'keydown',
-    'paste',
+  const SUPPORTED_EVENTS = Object.freeze({
+    'onChange': 'change',
+    'onClick': 'click',
+    'onFocusin': 'focusin',
+    'onFocusout': 'focusout',
+    'onKeydown': 'keydown',
+    'onPaste': 'paste',
     /** load is handled separately */
     /** interact is handled separately */
-  ]);
+  });
 
   /**
    * string[] - The events that are triggered by the special
    * 'interact' event.
    */
   const INTERACT_EVENTS = Object.freeze([
-    'click',
-    'focusout',
-    'keydown',
-    'paste',
+    'onClick',
+    'onFocusout',
+    'onKeydown',
+    'onPaste',
   ]);
 
   /**
-   * WeakMap - Maps DOM elements to reaction objects.
+   * reactionStore maps DOM elements to sets of events. Each event maps to an
+   * array of reactions. When a browser event is fired by the DOM element,
+   * all matching reactions are returned and called.
+   * For example:
+   * document.body => {
+   *   click: [reaction, reaction],
+   *   focusout: [raaction],
+   * }
    */
-  const reactionMap = new WeakMap();
+  const reactionStore = (function () {
+    const map = new WeakMap();
+
+    /**
+     * Get all reaction functions for a given HTML element and an eventType
+     * string.
+     *
+     * @param {Object} o
+     * @param {HTMLElement} domElement
+     * @param {string[]} eventTypes
+     * @return {function[]}
+     */
+    function get({domElement, eventTypes}) {
+      if (!map.has(domElement)) {
+        return [];
+      }
+      if (!Array.isArray(eventTypes)) {
+        throw new Error('Please provide an array of eventTypes');
+      }
+      const found = [];
+      const reactions = map.get(domElement);
+      for (let eventType of eventTypes) {
+        if (reactions[eventType] !== undefined) {
+          found.push(...reactions[eventType]);
+        }          
+      }
+      return found;
+    }
+
+    /**
+     * Get all reaction functions for a given HTML element and an eventType
+     * string.
+     *
+     * @param {Object} o
+     * @param {HTMLElement} domElement
+     * @param {string} eventType
+     * @param {function[]}
+     * @return {number} The new number of reaction functions now accociated with
+     * this HTML element and eventType.
+     */
+    function set({domElement, eventType, functions}) {
+      if (!util.isDomElement(domElement)) {
+        throw new Error(domElement + ' is not a domElement');
+      }
+      if (!Array.isArray(functions)) {
+        throw new Error('Please provide an array of functions');
+      }
+      const reactions = map.get(domElement) || {};
+      const current = get({domElement, eventTypes: [eventType]});
+      const funcs = [...current, ...functions];
+      reactions[eventType] = funcs;
+      map.set(domElement, reactions);
+      return funcs.length;
+    }
+
+    return {
+      get,
+      set,
+    }
+  })();
 
   /**
    * Maps a browser event to a descriptive string, if possible.
@@ -1080,24 +1154,26 @@ var {setReactions, setGlobalReactions} = (function eventListenersModule() {
    * @example. A click event may be converted to ['click', 'click_'].
    * @example. A keydown event may be converted to ['keydown', 'keydown_CtrlA'].
    */
-  function eventToStrings(event) {
+  function eventToEventTypes(event) {
     const eventString = eventToString(event);
-    const type = `${event.type}`;
-    const type_k = `${event.type}_${eventString}`;
+    const type = 'on' + event.type.replace(/./,(d) => d.toUpperCase());
+    const type_k = `${type}_${eventString}`;
     return [type, type_k];
   }
+  test.group('eventToEventTypes', () => {
+    const ret = eventToEventTypes({type: 'click'});
+    test.ok(ret[0] === 'onClick', 'onClick');
+    test.ok(ret[1] === 'onClick_', 'onClick_');
+  });
 
   /**
-   * Run an array of functions.
+   * Run an array of functions without blocking.
    * @param {function[]} functions.
    */
   function runAll(functions) {
-    if (!functions) {
-      return;
-    }
     functions.forEach(func => {
       if (typeof func === 'function') {
-        func();
+        util.wait().then(func);
       } else {
         throw new Error('Not a function.');
       }
@@ -1106,11 +1182,7 @@ var {setReactions, setGlobalReactions} = (function eventListenersModule() {
   test.group('runAll', () => {
     let sum = 0;
     const func = () => sum++;
-    runAll([func, func, func]);
-    test.ok(
-      sum === 3,
-      'run three functions'
-    );
+    test.todo('Async');
     test.fizzle(
       () => runAll([3, 5]),
       'run an array of numbers'
@@ -1120,151 +1192,78 @@ var {setReactions, setGlobalReactions} = (function eventListenersModule() {
       'run a number'
     );
   });
-  
-  /**
-   * Integrate two sets of reactions.
-   */
-  function mergeReactions(one, two) {
-    if (!one || !two) {
-      throw new Error('Need two reactions to merge');
-    }
-    const oneClone = {...one};
-    const twoClone = {...two};
-    for (let type in oneClone) {
-      if (twoClone[type]) {
-        oneClone[type] = [...oneClone[type], ...twoClone[type]];
-      }
-    }
-    return {...twoClone, ...oneClone};
-  }
-  test.group('mergeReactions', () => {
-    test.solid(() => mergeReactions({},{}), 'it runs');
-    const one = {click: [1, 2], paste: [5]};
-    const two = {click: [3, 4], change: [6]};
-    const merged = mergeReactions(one, two);
-    test.ok(merged.click.length === 4, 'merge click, test 1');
-    const uniqueValues = new Set([...merged.click]).size;
-    test.ok(uniqueValues === 4, 'merge click, test 2');
-    test.ok(merged.paste.length === 1, 'merge paste');
-    test.ok(merged.change.length === 1, 'merge change');
-    test.fizzle(() => mergeReactions({}), 'requires two objects');
-  });
 
   /**
-   * @param {Object<string: Object>} reactions - Map of event
-   * types to arrays of functions.
-   * Event types can be, for example, 'click' or 'onClick'
-   * but will be changed to 'click'.
-   * @param {Object<string: Object>} context - Context for
-   * the reaction functions.
+   * Wrap reaction functions so that the reaction function is receive
+   * important context.
+   *
+   * @param {function[]} functions - Reaction functions
+   * @param {Object} o
+   * @param {Object} o.wrapper - Which wrapper triggered the event.
+   * @param {number} o.idx - The index of the wrapper
+   * @param {Object[]} o.group - All wrappers in this group.
    */
-  function wrapReactions(reactions, context) {
-    /**
-     * @param {function[]} reactions
-     * return {function[]}
-     */
-    function wrapReaction(reaction) {
-      /**
-       * @param {function} func - Function to be wrapped
-       * with context.
-       * @return {function}
-       */
-      function wrapFunction(func) {
-        /**
-         * wrapper, idx and group come from scope.
-         * @return {function}
-         */
-        function wrappedWithContext() {
-          return func(wrapper, idx, group);
-        }
-        return wrappedWithContext;
-      }
-      if (!Array.isArray(reaction)) {
-        // Reaction is a single function.
-        return [wrapFunction(reaction)];
-      }
-      return reaction.map(wrapFunction);
-    }
-    const wrapped = {};
-    const {wrapper, idx, group} = context;
-    for (let type in reactions) {
-      if (!/^on/.test(type)) {
-        continue;
-      }
-      const simpleType = // @todo Rewrite
-          type.replace(/^on([^_]+)/, (a,b) => b.toLowerCase());
-      wrapped[simpleType] = wrapReaction(reactions[type]);
-    }
-    return wrapped;
+  function addContext(functions, {wrapper, idx, group}) {
+    return util.ensureIsArray(functions).map(func => {
+      return () => func(wrapper, idx, group);
+    })
   }
-  test.group('wrapReactions', () => {
-    const func1 = (wrapper, idx, group) => idx + 1;
-    function func2(wrapper, idx, group) {
-      return idx + 1;
-    }
-    const mockReaction =
-        {onClick: [func1, func2], onPaste: [func1]};
-    const mockContext = {wrapper: {}, idx: 4, group: []};
-    const wrapped = wrapReactions(mockReaction, mockContext);
-    let tmp;
-    test.solid(() => (tmp = wrapped.click[0]()), 'test 1');
-    test.ok(tmp === 5, 'test 2');
-    test.fizzle(() => wrapped.click[2](), 'test 3');
-    tmp = wrapped.click[1]();
-    test.ok(tmp === 5, 'test 5');
-  });
 
   /**
-   * We permit two special events:
-   * - interact (or onInteract)
-   * - load (or onLoad)
-   * Setting a reaction on the interact event assigns the
-   * reaction to several other events, such as change & click.
-   * onInteract is shorthand for onClick, onFocusin, etc.
-   * Setting a reaction on the load event immediately calls it.
-   * @param {Object} reactions
-   * @return {Object}
+   * Process raw reactions objects:
+   * * Handle the onLoad event (by running these reactions).
+   * * Handle the onInteract event (by assigning these reactions to several
+   *   other event).
+   * * Wrap all reactions in the relevant context (wrapper, idx, group).
    */
-  function unpackInteractAndLoadReaction(reactions) {
-    const reactionsClone = {...reactions};
-    if (reactionsClone.load) {
-      runAll(reactionsClone.load);
+  function unpackAndAddContext(reactions, context) {
+    if (!reactions || !context) {
+      throw new Error('Reactions object and context are required.');
     }
-    if (!reactionsClone.interact) {
-      return reactionsClone;
+    const cloneReaction = {...reactions};
+    for (let eventType in cloneReaction) {
+      cloneReaction[eventType] =
+          addContext(
+            cloneReaction[eventType],
+            context,
+          );
     }
-    const unpacked = {};
-    const interactions =
-        reactionsClone.interact.map(func => util.debounce(func, 500));
-    for (let type of INTERACT_EVENTS) {
-      unpacked[type] = interactions;
+    if (cloneReaction.onInteract) {
+      for (let eventType of INTERACT_EVENTS) {
+        const current = cloneReaction[eventType] || [];
+        const onInteract = cloneReaction.onInteract;
+        cloneReaction[eventType] = [...current, ...onInteract];
+      }
+      delete cloneReaction.onInteract;
     }
-    delete reactionsClone.interact;
-    delete reactionsClone.load;
-    return mergeReactions(reactionsClone, unpacked);
+    if (cloneReaction.onLoad) {
+      runAll(cloneReaction.onLoad);
+      delete cloneReaction.onLoad;
+    }
+    const filteredClone = {};
+    for (let eventType in SUPPORTED_EVENTS) {
+      if (cloneReaction[eventType] !== undefined) {
+        filteredClone[eventType] = cloneReaction[eventType];
+      }
+    }
+    return filteredClone;
   }
-
-  test.group('unpackInteractAndLoadReaction', () => {
-    let mock = {};
-    let length = (obj) => Object.keys(obj).length;
-    const func = unpackInteractAndLoadReaction;
-    test.ok(length(func(mock)) === 0, 'null');
-    mock = {interact: [() => 5]};
-    test.ok(length(func(mock)) === 4, 'test 1');
-    test.ok(func(mock).click[0]() === 5, 'test 2');
-    test.ok(func(mock).interact === undefined, 'test 3');
-    mock = {interact: [() => 5], click: [() => 7]};
-    test.ok(length(func(mock)) === 4, 'test 4');
-    test.ok(length(func(mock).click) === 2, 'test 5');
-    let tmp = 0;
-    const increment = () => tmp++;
-    mock = {load: [increment]};
-    test.solid(() => func(mock), 'test 6');
-    test.ok(tmp === 1, 'test 7');
+  test.group('unpackAndAddContext', () => {
+    const reactions = {
+      onLoad: () => {},
+      onClick: () => {},
+      onInteract: () => {},
+      name: 'Name',
+    }
+    const ret = unpackAndAddContext(reactions, {});
+    test.ok(ret.onLoad === undefined, 'onLoad removed');
+    test.ok(ret.onClick.length === 2, 'onClick added');
+    test.ok(ret.name === undefined, 'name removed');
   });
 
   /**
    * For a DOM element, attach additional reaction functions.
+   *
    * @param {DomElement} domElement - The element to which
    * the reactions should be attached.
    * @param {Object<string: function[]>} reactions - A
@@ -1278,66 +1277,62 @@ var {setReactions, setGlobalReactions} = (function eventListenersModule() {
     if (!util.isDomElement(domElement)) {
       throw new Error('Not a DOM element');
     }
-    const prior = reactionMap.get(domElement) || {};
-    const additional =
-        unpackInteractAndLoadReaction(
-            wrapReactions(reactions, context)
-        );
-    const allReactions = mergeReactions(prior, additional);
-    reactionMap.set(domElement, allReactions);
+    const formattedReactions = unpackAndAddContext(reactions, context);
+    for (let reaction in formattedReactions) {
+      reactionStore.set({
+        domElement: domElement,
+        eventType: reaction,
+        functions: formattedReactions[reaction],
+      });
+    }
   }
 
+  /**
+   * Attach additional reaction functions to the document.
+   *
+   * @param {Object<string: function[]>} reactions - A
+   * map of event types to arrays of functions.
+   */
   function setGlobalReactions(reactions) {
-    const allReactions =
-        unpackInteractAndLoadReaction(
-            wrapReactions(reactions, {})
-        );
-    reactionMap.set(document, allReactions);
+    setReactions(document, reactions, {});
   }
 
-  function getTargetReactions(event) {
-    const target = event.target;
-    const targetReactions = reactionMap.get(target);
-    const globalReactions = reactionMap.get(document);
-
-    const [type, type_k] = eventToStrings(event);
-
-    const collection = [];
-    if (targetReactions) {
-      if (targetReactions[type_k]) {
-        collection.push(...targetReactions[type_k] || [])
-      }
-      if (targetReactions[type]) {
-        collection.push(...targetReactions[type] || [])
-      }
-    }
-    if (globalReactions) {
-      if (globalReactions[type_k]) {
-        collection.push(...globalReactions[type_k] || [])
-      }
-      if (globalReactions[type]) {
-        collection.push(...globalReactions[type] || [])
-      }
-    }
-    return collection;
+  /**
+   * For a given browser event, find all relevant reaction functions.
+   *
+   * @param {Event} event - Browser event.
+   * @return {function[]} Reaction functions.
+   */
+  function getMatchingReactions(event) {
+    const elementReactions = reactionStore.get({
+      domElement: event.target,
+      eventTypes: eventToEventTypes(event),
+    });
+    const globalReactions = reactionStore.get({
+      domElement: document,
+      eventTypes: eventToEventTypes(event),
+    });
+    return [...elementReactions, ...globalReactions];
   }
 
   /**
    * Respond to document level browser events.
-   * Find matching reactions to events and run them.
+   * Request matching reactions to events and run them.
+   *
    * @param {Event} - Browser event.
    */
   function genericEventHandler(event) {
-    const targetReactions = getTargetReactions(event);
-    util.wait().then(() => runAll(targetReactions));
+    const targetReactions = getMatchingReactions(event);
+    runAll(targetReactions);
   }
 
   /**
    * Initialise document level event handlers.
    */
   function initGenericEventHandlers() {
-    for (let type of SUPPORTED_EVENTS) {
-      document.addEventListener(type, genericEventHandler, {passive: true});
+    for (let type in SUPPORTED_EVENTS) {
+      const eventType = SUPPORTED_EVENTS[type];
+      document.addEventListener(eventType, genericEventHandler, {passive: true});
     }
   }
 
@@ -1387,7 +1382,7 @@ var {wrap} = (function domAccessModule() {
    * changes.
    */
 
-  const domElementWeakMap = new WeakMap(); // Should use const
+  const domElementWeakMap = new WeakMap();
 
   const EDITABLE_ELEMENT_TYPES =
       Object.freeze(['textarea', 'select-one', 'text']);
@@ -1825,7 +1820,6 @@ var shared = (function workflowMethodsModule() {
     const c = {value: ''};
     const d = {value: 'x'};
     const e = {value: 'x'};
-    console.log(run([a, c]));
     test.ok(run([a]).length === 0, 'Single wrapper, no issue');
     test.ok(run([a, d]).length === 0, 'Two wrappers, no issues');
     test.ok(run([b, c]).length === 0, 'Two wrappers, one issue');
@@ -1909,9 +1903,9 @@ var shared = (function workflowMethodsModule() {
    */
   function skipTask() {
     log.notice('Skipping task');
-    log.ok(wrap('select', [0], 'programmable', 'Name', {
+    wrap('select', [0], 'programmable', 'Name', {
       onLoad: cycleSelect(['yes', 'no']), 
-    }));
+    });
   }
 
   return {
@@ -1959,23 +1953,25 @@ var {detectWorkflow, flows} = (function workflowModule() {
   }
 
   function ratingHome() {
-    const textboxBundle = util.bundle(
-        shared.redAlertExceed25Chars,
-        shared.redAlertOnDupe,
-    );
     wrap('textarea', [0,1,2], 'programmable', 'Text', {
-      onInteract: textboxBundle,
-      onLoad: textboxBundle,
+      onInteract: [
+        shared.redAlertExceed25Chars,
+        shared.redAlertOnDupe
+      ],
+      onLoad: [
+        shared.redAlertExceed25Chars,
+        shared.redAlertOnDupe
+      ],
     });
 
     wrap('textarea', [3,4,5], 'programmable', 'NoUrl', {
-      onFocusOut: shared.removeUrl,
+      onFocusout: shared.removeUrl,
       onPaste: shared.removeUrl,
     });
 
     wrap('textarea', [6,7,8], 'programmable', 'Dashes', {
-      onFocusIn: shared.removeDashes,
-      onFocusOut: shared.addDashes,
+      onFocusin: shared.removeDashes,
+      onFocusout: shared.addDashes,
       onLoad: shared.addDashes,
     });
     
@@ -2041,4 +2037,6 @@ main();
  * @todo Change wrap API to use a single Object as input
  *
  * @todo Wrappers should expose coordinates
+ *
+ * @todo Rewrite eventListenersModule
  */
