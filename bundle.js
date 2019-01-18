@@ -231,6 +231,44 @@ var util =
     }
     return delayed;
   }
+  test.group('delay', () => {
+    let val = 0;
+    const increment = () => val++;
+    const delayedIncrement = delay(increment);
+    delayedIncrement();
+    test.ok(val === 0, 'Value is not immediately affected');
+    increment();
+    test.ok(val === 1, 'Incrementing does work');
+  });
+
+  /**
+   * Compares two arrays shallowly. Two arrays match if the i-th element in
+   * each is exactly equal to the i-th element in the other.
+   *
+   * @param {*[]} a - First array
+   * @param {*[]} b - Second array
+   * @return {boolean} Does every element in both arrays match?
+   */
+  function doArraysMatch(a, b) {
+    if (a.length !== b.length) {
+      return false;
+    }
+    for (let i = 0; i < a.length; i++) {
+      if (a[i] !== b[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
+  test.group('doArraysMatch', () => {
+    test.ok(doArraysMatch([], []) === true, 'Empty arrays');
+    test.ok(doArraysMatch([3], [3]) === true, 'Simple arrays');
+    test.ok(doArraysMatch([], [3]) === false, 'First array empty');
+    test.ok(doArraysMatch([3], []) === false, 'Second array empty');
+    test.ok(doArraysMatch([3,4,5], [3,4,5]) === true, 'Multiple elements');
+    test.ok(doArraysMatch([3,4,7], [3,4,5]) === false, 'Mismatch one element');
+    test.ok(doArraysMatch([5,3,4], [3,4,5]) === false, 'Different order');
+  });
 
   /**
    * Test whether an object exposes the same properties as a template object.
@@ -240,7 +278,7 @@ var util =
    * @return {boolean} Does the toTest object expose all the properties exposed
    * by the template?
    */
-  function objectMatchesTemplate(template, toTest = {}) {
+  function doesObjectMatchTemplate(template, toTest = {}) {
     for (let property in
      template) {
       if (toTest[property] === undefined) {
@@ -249,6 +287,16 @@ var util =
     }
     return true;
   }
+  test.group('doesObjectMatchTemplate', () => {
+    const a = {};
+    const b = {};
+    const c = {test: 1};
+    const d = {test: 2};
+    test.ok(doesObjectMatchTemplate(a, b) === true, 'Empty objects match');
+    test.ok(doesObjectMatchTemplate(a, d) === true, 'Empty template');
+    test.ok(doesObjectMatchTemplate(d, a) === false, 'Non-empty template');
+    test.ok(doesObjectMatchTemplate(c, d) === true, 'Different values match');
+  })
 
   /**
    * Test whether an object is a DOM element. Uses simple duck typing.
@@ -257,7 +305,7 @@ var util =
    * @return {boolean} Returns true if a dom element is passed in.
    */
   function isDomElement(domElement) {
-    return objectMatchesTemplate({parentNode: 5}, domElement);
+    return doesObjectMatchTemplate({parentNode: 5}, domElement);
   }
   test.group('isDomElement', () => {
     test.ok(!isDomElement({}), 'An object is not');
@@ -289,9 +337,10 @@ var util =
     bundle,
     debounce,
     delay,
+    doArraysMatch,
+    doesObjectMatchTemplate,
     isDomElement,
     mapToBulletedList,
-    objectMatchesTemplate,
     wait,
     };
 })();
@@ -371,7 +420,7 @@ var {config, counter, flag, log} = (function reportingModule() {
   }
   test.group('updateGui', () => {
     let received;
-    let testPacket = {packet: 'packet'};
+    let testPacket = {packet: {stage: 0}};
     document.addEventListener('guiUpdate', ({detail}) => received = detail);
     updateGui(testPacket);
     test.ok(received === testPacket, 'Packet succesfully sent');
@@ -450,6 +499,11 @@ var {config, counter, flag, log} = (function reportingModule() {
    * provided).
    */
   const counter = (function counterMiniModule() {
+
+    function getStored() {
+      return localStore.get(COUNTER_STORE_NAME);
+    }
+
     /**
      * Add one to the count of an existing counter, or create a new counter
      * starting at 1.
@@ -460,7 +514,7 @@ var {config, counter, flag, log} = (function reportingModule() {
       if (typeof name !== 'string') {
         throw new Error('Counter add expects a name string');
       }
-      const /** object */ allCounts = localStore.get(COUNTER_STORE_NAME);
+      const /** object */ allCounts = getStored();
       const /** number */ newCount = (allCounts[name] + 1) || 1;
       allCounts[name] = newCount;
       localStore.set(COUNTER_STORE_NAME, allCounts);
@@ -477,8 +531,8 @@ var {config, counter, flag, log} = (function reportingModule() {
       if (typeof name !== 'string') {
         throw new Error('Counter get expects a name string');
       }
-      const allCounts = localStore.get(COUNTER_STORE_NAME);
-        return allCounts[name] || -1;
+      const allCounts = getStored();
+      return allCounts[name] || -1;
     }
 
     /**
@@ -488,7 +542,7 @@ var {config, counter, flag, log} = (function reportingModule() {
       if (typeof name !== 'string' && name !== undefined) {
         throw new Error('Counter reset expects a name string or nothing');
       }
-      const allCounts = localStore.get(COUNTER_STORE_NAME);
+      const allCounts = getStored();
       if (name) {
         const currentCount = allCounts[name];
         util.wait().then(() => { // @todo Fix wait hack. Used for testing only.
@@ -497,18 +551,21 @@ var {config, counter, flag, log} = (function reportingModule() {
             true,
           ), 0
         });
-        allCounts[name] = 0;
+        delete allCounts[name];
       } else {
         log.notice(
           `Resetting all counters: ${JSON.stringify(allCounts)}`,
           true,
         );
-        allCounts = {};
+        for (let i in allCounts) {
+          delete allCounts[i];
+        }
       }
       localStore.set(COUNTER_STORE_NAME, allCounts);
       updateGui({counters: allCounts});
       return 0;
     }
+    util.wait().then(() => updateGui({counters: getStored()}));
     return {add, get, reset};
   })();
   test.group('counter', () => {
@@ -538,7 +595,7 @@ var {config, counter, flag, log} = (function reportingModule() {
    */
   function flag(issueUpdate) {
     const template = {wrapper: true, issueType: true};
-    if (!util.objectMatchesTemplate(template, issueUpdate)) {
+    if (!util.doesObjectMatchTemplate(template, issueUpdate)) {
       throw new Error('Not a valid issue.');
     }
     /**
@@ -795,7 +852,7 @@ var {config, counter, flag, log} = (function reportingModule() {
 ////////////////////////////////////////////////////////////////////////////////
 // GUI module
 
-var gui = (function guiModule() {
+(function guiModule() {
   'use strict';
 
   /**
@@ -804,24 +861,82 @@ var gui = (function guiModule() {
    * updates to the data and trigger an update.
    * A custom event listener may replace or supplement the
    * update function.
+   * @todo Implement proper UX.
    */
 
-  let guiState = {
+  const BASE_ID = 'tto';
+
+  const guiState = Object.seal({
     stage: 0,
     counters: {},
     issues: [],
-  };
+  });
 
-  const floatingGui = document.createElement('div');
-
-  function addFloatingGui() {
-    floatingGui.style.cssText =
-      `position: fixed; width: 100%;
-      bottom: 0px; left: 0px; z-index: 2000; pointer-events: none;
-      background: rgba(240,240,200,0.5);`;
-    document.body.append(floatingGui);
+  function setState(packet) {
+    for (let prop in packet) {
+      const incoming = packet[prop];
+      const state = guiState[prop];
+      if (state === undefined) {
+        throw new Error(`Unknown gui state property: ${prop}`);
+      }
+      if (
+        Array.isArray(incoming) &&
+        util.doArraysMatch(state, incoming)
+      ) {
+        return false;
+      }
+      guiState[prop] = incoming;
+    }
+    return true;
   }
-  addFloatingGui();
+
+  function makeUl({title, elements, valueProp, titleProp}) {
+    if (elements.length < 1) {
+      return '';
+    }
+    const mappedToLi = elements.map(el => {
+      return `<li>${el[valueProp]}: <em>${el[titleProp]}</em></li>`
+    });
+    return (
+        `<h4 style="padding: 0 0 0 10px">${title}</h4>` +
+        `<ul id=${BASE_ID}_${title}>${mappedToLi}</ul>`
+    );
+  }
+
+  const mainGui = (function mainGuiModule() {
+    const frame = document.createElement('div');
+    frame.id = BASE_ID + 'mainGui'
+    frame.style.cssText = `
+      background: rgba(240,240,200,0.8);
+      bottom: 0px;
+      height: auto;
+      left: 0px;
+      pointer-events: none;
+      position: fixed;
+      width: 100%;
+      z-index: 2000;
+    `;
+    document.body.append(frame);
+    function update() {
+      const issues = guiState.issues;
+      const counters = Object.entries(guiState.counters);
+      frame.innerHTML =
+          makeUl({
+            title: 'Issues',
+            elements: issues,
+            valueProp: 'issueType',
+            titleProp: 'message',
+          }) + 
+          makeUl({
+            title: 'Counters',
+            elements: counters,
+            valueProp: 1,
+            titleProp: 0,
+          });
+    }
+    update = util.debounce(util.delay(update));
+    return {update};
+  })();
 
   /**
    * Merges new data into the local gui state, and triggers and update of
@@ -830,11 +945,9 @@ var gui = (function guiModule() {
    * @param {Object} packet - Data to be merged into the gui's state.
    */
   function update(packet) {
-    guiState = {...guiState, ...packet};
-    floatingGui.innerText = JSON.stringify(guiState);
-//     if (guiState.issues.length > 0) {
-//       log.log(JSON.stringify(guiState));
-//     }
+    if (setState(packet)) {
+      mainGui.update();
+    }
   }
 
   /**
@@ -847,8 +960,6 @@ var gui = (function guiModule() {
     }, {passive: true});
   }
   addGuiUpdateListener();
-
-  return {update};
 })();
 
 
