@@ -146,7 +146,14 @@ var test = (function testModule() {
     }
   }, AUTO_PRINT_DELAY);
 
- return {fizzle, group, ok, print, solid, todo};
+ return {
+   fizzle,
+   group,
+   ok,
+   print,
+   solid,
+   todo,
+ };
 })();
 
 
@@ -308,9 +315,9 @@ var util =
     return doesObjectMatchTemplate({parentNode: 5}, domElement);
   }
   test.group('isDomElement', () => {
-    test.ok(!isDomElement({}), 'An object is not');
-    test.ok(isDomElement(document), 'The document');
-    test.ok(isDomElement(document.body), 'Document body');
+    test.ok(isDomElement({}) === false, 'An object is not');
+    test.ok(isDomElement(document) === true, 'The document');
+    test.ok(isDomElement(document.body) === true, 'Document body');
   });
 
   function mapToBulletedList(arrOrObj, spaces = 4) {
@@ -841,7 +848,11 @@ var {config, counter, flag, log} = (function reportingModule() {
     return toExport;
   })();
 
-  return {config, counter, flag, log};
+  return {
+    config,
+    counter,
+    log
+  };
 })();
 
 
@@ -1585,14 +1596,21 @@ var shared = (function workflowMethodsModule() {
   const ALERT_LEVELS = ['red', 'orange', 'yellow'];
 
   /**
-   * Conditionally set a new value to a wrapper.
+   * Convenience function. Conditionally set a new value to a wrapper.
    *
    * @param {Object} o
    * @param {string} o.to - The new value.
    * @param {function} o.when - A function that returns an object containing
    * a hit property, a wrapper property and optionally a message property.
    * If the hit property is true, the wrapper value is changed.
-   * The message property is ignored. 
+   * The message property is ignored.
+   *
+   * @example
+   * changeValue({
+   *   to: 'newValue',
+   *   when: () => ({hit: true, wrapper: {value: 'originalValue'}}),
+   * })
+   * This would change the value of the object returned by the 'when' function.
    */
   function changeValue({to, when}) {
     if (typeof to !== 'string') {
@@ -1616,7 +1634,7 @@ var shared = (function workflowMethodsModule() {
   });
 
   /**
-   * Report a new issue or update the status of an issue.
+   * Convenience function. Report a new issue or update the status of an issue.
    *
    * @param {Object} o
    * @param {string} o.issueLevel - The potential issueLevel of the issue.
@@ -1626,6 +1644,13 @@ var shared = (function workflowMethodsModule() {
    * If the hit property is true, the issue is flagged according to the color
    * parameter, else it is flagged as 'ok'.
    * The message property is attached to the issue.
+   *
+   * @example
+   * flagIssue({
+   *   issueType: 'Description of issue',
+   *   when: () => ({hit: true, wrapper: {value: 'originalValue'}, message: ''}),
+   * })
+   * This would dispatch an event that means that this wrapper has an issue.
    */
   function flagIssue({issueLevel, issueType, when}) {
     if (!ALERT_LEVELS.includes(issueLevel)) {
@@ -1642,18 +1667,21 @@ var shared = (function workflowMethodsModule() {
     }
     function flagThis(...params) {
       const {wrapper, hit, message} = when(...params);
+      const packet = {wrapper, issueType};
       if (hit) {
-        flag({wrapper, issueType, issueLevel, message});
-      } else {
-        flag({wrapper, issueType});
+        packet.issueLevel = issueLevel;
+        packet.message = message;
       }
+      document.dispatchEvent(
+        new CustomEvent('issueUpdate', {detail: packet})
+      );
     };
     return util.delay(flagThis, 20);
   }
 
   /**
    * A function that returns an object containing a hit property, a wrapper
-   * property and optionally a message property.
+   * property and a message property.
    *
    * @param {RegExp} regex - Regular expression that will be matched with the
    * wrapper value.
@@ -1687,15 +1715,30 @@ var shared = (function workflowMethodsModule() {
     test.ok(three.message === 'x should not match /c/', 'three: message');
   });
 
+  /**
+   * A function that returns an object containing a hit property, a wrapper
+   * property and a message property.
+   *
+   * @param {RegExp} regex - Regular expression that will be matched with the
+   * wrapper value.
+   * @param {boolean} shouldMatch - Is a match between regex and wrapper
+   * value considered a successful hit?
+   * @return {Object} o
+   * @return {Object} o.wrapper - The matched wrapper
+   * @return {Object} o.hit - Was the match successful?
+   * @return {Object} o.message - 
+   * @example - Using testRegex(/x/, true) on a wrapper with a value of 'x'
+   * would return an object with hit = true, message = 'x did match /x/'
+   */
   function testLength ({min, max}) {
     return (wrapper) => {
       const length = wrapper.value.length;
       let hit = false;
       if (min && min > length) {
-        return {wrapper, hit: true, message: 'Value is too short'}
+        return {wrapper, hit: true, message: 'Value is too short'};
       }
       if (max && max < length) {
-        return {wrapper, hit: true, message: 'Value is too long'}
+        return {wrapper, hit: true, message: 'Value is too long'};
       }
       return {wrapper, hit: false};
     }
@@ -1713,6 +1756,34 @@ var shared = (function workflowMethodsModule() {
   }, true);
 
   /**
+   * For developers, this function is an example of a tester function.
+   * Implement the actual testing logic, then hook the function into either:
+   * 1) The flagIssue function:
+   * flagIssue{
+   *   issueType: 'Description of the issue',
+   *   when: exampleTester // Your tester function.
+   * }
+   * 2) The changeValue function:
+   * changeValue{
+   *   to: 'newValue',
+   *   when: exampleTester // Your tester function.
+   * }
+   * flagIssue and changeValue will be triggered when your function returns
+   * an object with a property hit = true.
+   * 
+   * Note that you can also create a function that acts directly on the object.
+   * You don't need to use the convenience functions.
+   */
+  function exampleTester(params) {
+    return (wrapper, idx, group) => {
+      // Your code goes here
+      const hit = true
+      const message = 'This message describes the issue';
+      return {wrapper, hit, message};
+    }
+  }
+
+  /**
    * Tests whether any wrappers in a group have the same value, and flags
    * wrappers that repeat previous values.
    *
@@ -1720,21 +1791,48 @@ var shared = (function workflowMethodsModule() {
    * @param {number} __ - Unused parameter. The index of the triggering wrapper.
    * @param {Object[]} group - Array of wrappers to check for duplicate values.
    */
-  function alertOnDuplicateValues (_, __, group) {
-      const values = [];
-      for (let i = 0; i < group.length; i++) {
-        const value = group[i].value;
-        if (values.includes(value)) {
-          const message = 'Duplicate values: ' + value;
-          flag({wrapper: group[i], issueType: 'Dupes', issueLevel: 'red', message});
-        } else {
-          flag({wrapper: group[i], issueType: 'Dupes'});
-        }
-        if (value) {
-          values.push(value);
-        }
+  function alertOnDuplicateValues (_, __, group, testing) {
+    const values = [];
+    const packets = [];
+    for (let i = 0; i < group.length; i++) {
+      const value = group[i].value;
+      let packet = {wrapper: group[i], issueType: 'Dupes'};
+      if (values.includes(value)) {
+        packet.issueLevel = 'red';
+        packet.message = 'Duplicate values: ' + value;
       }
+      packets.push(packet);
+      if (value) {
+        values.push(value);
+      }
+    }
+    for (let packet of packets) {
+      if (!testing) { 
+        document.dispatchEvent(
+          new CustomEvent('issueUpdate', {detail: packet})
+        );
+      }
+    }
+    return packets;
   };
+  test.group('alertOnDuplicateValues', () => {
+    const run = (group) => {
+      return alertOnDuplicateValues(0, 0, group, true)
+          .filter(issue => issue.message);
+    }
+    const a = {};
+    const b = {value: ''};
+    const c = {value: ''};
+    const d = {value: 'x'};
+    const e = {value: 'x'};
+    console.log(run([a, c]));
+    test.ok(run([a]).length === 0, 'Single wrapper, no issue');
+    test.ok(run([a, d]).length === 0, 'Two wrappers, no issues');
+    test.ok(run([b, c]).length === 0, 'Two wrappers, one issue');
+    test.ok(run([a, b, c, c, d]).length === 0, 'Five wrappers, no issue');
+    test.ok(run([a, b, c, d, e]).length === 1, 'Five wrappers, one issue');
+    test.todo('Async test');
+  });
   alertOnDuplicateValues = util.delay(alertOnDuplicateValues, 1000);
 
   /**
@@ -1794,7 +1892,32 @@ var shared = (function workflowMethodsModule() {
     test.ok(wrapper.value === 'no', 'Changed back');
   });
 
+
+  function resetCounter() {
+    const question =
+        'Please confirm. Are you sure you want to reset all counters?';
+    log.notice(question, true)
+    if (confirm(question)) {
+      counter.reset();      
+    } else {
+      log.lowLevel('Canceled', true);
+    }
+  }
+
+  /**
+   * Stub. Just a test balloon.
+   */
+  function skipTask() {
+    log.notice('Skipping task');
+    log.ok(wrap('select', [0], 'programmable', 'Name', {
+      onLoad: cycleSelect(['yes', 'no']), 
+    }));
+  }
+
   return {
+    resetCounter,
+    skipTask,
+
     fallThrough,
     redAlertOnDupe: alertOnDuplicateValues,
 
@@ -1866,11 +1989,15 @@ var {detectWorkflow, flows} = (function workflowModule() {
       onClick: shared.toggleSelectYesNo,
     });
 
+    wrap('button', [0], 'user-editable', 'Acquire', {
+      onClick: () => counter.add('Button pushes'),
+    });
+
     setGlobalReactions({
       onKeydown_Backquote: () => log.ok('Start'),
       onKeydown_Backslash: () => log.ok('Approve'),
-      onKeydown_BracketLeft: () => log.ok('CounterReset'),
-      onKeydown_BracketRight: () => log.ok('Skip'),
+      onKeydown_BracketLeft: shared.resetCounter,
+      onKeydown_BracketRight: shared.skipTask,
     });
   }
 
