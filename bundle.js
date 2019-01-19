@@ -1241,8 +1241,8 @@ var {setReactions, setGlobalReactions} = (function eventListenersModule() {
       delete cloneReaction.onLoad;
     }
     const filteredClone = {};
-    for (let eventType in SUPPORTED_EVENTS) {
-      if (cloneReaction[eventType] !== undefined) {
+    for (let eventType in cloneReaction) {
+      if (/^on/.test(eventType)) {
         filteredClone[eventType] = cloneReaction[eventType];
       }
     }
@@ -1294,7 +1294,7 @@ var {setReactions, setGlobalReactions} = (function eventListenersModule() {
    * map of event types to arrays of functions.
    */
   function setGlobalReactions(reactions) {
-    setReactions(document, reactions, {});
+    setReactions(document, reactions, {wrapper: {}, idx: 0, group: []});
   }
 
   /**
@@ -1372,61 +1372,75 @@ var {setReactions, setGlobalReactions} = (function eventListenersModule() {
 ////////////////////////////////////////////////////////////////////////////////
 // DOM ACCESS module
 
-var {wrap} = (function domAccessModule() {
+var {wrap, ー} = (function domAccessModule() {
   'use strict';
 
   /**
-   * Exports the wrap function, which enables and regulates
-   * DOM access. Wrapper objects for DOM elements are returned
-   * which expose a limited number of methods, and which log
+   * @fileoverview Exports the wrap function, which enables and regulates
+   * DOM access. Wrapper objects for DOM elements are returned, which
+   * expose a limited number of methods, and which log
    * changes.
    */
-
-  const domElementWeakMap = new WeakMap();
 
   const EDITABLE_ELEMENT_TYPES =
       Object.freeze(['textarea', 'select-one', 'text']);
 
+  const domElementWeakMap = new WeakMap();
+
   /**
-   * @param {Object}
-   * @return {DomElement[]}
+   * Test whether a DOM element is hidden through CSS or Javascript.
+   *
+   * @param {HTMLElement} domElement
+   * @return {boolean} Is the DOM element being displayed on the page?
    */
-  function findInDom(querySelector, pickElements) {
-    let greedy = (() => {
-      if (Array.isArray(querySelector)) {
-        const [rootType, pickOne] = querySelector;
-        return [...document.querySelectorAll(rootType)][pickOne]
-            .querySelectorAll();
-      } else {
-        return [...document.querySelectorAll(querySelector)];
-      }
-    })();
-    const picky = [];
-    for (let one of pickElements) {
-      const picked = greedy[one];
-      if (picked) {
-      picky.push(greedy[one]);
-      }
-    }
-    return picky;
-  }
-
-  function getFreshElement(elementSelector, name) {
-    const {domSelector, pickElements} = elementSelector;
-    return findAndProcessDomElements(
-        domSelector, pickElements, 'fresh', 'Fresh ' + name
-    )[0];
-  }
-
   function isHidden(domElement) {
     return (domElement.offsetParent === null);
   }
 
-  function namePlusLetter(name = 'Unnamed', idx) {
-    const letter = String.fromCharCode(65 + idx);
-    return `${name} ${letter}`;
+  /**
+   * Dispatch simple events to DOM elements.
+   */
+  function eventDispatcher(domElement, type) {
+    util.wait(20).then(() => domElement.dispatchEvent(new Event(type)));
   }
 
+  /**
+   * Get a numbered name.
+   *
+   * @param {string=} name
+   * @param {number} idx
+   * @return {string}
+   * @example - namePlusLetter('Example', 3) => 'Example C'
+   */
+  function namePlusLetter(name = 'Unnamed', idx) {
+    const letter = String.fromCharCode(65 + idx);
+    return `${name}  ${letter}`;
+  }
+
+  /**
+   * Get coordinates of a DOM element, taking scroll position into account.
+   *
+   * @param {HTMLElement} domElement
+   * @return {Object} o
+   * @return {number} o.top
+   * @return {number} o.left
+   * @return {number} o.width
+   * @return {number} o.height
+   */
+  function getCoords(domElement) {
+    console.log(domElement);
+    const rect = domElement.getBoundingClientRect();
+    return {
+      top: parseInt(scrollY + rect.top),
+      left: parseInt(scrollX + rect.left),
+      width: parseInt(rect.width),
+      height: parseInt(rect.height),
+    }
+  }
+
+  /**
+   * 
+   */
   function safeSetter(domElement, name, newValue) {
     const currentValue = domElement.value;
     if (currentValue === newValue) {
@@ -1437,32 +1451,17 @@ var {wrap} = (function domAccessModule() {
       throw new Error(`Cannot set value on ${domElement.type} elements`);
     }
     domElement.value = newValue;
-    eventDispatcher(domElement, 'blur');
+    eventDispatcher(domElement, 'blur'); // Blur signals a change to GWT
     log.changeValue(
       `Changing '${name}' from '${currentValue}' to '${newValue}'.`,
       true,
     );
   }
 
-  function getWrapper(domElement, mode, name, elementSelector) {
-    const cached = domElementWeakMap.get(domElement);
-    if (cached && mode === 'fresh') {
-      mode = cached.mode;
-    } else if (cached) {
-      if (cached.mode !== mode) {
-        log.warn(
-          `Didn't change ${name} element mode from ${cached.mode}.`,
-          true,
-        )
-      }
-      return cached;
-    } else if (mode === 'fresh') {
-      mode = 'static';
-    }
-
-    const wrapper = {
+  function makeBasicProxy(domElement, name) {
+    const proxy = {
+      name,
       value: domElement.value,
-      name: name,
       get checked() {
         return domElement.checked;
       },
@@ -1493,53 +1492,125 @@ var {wrap} = (function domAccessModule() {
       fresh() {
         return getFreshElement(elementSelector, name);
       },
+      getCoords() {
+        return getCoords(domElement);
+      },
       unsafe() {
         return domElement;
       },
     }
+    return proxy;
+  }
+
+  function makeProxy({domElement, name, mode}) {
+    const proxy = makeBasicProxy(domElement);
+    proxy.name = name;
+    proxy.mode = mode;
+
     function goodSetter(value) {
       safeSetter(domElement, name, value)
     }
     function brokenSetter(newValue) {
       throw new Error(
-          `Cannot set value of ${this.name} to '${newValue}'. ` + 
+          `Cannot set value of ${name} to '${newValue}'. ` + 
           `Element is not programmatically editable.`
       );
     }
-
-    wrapper.mode = mode;
-    if (mode === 'static') {
-      return Object.freeze({...wrapper});
+    if (proxy.mode === 'static') {
+      return Object.freeze({...proxy});
     }
-    if (mode === 'programmable') {
+    if (proxy.mode === 'programmable') {
       Object.defineProperty(
-        wrapper, 'value', {get: () => domElement.value, set: goodSetter,}
+        proxy, 'value', {get: () => domElement.value, set: goodSetter,}
       );
-      return Object.seal(wrapper);
+      return Object.seal(proxy);
     }
-    if (mode === 'user-editable') {
+    if (proxy.mode === 'user-editable') {
       Object.defineProperty(
-        wrapper, 'value', {get: () => domElement.value, set: brokenSetter,}
+        proxy, 'value', {get: () => domElement.value, set: brokenSetter,}
       );
-      return Object.seal(wrapper);
+      return Object.seal(proxy);
     }
+    throw new Error('No valid mode set');
   }
 
-  function wrapElement(domElement, idx, options) {
+  function appendNameToCachedProxy(proxy, name) {
+    if (!proxy) {
+      return;
+    }
+    try {
+      proxy.name += '|' + name;
+    } catch (e) {
+      if (e instanceof TypeError) {
+        log.warn(
+          `Cannot append ${name} to name of static proxy ${proxy.name}`,
+        )
+      } else {
+        throw e;
+      }
+    }
+    return proxy;
+  }
+
+  function toProxy(domElement, idx, options) {
     if (!util.isDomElement(domElement)) {
       throw new Error('Not a DOM element');
     }
-    const {domSelector, pickElements, mode, name} = options;
-    const elementSelector = {domSelector, pickElements: [pickElements[idx]]};
-    const nameA = namePlusLetter(name, idx);
-    const wrapper = getWrapper(domElement, mode, nameA, elementSelector);
-    if (mode !== 'fresh') {
-      domElementWeakMap.set(domElement, wrapper);
+    const cached = domElementWeakMap.get(domElement);
+    if (cached && options.mode === 'fresh') {
+      options.mode = cached.mode;
+    } else if (cached) {
+      if (cached.mode !== options.mode) {
+        log.warn(
+          `Didn't change ${options.name} element mode from ${cached.mode}` +
+          ` to ${options.mode}`,
+          true,
+        )
+      }
+      return appendNameToCachedProxy(cached, options.name);
+    } else if (options.mode === 'fresh') {
+      mode = 'static';
     }
-    return wrapper;
+    const proxy = makeProxy({
+      domElement,
+      name: options.name,
+      mode: options.mode,
+    });
+    if (options.mode !== 'fresh') {
+      domElementWeakMap.set(domElement, proxy);
+    }
+    return proxy;
   }
 
-  function setAllReactions(domElements, wrappers, reactions) {
+  /**
+   * 
+   */
+  function getDomElements({rootSelect, rootNumber, select, pick}) {
+    const simpleSelect = () => {
+      return [...document.querySelectorAll(select)];
+    }
+    const complexSelect = () => {
+      return [...document.querySelectorAll(rootSelect)][rootNumber]
+          .querySelectorAll(select || '*');
+    }
+    const allElements = (rootSelect) ? complexSelect() : simpleSelect();
+    const pickedElements = [];
+    for (let number of pick) {
+      const picked = allElements[number];
+      if (picked) {
+      pickedElements.push(picked);
+      }
+    }
+    return pickedElements;
+  }
+
+  function setAllReactions(domElements, wrappers, options) {
+    const reactions = {};
+    for (let prop in options) {
+      if (/^on/.test(prop)) {
+        reactions[prop] = options[prop];
+      }
+    }
     wrappers.forEach((wrapper, idx, group) => {
       const domElement = domElements[idx];
       const context = {wrapper, idx, group};
@@ -1547,29 +1618,19 @@ var {wrap} = (function domAccessModule() {
     });
   }
 
-  function findAndProcessDomElements(domSelector, pickElements, mode, name, reactions) {
-    if (!domSelector || !pickElements) {
-      throw new Error('Missing selector parameters.');
-    }
-    const domElements = findInDom(domSelector, pickElements);
-    const options = {domSelector, pickElements, mode, name};
-    const wrappers = domElements.map((element,idx) => {
-      return wrapElement(element, idx, options);
+  function ー(options) {
+    const domElements = getDomElements(options);
+    const proxies = domElements.map((element,idx) => {
+      return toProxy(element, idx, options);
     });
-    if (mode !== 'fresh') {
-      setAllReactions(domElements, wrappers, reactions);
+    if (options.mode !== 'fresh') {
+      setAllReactions(domElements, proxies, options);
     }
-    return wrappers;
+    console.log(proxies);
+    return proxies;
   }
 
-  /**
-   * Dispatch simple events to DOM elements.
-   */
-  function eventDispatcher(domElement, type) {
-    util.wait(20).then(() => domElement.dispatchEvent(new Event(type)));
-  }
-
-  return {wrap: findAndProcessDomElements};
+  return {ー};
 })();
 
 
@@ -1953,7 +2014,27 @@ var {detectWorkflow, flows} = (function workflowModule() {
   }
 
   function ratingHome() {
-    wrap('textarea', [0,1,2], 'programmable', 'Text', {
+    ー({
+      name: 'NoUrl',
+      select: 'textarea',
+      pick: [3,4,5],
+      mode: 'programmable',
+      onFocusout: shared.removeUrl,
+      onPaste: shared.removeUrl,
+    });
+
+    ー({
+      name: 'Maan',
+      select: 'textarea',
+      pick: [3],
+      mode: 'programmable',
+    });
+
+    ー({
+      name: 'Text',
+      select: 'textarea',
+      pick: [0,1,2],
+      mode: 'programmable',
       onInteract: [
         shared.redAlertExceed25Chars,
         shared.redAlertOnDupe
@@ -1964,28 +2045,48 @@ var {detectWorkflow, flows} = (function workflowModule() {
       ],
     });
 
-    wrap('textarea', [3,4,5], 'programmable', 'NoUrl', {
+    ー({
+      name: 'NoUrl',
+      select: 'textarea',
+      pick: [3,4,5],
+      mode: 'programmable',
       onFocusout: shared.removeUrl,
       onPaste: shared.removeUrl,
     });
 
-    wrap('textarea', [6,7,8], 'programmable', 'Dashes', {
+    ー({
+      name: 'Dashes',
+      select: 'textarea',
+      pick: [6,7,8],
+      mode: 'programmable',
       onFocusin: shared.removeDashes,
       onFocusout: shared.addDashes,
       onLoad: shared.addDashes,
     });
     
     [[0,3],[1,4],[2,5]].forEach(pair => {
-      wrap('textarea', pair, 'programmable', 'Fall', {
+      ー({
+        name: 'Fall',
+        select: 'textarea',
+        pick: pair,
+        mode: 'programmable',
         onPaste: shared.fallThrough,
       });
     });
 
-    wrap('select', [0,1], 'programmable', 'Select', {
+    ー({
+      name: 'Select',
+      select: 'select',
+      pick: [0,1],
+      mode: 'programmable',
       onClick: shared.toggleSelectYesNo,
     });
 
-    wrap('button', [0], 'user-editable', 'Acquire', {
+    ー({
+      name: 'Acquire',
+      select: 'button',
+      pick: [0],
+      mode: 'user-editable',
       onClick: () => counter.add('Button pushes'),
     });
 
@@ -2031,12 +2132,4 @@ main();
  * write to other elements)
  *
  * @todo Skip function
- *
- * @todo CounterReset
- *
- * @todo Change wrap API to use a single Object as input
- *
- * @todo Wrappers should expose coordinates
- *
- * @todo Rewrite eventListenersModule
  */
