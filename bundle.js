@@ -313,18 +313,18 @@ var util =
   }
 
   /**
-   * Test whether an object is a DOM element. Uses simple duck typing.
+   * Test whether an object is an HTMLElement. Uses simple duck typing.
    *
-   * @param {Object=} domElement - Object to be tested
-   * @return {boolean} Returns true if a dom element is passed in.
+   * @param {Object=} HTMLElement - Object to be tested
+   * @return {boolean} Returns true if an HTMLElement is passed in.
    */
-  function isDomElement(domElement) {
-    return doesObjectMatchTemplate({parentNode: 5}, domElement);
+  function isHTMLElement(htmlElement) {
+    return doesObjectMatchTemplate({parentNode: 5}, htmlElement);
   }
-  test.group('isDomElement', () => {
-    test.ok(isDomElement({}) === false, 'An object is not');
-    test.ok(isDomElement(document) === true, 'The document');
-    test.ok(isDomElement(document.body) === true, 'Document body');
+  test.group('isHTMLElement', () => {
+    test.ok(isHTMLElement({}) === false, 'An object is not');
+    test.ok(isHTMLElement(document) === true, 'The document');
+    test.ok(isHTMLElement(document.body) === true, 'Document body');
   });
 
   function mapToBulletedList(arrOrObj, spaces = 4) {
@@ -354,7 +354,7 @@ var util =
     doArraysMatch,
     doesObjectMatchTemplate,
     ensureIsArray,
-    isDomElement,
+    isHTMLElement,
     mapToBulletedList,
     wait,
     };
@@ -601,28 +601,28 @@ var {config, counter, flag, log} = (function reportingModule() {
    * 
    * @param {Object} issueUpdate - Incoming message. This may refer to a new
    * issue, or update the status of a previous issue.
-   * @param {Object} issueUpdate.wrapper - DOM element wrapper.
+   * @param {Object} issueUpdate.proxy - HTMLElement proxy.
    * @param {string} issueUpdate.issueType - The type of issue.
    * @param {string} issueUpdate.issueLevel - How critical is this issue?
    * @param {string} issueUpdate.message - Describes the details of the issue.
    * @example
-   * {wrapper, issueType: 'Typo', issueLevel: 'red', message: 'Wrod misspelled'}
+   * {proxy, issueType: 'Typo', issueLevel: 'red', message: 'Wrod misspelled'}
    */
   function flag(issueUpdate) {
-    const template = {wrapper: true, issueType: true};
+    const template = {proxy: true, issueType: true};
     if (!util.doesObjectMatchTemplate(template, issueUpdate)) {
       throw new Error('Not a valid issue.');
     }
     /**
-     * Filter function to remove issues that match the incoming issue. Compares wrapper
+     * Filter function to remove issues that match the incoming issue. Compares proxy
      * type properties.
      *
      * @param {Object} issue
      */
     const removeMatching = (issue) => {
-      const sameWrapper = (issue.wrapper === issueUpdate.wrapper);
+      const sameproxy = (issue.proxy === issueUpdate.proxy);
       const sameType = (issue.issueType === issueUpdate.issueType);
-      return !(sameWrapper && sameType);
+      return !(sameproxy && sameType);
     };
     /**
      * Filter out issues that without a issueLevel.
@@ -658,8 +658,8 @@ var {config, counter, flag, log} = (function reportingModule() {
   */
   const log = (function loggingModule() {
     const STORE_NAME = 'LogBook';
-    const MAX_LOG_LENGTH = 5000;
-    const LOG_PAGE_SIZE = 25;
+    const MAX_LOG_LENGTH = 5000; // entries
+    const LOG_PAGE_SIZE = 25; // entries per page
     const NO_COLOR_FOUND = 'yellow';
     const TIMESTAMP_COLOR = 'color: grey';
     const LOG_TYPES = {
@@ -995,15 +995,15 @@ var {setReactions, setGlobalReactions} = (function eventListenersModule() {
   /**
    * @fileoverview Sets global event listeners, and exports
    * functions through which functions can be registered.
-   * Reaction functions are registered to a DOM element and
+   * Reaction functions are registered to an HTMLElement and
    * a browser event, and are called when a matching browser
-   * event is issued by the matching DOM element.
+   * event is issued by the matching HTMLElement.
    * This basically emulates setting several event listeners
-   * on each DOM element.
+   * on each HTMLElement.
    */
 
   /**
-   * string[] - The events that can be set on a DOM element.
+   * string[] - The events that can be set on an HTMLElement.
    */
   const SUPPORTED_EVENTS = Object.freeze({
     'onChange': 'change',
@@ -1028,8 +1028,8 @@ var {setReactions, setGlobalReactions} = (function eventListenersModule() {
   ]);
 
   /**
-   * reactionStore maps DOM elements to sets of events. Each event maps to an
-   * array of reactions. When a browser event is fired by the DOM element,
+   * reactionStore maps HTMLElements to sets of events. Each event maps to an
+   * array of reactions. When a browser event is fired by the HTMLElement,
    * all matching reactions are returned and called.
    * For example:
    * document.body => {
@@ -1045,19 +1045,19 @@ var {setReactions, setGlobalReactions} = (function eventListenersModule() {
      * string.
      *
      * @param {Object} o
-     * @param {HTMLElement} domElement
+     * @param {HTMLElement} htmlElement
      * @param {string[]} eventTypes
      * @return {function[]}
      */
-    function get({domElement, eventTypes}) {
-      if (!map.has(domElement)) {
+    function get({htmlElement, eventTypes}) {
+      if (!map.has(htmlElement)) {
         return [];
       }
       if (!Array.isArray(eventTypes)) {
         throw new Error('Please provide an array of eventTypes');
       }
       const found = [];
-      const reactions = map.get(domElement);
+      const reactions = map.get(htmlElement);
       for (let eventType of eventTypes) {
         if (reactions[eventType] !== undefined) {
           found.push(...reactions[eventType]);
@@ -1071,24 +1071,24 @@ var {setReactions, setGlobalReactions} = (function eventListenersModule() {
      * string.
      *
      * @param {Object} o
-     * @param {HTMLElement} domElement
+     * @param {HTMLElement} htmlElement
      * @param {string} eventType
      * @param {function[]}
      * @return {number} The new number of reaction functions now accociated with
      * this HTML element and eventType.
      */
-    function set({domElement, eventType, functions}) {
-      if (!util.isDomElement(domElement)) {
-        throw new Error(domElement + ' is not a domElement');
+    function set({htmlElement, eventType, functions}) {
+      if (!util.isHTMLElement(htmlElement)) {
+        throw new Error(htmlElement + ' is not an htmlElement');
       }
       if (!Array.isArray(functions)) {
         throw new Error('Please provide an array of functions');
       }
-      const reactions = map.get(domElement) || {};
-      const current = get({domElement, eventTypes: [eventType]});
+      const reactions = map.get(htmlElement) || {};
+      const current = get({htmlElement, eventTypes: [eventType]});
       const funcs = [...current, ...functions];
       reactions[eventType] = funcs;
-      map.set(domElement, reactions);
+      map.set(htmlElement, reactions);
       return funcs.length;
     }
 
@@ -1199,14 +1199,15 @@ var {setReactions, setGlobalReactions} = (function eventListenersModule() {
    *
    * @param {function[]} functions - Reaction functions
    * @param {Object} o
-   * @param {Object} o.wrapper - Which wrapper triggered the event.
-   * @param {number} o.idx - The index of the wrapper
-   * @param {Object[]} o.group - All wrappers in this group.
+   * @param {Object} o.proxy - Which proxy triggered the event.
+   * @param {number} o.idx - The index of the proxy
+   * @param {Object[]} o.group - All proxies in this group.
    */
-  function addContext(functions, {wrapper, idx, group}) {
+  function addContext(functions, {proxy, idx, group}) {
     return util.ensureIsArray(functions).map(func => {
-      return () => func(wrapper, idx, group);
-    })
+      const run = util.debounce(func);
+      return () => run(proxy, idx, group);
+    });
   }
 
   /**
@@ -1214,7 +1215,7 @@ var {setReactions, setGlobalReactions} = (function eventListenersModule() {
    * * Handle the onLoad event (by running these reactions).
    * * Handle the onInteract event (by assigning these reactions to several
    *   other event).
-   * * Wrap all reactions in the relevant context (wrapper, idx, group).
+   * * Wrap all reactions in the relevant context (proxy, idx, group).
    */
   function unpackAndAddContext(reactions, context) {
     if (!reactions || !context) {
@@ -1262,25 +1263,25 @@ var {setReactions, setGlobalReactions} = (function eventListenersModule() {
   });
 
   /**
-   * For a DOM element, attach additional reaction functions.
+   * For an HTMLElement, attach additional reaction functions.
    *
-   * @param {DomElement} domElement - The element to which
+   * @param {htmlElement} htmlElement - The element to which
    * the reactions should be attached.
    * @param {Object<string: function[]>} reactions - A
    * map of event types to arrays of functions.
    * @param {Object} - Context about the way in which the
-   + functions should be invoked, i.e. what group of wrappers
+   + functions should be invoked, i.e. what group of proxies
    * these reactions were attached to and which one triggered
    * the functions.
    */
-  function setReactions(domElement, reactions, context) {
-    if (!util.isDomElement(domElement)) {
-      throw new Error('Not a DOM element');
+  function setReactions(htmlElement, reactions, context) {
+    if (!util.isHTMLElement(htmlElement)) {
+      throw new Error('Not an HTMLElement');
     }
     const formattedReactions = unpackAndAddContext(reactions, context);
     for (let reaction in formattedReactions) {
       reactionStore.set({
-        domElement: domElement,
+        htmlElement: htmlElement,
         eventType: reaction,
         functions: formattedReactions[reaction],
       });
@@ -1294,7 +1295,7 @@ var {setReactions, setGlobalReactions} = (function eventListenersModule() {
    * map of event types to arrays of functions.
    */
   function setGlobalReactions(reactions) {
-    setReactions(document, reactions, {wrapper: {}, idx: 0, group: []});
+    setReactions(document, reactions, {proxy: {}, idx: 0, group: []});
   }
 
   /**
@@ -1305,11 +1306,11 @@ var {setReactions, setGlobalReactions} = (function eventListenersModule() {
    */
   function getMatchingReactions(event) {
     const elementReactions = reactionStore.get({
-      domElement: event.target,
+      htmlElement: event.target,
       eventTypes: eventToEventTypes(event),
     });
     const globalReactions = reactionStore.get({
-      domElement: document,
+      htmlElement: document,
       eventTypes: eventToEventTypes(event),
     });
     return [...elementReactions, ...globalReactions];
@@ -1377,7 +1378,7 @@ var {wrap, ー} = (function domAccessModule() {
 
   /**
    * @fileoverview Exports the wrap function, which enables and regulates
-   * DOM access. Wrapper objects for DOM elements are returned, which
+   * DOM access. Proxy objects for HTMLElements are returned, which
    * expose a limited number of methods, and which log
    * changes.
    */
@@ -1385,51 +1386,43 @@ var {wrap, ー} = (function domAccessModule() {
   const EDITABLE_ELEMENT_TYPES =
       Object.freeze(['textarea', 'select-one', 'text']);
 
-  const domElementWeakMap = new WeakMap();
+  const htmlElementWeakMap = new WeakMap();
 
   /**
-   * Test whether a DOM element is hidden through CSS or Javascript.
+   * Test whether an HTMLElement is hidden through CSS or Javascript.
    *
-   * @param {HTMLElement} domElement
-   * @return {boolean} Is the DOM element being displayed on the page?
+   * @param {HTMLElement} htmlElement
+   * @return {boolean} Is the HTMLElement being displayed on the page?
    */
-  function isHidden(domElement) {
-    return (domElement.offsetParent === null);
-  }
-
-  /**
-   * Dispatch simple events to DOM elements.
-   */
-  function eventDispatcher(domElement, type) {
-    util.wait(20).then(() => domElement.dispatchEvent(new Event(type)));
+  function isHidden(htmlElement) {
+    return (htmlElement.offsetParent === null);
   }
 
   /**
    * Get a numbered name.
    *
    * @param {string=} name
-   * @param {number} idx
+   * @param {number} idx - Index maps to a letter from the alphabet.
    * @return {string}
    * @example - namePlusLetter('Example', 3) => 'Example C'
    */
   function namePlusLetter(name = 'Unnamed', idx) {
     const letter = String.fromCharCode(65 + idx);
-    return `${name}  ${letter}`;
+    return `${name} ${letter}`;
   }
 
   /**
-   * Get coordinates of a DOM element, taking scroll position into account.
+   * Get coordinates of an HTMLElement, taking scroll position into account.
    *
-   * @param {HTMLElement} domElement
+   * @param {HTMLElement} htmlElement
    * @return {Object} o
    * @return {number} o.top
    * @return {number} o.left
    * @return {number} o.width
    * @return {number} o.height
    */
-  function getCoords(domElement) {
-    console.log(domElement);
-    const rect = domElement.getBoundingClientRect();
+  function getCoords(htmlElement) {
+    const rect = htmlElement.getBoundingClientRect();
     return {
       top: parseInt(scrollY + rect.top),
       left: parseInt(scrollX + rect.left),
@@ -1438,77 +1431,94 @@ var {wrap, ー} = (function domAccessModule() {
     }
   }
 
+  function touch(htmlElement) {
+    util.wait().then(() => {
+      // Blur signals a change to GWT
+      htmlElement.dispatchEvent(new Event('blur'));
+    });
+  }
+
   /**
-   * 
+   * @param {HTMLElement} htmlElement
+   * @param {string} name
+   * @param {}
    */
-  function safeSetter(domElement, name, newValue) {
-    const currentValue = domElement.value;
+  function safeSetter(htmlElement, name, newValue) {
+    const currentValue = htmlElement.value;
     if (currentValue === newValue) {
       log.lowLevel(`No change to ${name}'.`);
       return;
     }
-    if(!EDITABLE_ELEMENT_TYPES.includes(domElement.type)) {
-      throw new Error(`Cannot set value on ${domElement.type} elements`);
+    if(!EDITABLE_ELEMENT_TYPES.includes(htmlElement.type)) {
+      throw new Error(`Cannot set value on ${htmlElement.type} elements`);
     }
-    domElement.value = newValue;
-    eventDispatcher(domElement, 'blur'); // Blur signals a change to GWT
+    htmlElement.value = newValue;
+    touch(htmlElement);
     log.changeValue(
       `Changing '${name}' from '${currentValue}' to '${newValue}'.`,
       true,
     );
   }
 
-  function makeBasicProxy(domElement, name) {
+  function getFreshElement(freshSelector, name) {
+    return ー({...freshSelector, name, mode: 'static'});
+  }
+
+  function makeBasicProxy({htmlElement, name, freshSelector}) {
     const proxy = {
       name,
-      value: domElement.value,
+      value: htmlElement.value,
       get checked() {
-        return domElement.checked;
+        return htmlElement.checked;
       },
       get disabled() {
-        return domElement.disabled;
+        return htmlElement.disabled;
       },
       get textContent() {
-        return domElement.textContent;
+        return htmlElement.textContent;
       },
       set cssText(string) {
-        domElement.style.cssText = string;
+        htmlElement.style.cssText = string;
       },
       click() {
-        domElement.click();
+        htmlElement.click();
       },
       blur() {
-        domElement.blur();
+        htmlElement.blur();
       },
       focus() {
-        domElement.focus();
+        htmlElement.focus();
       },
       scrollIntoView() {
-        domElement.scrollIntoView();
+        htmlElement.scrollIntoView();
       },
       toString() {
-        return `${name}: ${domElement.value}`;
+        return `${name}: ${htmlElement.value}`;
       },
       fresh() {
-        return getFreshElement(elementSelector, name);
+        return ー({...freshSelector, name, mode: 'user-editable'});
       },
       getCoords() {
-        return getCoords(domElement);
+        return getCoords(htmlElement);
       },
       unsafe() {
-        return domElement;
+        return htmlElement;
       },
     }
     return proxy;
   }
 
-  function makeProxy({domElement, name, mode}) {
-    const proxy = makeBasicProxy(domElement);
+  function makeProxy({htmlElement, name, mode, freshSelector}) {
+    const proxy = makeBasicProxy({
+      htmlElement,
+      name,
+      freshSelector
+    });
     proxy.name = name;
     proxy.mode = mode;
 
     function goodSetter(value) {
-      safeSetter(domElement, name, value)
+      safeSetter(htmlElement, name, value)
     }
     function brokenSetter(newValue) {
       throw new Error(
@@ -1521,25 +1531,28 @@ var {wrap, ー} = (function domAccessModule() {
     }
     if (proxy.mode === 'programmable') {
       Object.defineProperty(
-        proxy, 'value', {get: () => domElement.value, set: goodSetter,}
+        proxy, 'value', {get: () => htmlElement.value, set: goodSetter,}
       );
       return Object.seal(proxy);
     }
     if (proxy.mode === 'user-editable') {
       Object.defineProperty(
-        proxy, 'value', {get: () => domElement.value, set: brokenSetter,}
+        proxy, 'value', {get: () => htmlElement.value, set: brokenSetter,}
       );
       return Object.seal(proxy);
     }
     throw new Error('No valid mode set');
   }
 
-  function appendNameToCachedProxy(proxy, name) {
+  function appendToNameOfCachedProxy(proxy, name, idx) {
     if (!proxy) {
       return;
     }
+    if (proxy.name.includes(name)) {
+      return proxy;
+    }
     try {
-      proxy.name += '|' + name;
+      proxy.name += '|' + namePlusLetter(name, idx);
     } catch (e) {
       if (e instanceof TypeError) {
         log.warn(
@@ -1552,11 +1565,19 @@ var {wrap, ー} = (function domAccessModule() {
     return proxy;
   }
 
-  function toProxy(domElement, idx, options) {
-    if (!util.isDomElement(domElement)) {
-      throw new Error('Not a DOM element');
+  function makeFreshSelector(options, idx) {
+    const {select, pick} = options;
+    return {
+      select,
+      pick: [pick[idx]],
+    };
+  }
+
+  function toProxy(htmlElement, idx, options) {
+    if (!util.isHTMLElement(htmlElement)) {
+      throw new Error('Not an HTMLElement');
     }
-    const cached = domElementWeakMap.get(domElement);
+    const cached = htmlElementWeakMap.get(htmlElement);
     if (cached && options.mode === 'fresh') {
       options.mode = cached.mode;
     } else if (cached) {
@@ -1567,17 +1588,18 @@ var {wrap, ー} = (function domAccessModule() {
           true,
         )
       }
-      return appendNameToCachedProxy(cached, options.name);
+      return appendToNameOfCachedProxy(cached, options.name, idx);
     } else if (options.mode === 'fresh') {
       mode = 'static';
     }
     const proxy = makeProxy({
-      domElement,
-      name: options.name,
+      htmlElement,
+      name: namePlusLetter(options.name, idx),
       mode: options.mode,
+      freshSelector: makeFreshSelector(options, idx),
     });
     if (options.mode !== 'fresh') {
-      domElementWeakMap.set(domElement, proxy);
+      htmlElementWeakMap.set(htmlElement, proxy);
     }
     return proxy;
   }
@@ -1585,7 +1607,7 @@ var {wrap, ー} = (function domAccessModule() {
   /**
    * 
    */
-  function getDomElements({rootSelect, rootNumber, select, pick}) {
+  function gethtmlElements({rootSelect, rootNumber, select, pick}) {
     const simpleSelect = () => {
       return [...document.querySelectorAll(select)];
     }
@@ -1604,29 +1626,28 @@ var {wrap, ー} = (function domAccessModule() {
     return pickedElements;
   }
 
-  function setAllReactions(domElements, wrappers, options) {
+  function setAllReactions(htmlElements, proxies, options) {
     const reactions = {};
     for (let prop in options) {
       if (/^on/.test(prop)) {
         reactions[prop] = options[prop];
       }
     }
-    wrappers.forEach((wrapper, idx, group) => {
-      const domElement = domElements[idx];
-      const context = {wrapper, idx, group};
-      setReactions(domElement, reactions, context);
+    proxies.forEach((proxy, idx, group) => {
+      const htmlElement = htmlElements[idx];
+      const context = {proxy, idx, group};
+      setReactions(htmlElement, reactions, context);
     });
   }
 
   function ー(options) {
-    const domElements = getDomElements(options);
-    const proxies = domElements.map((element,idx) => {
+    const htmlElements = gethtmlElements(options);
+    const proxies = htmlElements.map((element,idx) => {
       return toProxy(element, idx, options);
     });
     if (options.mode !== 'fresh') {
-      setAllReactions(domElements, proxies, options);
+      setAllReactions(htmlElements, proxies, options);
     }
-    console.log(proxies);
     return proxies;
   }
 
@@ -1646,25 +1667,25 @@ var shared = (function workflowMethodsModule() {
  
   /**
    * @fileoverview Exports an object packed with methods
-   * designed to add reactions to wrappers.
+   * designed to add reactions to HTMLElement proxies.
    */
 
   const ALERT_LEVELS = ['red', 'orange', 'yellow'];
 
   /**
-   * Convenience function. Conditionally set a new value to a wrapper.
+   * Convenience function. Conditionally set a new value to a proxy.
    *
    * @param {Object} o
    * @param {string} o.to - The new value.
    * @param {function} o.when - A function that returns an object containing
-   * a hit property, a wrapper property and optionally a message property.
-   * If the hit property is true, the wrapper value is changed.
+   * a hit property, a proxy property and optionally a message property.
+   * If the hit property is true, the proxy value is changed.
    * The message property is ignored.
    *
    * @example
    * changeValue({
    *   to: 'newValue',
-   *   when: () => ({hit: true, wrapper: {value: 'originalValue'}}),
+   *   when: () => ({hit: true, proxy: {value: 'originalValue'}}),
    * })
    * This would change the value of the object returned by the 'when' function.
    */
@@ -1676,17 +1697,17 @@ var shared = (function workflowMethodsModule() {
       throw new Error('ChangeValue requires a function');
     }
     return function (...params) {
-      const {hit, wrapper} = when(...params);
+      const {hit, proxy} = when(...params);
       if (hit) {
-        wrapper.value = to;
+        proxy.value = to;
       }
     }
   }
   test.group('changeValue', () => {
-    const wrapper = {value: 'z'};
-    const tester = (wrapper) => ({hit: true, wrapper}); 
-    changeValue({to: 'x', when: tester})(wrapper);
-    test.ok(wrapper.value === 'x', 'Changed value');
+    const proxy = {value: 'z'};
+    const tester = (proxy) => ({hit: true, proxy}); 
+    changeValue({to: 'x', when: tester})(proxy);
+    test.ok(proxy.value === 'x', 'Changed value');
   });
 
   /**
@@ -1696,7 +1717,7 @@ var shared = (function workflowMethodsModule() {
    * @param {string} o.issueLevel - The potential issueLevel of the issue.
    * @param {string} o.issueType - The type of the issue.
    * @param {function} o.when - A function that returns an object containing
-   * a hit property, a wrapper property and optionally a message property.
+   * a hit property, a proxy property and optionally a message property.
    * If the hit property is true, the issue is flagged according to the color
    * parameter, else it is flagged as 'ok'.
    * The message property is attached to the issue.
@@ -1704,9 +1725,9 @@ var shared = (function workflowMethodsModule() {
    * @example
    * flagIssue({
    *   issueType: 'Description of issue',
-   *   when: () => ({hit: true, wrapper: {value: 'originalValue'}, message: ''}),
+   *   when: () => ({hit: true, proxy: {value: 'originalValue'}, message: ''}),
    * })
-   * This would dispatch an event that means that this wrapper has an issue.
+   * This would dispatch an event that means that this proxy has an issue.
    */
   function flagIssue({issueLevel, issueType, when}) {
     if (!ALERT_LEVELS.includes(issueLevel)) {
@@ -1722,8 +1743,8 @@ var shared = (function workflowMethodsModule() {
       throw new Error('ChangeValue requires a new string value');
     }
     function flagThis(...params) {
-      const {wrapper, hit, message} = when(...params);
-      const packet = {wrapper, issueType};
+      const {proxy, hit, message} = when(...params);
+      const packet = {proxy, issueType};
       if (hit) {
         packet.issueLevel = issueLevel;
         packet.message = message;
@@ -1736,67 +1757,67 @@ var shared = (function workflowMethodsModule() {
   }
 
   /**
-   * A function that returns an object containing a hit property, a wrapper
+   * A function that returns an object containing a hit property, a proxy
    * property and a message property.
    *
    * @param {RegExp} regex - Regular expression that will be matched with the
-   * wrapper value.
-   * @param {boolean} shouldMatch - Is a match between regex and wrapper
+   * proxy value.
+   * @param {boolean} shouldMatch - Is a match between regex and proxy
    * value considered a successful hit?
    * @return {Object} o
-   * @return {Object} o.wrapper - The matched wrapper
+   * @return {Object} o.proxy - The matched proxy
    * @return {Object} o.hit - Was the match successful?
    * @return {Object} o.message - 
-   * @example - Using testRegex(/x/, true) on a wrapper with a value of 'x'
+   * @example - Using testRegex(/x/, true) on a proxy with a value of 'x'
    * would return an object with hit = true, message = 'x did match /x/'
    */
   function testRegex(regex, shouldMatch) {
-    return (wrapper) => {
-      const hit = regex.test(wrapper.value) === shouldMatch;
+    return (proxy) => {
+      const hit = regex.test(proxy.value) === shouldMatch;
       const didOrShouldNot = shouldMatch ? 'did' : 'should not';
-      const message = `${wrapper.value} ${didOrShouldNot} match ${regex}`;
-      return {wrapper, hit, message};
+      const message = `${proxy.value} ${didOrShouldNot} match ${regex}`;
+      return {proxy, hit, message};
     }
   };
   test.group('textRegex', () => {
-    const wrapper = {value: 'x'};
-    const one = testRegex(/x/, true)(wrapper);
+    const proxy = {value: 'x'};
+    const one = testRegex(/x/, true)(proxy);
     test.ok(one.hit === true, 'one: hit');
     test.ok(one.message === 'x did match /x/', 'one message');
-    const two = testRegex(/x/, false)(wrapper);
+    const two = testRegex(/x/, false)(proxy);
     test.ok(two.hit === false, 'two: no hit');
     test.ok(two.message === 'x should not match /x/', 'two: message');
-    const three = testRegex(/c/, false)(wrapper);
+    const three = testRegex(/c/, false)(proxy);
     test.ok(three.hit === true, 'three: hit');
     test.ok(three.message === 'x should not match /c/', 'three: message');
   });
 
   /**
-   * A function that returns an object containing a hit property, a wrapper
+   * A function that returns an object containing a hit property, a proxy
    * property and a message property.
    *
    * @param {RegExp} regex - Regular expression that will be matched with the
-   * wrapper value.
-   * @param {boolean} shouldMatch - Is a match between regex and wrapper
+   * proxy value.
+   * @param {boolean} shouldMatch - Is a match between regex and proxy
    * value considered a successful hit?
    * @return {Object} o
-   * @return {Object} o.wrapper - The matched wrapper
+   * @return {Object} o.proxy - The matched proxy
    * @return {Object} o.hit - Was the match successful?
    * @return {Object} o.message - 
-   * @example - Using testRegex(/x/, true) on a wrapper with a value of 'x'
+   * @example - Using testRegex(/x/, true) on a proxy with a value of 'x'
    * would return an object with hit = true, message = 'x did match /x/'
    */
   function testLength ({min, max}) {
-    return (wrapper) => {
-      const length = wrapper.value.length;
+    return (proxy) => {
+      const length = proxy.value.length;
       let hit = false;
       if (min && min > length) {
-        return {wrapper, hit: true, message: 'Value is too short'};
+        return {proxy, hit: true, message: 'Value is too short'};
       }
       if (max && max < length) {
-        return {wrapper, hit: true, message: 'Value is too long'};
+        return {proxy, hit: true, message: 'Value is too long'};
       }
-      return {wrapper, hit: false};
+      return {proxy, hit: false};
     }
   };
   test.group('textLength', () => {
@@ -1831,28 +1852,28 @@ var shared = (function workflowMethodsModule() {
    * You don't need to use the convenience functions.
    */
   function exampleTester(params) {
-    return (wrapper, idx, group) => {
+    return (proxy, idx, group) => {
       // Your code goes here
       const hit = true
       const message = 'This message describes the issue';
-      return {wrapper, hit, message};
+      return {proxy, hit, message};
     }
   }
 
   /**
-   * Tests whether any wrappers in a group have the same value, and flags
-   * wrappers that repeat previous values.
+   * Tests whether any proxies in a group have the same value, and flags
+   * proxies that repeat previous values.
    *
-   * @param {Object} _ - Unused parameter. The triggering wrapper.
-   * @param {number} __ - Unused parameter. The index of the triggering wrapper.
-   * @param {Object[]} group - Array of wrappers to check for duplicate values.
+   * @param {Object} _ - Unused parameter. The triggering proxy.
+   * @param {number} __ - Unused parameter. The index of the triggering proxy.
+   * @param {Object[]} group - Array of proxies to check for duplicate values.
    */
   function alertOnDuplicateValues (_, __, group, testing) {
     const values = [];
     const packets = [];
     for (let i = 0; i < group.length; i++) {
       const value = group[i].value;
-      let packet = {wrapper: group[i], issueType: 'Dupes'};
+      let packet = {proxy: group[i], issueType: 'Dupes'};
       if (values.includes(value)) {
         packet.issueLevel = 'red';
         packet.message = 'Duplicate values: ' + value;
@@ -1881,28 +1902,31 @@ var shared = (function workflowMethodsModule() {
     const c = {value: ''};
     const d = {value: 'x'};
     const e = {value: 'x'};
-    test.ok(run([a]).length === 0, 'Single wrapper, no issue');
-    test.ok(run([a, d]).length === 0, 'Two wrappers, no issues');
-    test.ok(run([b, c]).length === 0, 'Two wrappers, one issue');
-    test.ok(run([a, b, c, c, d]).length === 0, 'Five wrappers, no issue');
-    test.ok(run([a, b, c, d, e]).length === 1, 'Five wrappers, one issue');
+    test.ok(run([a]).length === 0, 'Single proxy, no issue');
+    test.ok(run([a, d]).length === 0, 'Two proxies, no issues');
+    test.ok(run([b, c]).length === 0, 'Two proxies, one issue');
+    test.ok(run([a, b, c, c, d]).length === 0, 'Five proxies, no issue');
+    test.ok(run([a, b, c, d, e]).length === 1, 'Five proxies, one issue');
     test.todo('Async test');
   });
   alertOnDuplicateValues = util.delay(alertOnDuplicateValues, 1000);
 
   /**
-   * @param {Object} _ - Unused parameter. The triggering wrapper.
-   * @param {number} idx - Index of the wrapper in the group.
-   * @param {Object[]} group - Array of two wrappers.
+   * @param {Object} _ - Unused parameter. The triggering proxy.
+   * @param {number} idx - Index of the proxy in the group.
+   * @param {Object[]} group - Array of two proxies.
    */
   function fallThrough (_, idx, group) {
+    const MAX_FALLTHROUGH_LENGTH = 500;
     if (group.length !== 2) {
-      throw new Error('fallThrough requires two wrappers.')
+      throw new Error('fallThrough requires two proxies.')
     }
     if (idx > 0) {
       return;
     }
-    group[1].value = group[0].value;
+    group[1].value = (group[0].value.length > MAX_FALLTHROUGH_LENGTH)
+        ? group[0].value.slice(0, MAX_FALLTHROUGH_LENGTH) + '...'
+        : group[0].value;
     group[0].value = 'Moved';
     log.notice(
       `Fallthrough: '${group[1].value}' became '${group[0].value}'`,
@@ -1919,32 +1943,32 @@ var shared = (function workflowMethodsModule() {
   fallThrough = util.delay(fallThrough, 0);
 
   /**
-   * Cycle a select DOM element through a series of options.
+   * Cycle a select HTMLElement through a series of options.
    *
    * @param {string[]} options - Options to cycle through.
    */
   function cycleSelect(options) {
     /**
-     * @param {Object} wrapper - Select DOM element wrapper.
+     * @param {Object} proxy - Select HTMLElement proxy.
      */
-    function cycle(wrapper) {
-      if (!options.includes(wrapper.value)) {
+    function cycle(proxy) {
+      if (!options.includes(proxy.value)) {
         throw new Error('Element does not have a matching value.');
       }
-      const idx = options.findIndex((option) => option === wrapper.value);
+      const idx = options.findIndex((option) => option === proxy.value);
       const nextIdx = (idx + 1) % options.length;
-      wrapper.value = options[nextIdx];
-      wrapper.blur();
+      proxy.value = options[nextIdx];
+      proxy.blur();
     }
     return cycle;
   }
   test.group('cycleSelect', () => {
     const toggleSelectYesNo = cycleSelect(['yes', 'no']);
-    const wrapper = {value: 'no', blur: () => {}};
-    toggleSelectYesNo(wrapper);
-    test.ok(wrapper.value === 'yes', 'Changed to yes');
-    toggleSelectYesNo(wrapper);
-    test.ok(wrapper.value === 'no', 'Changed back');
+    const proxy = {value: 'no', blur: () => {}};
+    toggleSelectYesNo(proxy);
+    test.ok(proxy.value === 'yes', 'Changed to yes');
+    toggleSelectYesNo(proxy);
+    test.ok(proxy.value === 'no', 'Changed back');
   });
 
 
@@ -2008,7 +2032,7 @@ var shared = (function workflowMethodsModule() {
 // WORKFLOW module
 
 var {detectWorkflow, flows} = (function workflowModule() {
-  // @todo Check the dom for signs (ideally using wrap).
+  // @todo Check the DOM for signs (ideally using wrap).
   function detectWorkflow() {
     return 'ratingHome';
   }
@@ -2132,4 +2156,10 @@ main();
  * write to other elements)
  *
  * @todo Skip function
+ *
+ * @todo Handle submit
+ *
+ * @todo Keep alive
+ *
+ * @todo ...
  */
