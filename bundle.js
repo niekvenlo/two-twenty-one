@@ -915,7 +915,7 @@ var {config, counter, flag, log} = (function reportingModule() {
     const frame = document.createElement('div');
     frame.id = BASE_ID + 'mainGui'
     frame.style.cssText = `
-      background: rgba(240,240,200,0.8);
+      background: rgba(255,255,200,0.8);
       bottom: 0px;
       height: auto;
       left: 0px;
@@ -943,7 +943,49 @@ var {config, counter, flag, log} = (function reportingModule() {
           });
     }
     update = util.debounce(util.delay(update));
-    return {update};
+    return update;
+  })();
+
+  const paintBorders = (function paintBorderModule() {
+    const issueBorders = [];
+
+    /**
+     * Add a div to the DOM with specified coordinates.
+     *
+     * @param {Object} o
+     * @param {number} 0.top
+     * @param {number} 0.left
+     * @param {number} 0.width
+     * @param {number} 0.height
+     */
+    function paintBorder({top, left, width, height}) {
+      const div = document.createElement('div');
+      div.style.cssText = `
+        box-shadow: 2px 2px 10px OrangeRed;
+        border-width: 0;
+        height: ${height}px;
+        left: ${left + 1}px;
+        pointer-events: none;
+        position: absolute;
+        top: ${top + 1}px;
+        width: ${width}px;
+        z-index: 2000;
+      `;
+      issueBorders.push(div);
+      document.body.appendChild(div);
+    }
+
+    /**
+     * Paints borders around every HTMLElement proxy that has been 
+     */
+    function update() {
+      issueBorders.forEach((div) => document.body.removeChild(div));
+      issueBorders.length = 0;
+      guiState.issues
+          .map(issue => issue.proxy.getCoords())
+          .forEach(paintBorder);
+    }
+    return update;
   })();
 
   /**
@@ -954,7 +996,8 @@ var {config, counter, flag, log} = (function reportingModule() {
    */
   function update(packet) {
     if (setState(packet)) {
-      mainGui.update();
+      mainGui();
+      paintBorders();
     }
   }
 
@@ -2190,6 +2233,7 @@ var {detectWorkflow, flows} = (function workflowModule() {
       pick: [0],
       mode: 'user-editable',
       onClick: () => counter.add('Button pushes'),
+      onKeydown_Backquote: () => log.ok('Acquire'),
     });
 
     setGlobalReactions({
