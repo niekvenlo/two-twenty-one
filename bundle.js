@@ -72,16 +72,8 @@ var test = (function testModule() {
       throw new Error('Test requires a function as its second parameter');
     }
     log('header', '===== ' + groupDesc);
-    enclosedInGroup = true;
     func();
-    enclosedInGroup = false;
   };
-
-  const confirmEnclosure = () => {
-    if (!enclosedInGroup) {
-      throw new Error('Please enclose the test within a group');
-    }
-  }
 
   /**
    * Test a statement for truth.
@@ -90,7 +82,6 @@ var test = (function testModule() {
    * @param {?string} itemDesc - Description of test item.
    */
   const ok = (statement, itemDesc) => {
-    confirmEnclosure();
     if (statement === true) {
       log('ok', ' OK: ' + itemDesc);
     } else {
@@ -107,7 +98,6 @@ var test = (function testModule() {
    * @param {?string} itemDesc - Description of test item.
    */
   const fizzle = (fizzleFunc, itemDesc) => {
-    confirmEnclosure();
     try {
       fizzleFunc();
       log('fail', ' FAIL: ' + itemDesc + ' did not fizzle');
@@ -125,7 +115,6 @@ var test = (function testModule() {
    * @param {?string} itemDesc - Description of test item.
    */
   const solid = (throwingFunc, itemDesc) => {
-    confirmEnclosure();
     try {
       throwingFunc();
       log('ok', ' OK: ' + itemDesc + ' is solid');
@@ -379,7 +368,7 @@ var {config, counter, flag, log} = (function reportingModule() {
    * * log - log things.
    */
 
-  const LOCALSTORE_BASENAME = 'twoTwenty';
+  const LOCALSTORE_BASENAME = 'twoTwentyOne';
   const CONFIG_STORE_NAME = 'Configuration';
   const COUNTER_STORE_NAME = 'Counter';
 
@@ -1373,11 +1362,11 @@ var {setReactions, setGlobalReactions} = (function eventListenersModule() {
 ////////////////////////////////////////////////////////////////////////////////
 // DOM ACCESS module
 
-var {wrap, ー} = (function domAccessModule() {
+var {ー} = (function domAccessModule() {
   'use strict';
 
   /**
-   * @fileoverview Exports the wrap function, which enables and regulates
+   * @fileoverview Exports the ー function, which enables and regulates
    * DOM access. Proxy objects for HTMLElements are returned, which
    * expose a limited number of methods, and which log
    * changes.
@@ -1431,6 +1420,11 @@ var {wrap, ー} = (function domAccessModule() {
     }
   }
 
+  /**
+   * Touch an HTMLElement, so that GWT registers it.
+   *
+   * @param {HTMLElement} htmlElement
+   */
   function touch(htmlElement) {
     util.wait().then(() => {
       // Blur signals a change to GWT
@@ -1439,9 +1433,12 @@ var {wrap, ー} = (function domAccessModule() {
   }
 
   /**
+   * All changes to HTMLElement values should be routed through this function.
+   * Changes can be logged and checked.
+   *
    * @param {HTMLElement} htmlElement
    * @param {string} name
-   * @param {}
+   * @param {string} newValue - The new value that should conditionally be set.
    */
   function safeSetter(htmlElement, name, newValue) {
     const currentValue = htmlElement.value;
@@ -1460,10 +1457,31 @@ var {wrap, ー} = (function domAccessModule() {
     );
   }
 
+  /**
+   * Get a fresh proxy matching the select and pick parameters.
+   * If the DOM updates, this may return a proxy to a different HTMLElement
+   * than the original proxy.
+   * 
+   * @param {Object} freshSelector
+   * @param {string} freshSelector.select
+   * @param {number[]} freshSelector.pick
+   * @param {string} name
+   * @return {Object} proxy
+   */
   function getFreshElement(freshSelector, name) {
     return ー({...freshSelector, name, mode: 'static'});
   }
 
+  /**
+   * Make a basic proxy for an HTMLElement, to serve as the basis for more
+   * specific versions.
+   *
+   * @param {Object} o
+   * @param {HTMLElement} o.htmlElement
+   * @param {string} o.name
+   * @param {Object} o.freshSelector
+   * @return {Object} proxy
+   */
   function makeBasicProxy({htmlElement, name, freshSelector}) {
     const proxy = {
       name,
@@ -1508,6 +1526,16 @@ var {wrap, ー} = (function domAccessModule() {
     return proxy;
   }
 
+  /**
+   * Make a specific type of HTMLElement proxy, based on the passed in mode.
+   *
+   * @param {Object} o
+   * @param {HTMLElement} o.htmlElement
+   * @param {string} o.name
+   * @param {string} o.mode
+   * @param {Object} o.freshSelector
+   * @return {Object} proxy
+   */
   function makeProxy({htmlElement, name, mode, freshSelector}) {
     const proxy = makeBasicProxy({
       htmlElement,
@@ -1544,6 +1572,15 @@ var {wrap, ー} = (function domAccessModule() {
     throw new Error('No valid mode set');
   }
 
+  /**
+   * Attempt to append another name to the name property of an HTMLElement
+   * proxy.
+   *
+   * @param {Object} proxy
+   * @param {string} name
+   * @param {number} idx
+   * @return {Object} proxy
+   */
   function appendToNameOfCachedProxy(proxy, name, idx) {
     if (!proxy) {
       return;
@@ -1565,6 +1602,13 @@ var {wrap, ー} = (function domAccessModule() {
     return proxy;
   }
 
+  /**
+   * Create an object that can be used to find a fresh HTMLElement on the page.
+   * This is based on the original values passed into the ー function.
+   *
+   * @param {Object} options
+   * @param {number} idx
+   */
   function makeFreshSelector(options, idx) {
     const {select, pick} = options;
     return {
@@ -1573,6 +1617,13 @@ var {wrap, ー} = (function domAccessModule() {
     };
   }
 
+  /**
+   * Find or create a proxy matching an HTMLElement.
+   *
+   * @param {HTMLElement} htmlElement
+   * @param {number} idx
+   * @param {Object} options
+   */
   function toProxy(htmlElement, idx, options) {
     if (!util.isHTMLElement(htmlElement)) {
       throw new Error('Not an HTMLElement');
@@ -1605,9 +1656,22 @@ var {wrap, ー} = (function domAccessModule() {
   }
 
   /**
-   * 
+   * Access the DOM and find HTMLElements matching the parameters.
+   * Select and pick can be used to find elements in the entire page, while
+   * rootSelect and rootNumber can be used to narrow the search down to a
+   * specific node of the page.
+   * For example, {select: 'button', pick: [2,0,1]} will return the 2nd,
+   * 0th and 1st buttons on the page, in that order.
+   * {rootSelect: 'div', rootNumber: 4, select: 'button', pick: [2]} will
+   * return the 2nd button from the 4th div.
+   *
+   * @param {Object} o
+   * @param {string} o.rootSelect
+   * @param {number} o.rootNumber
+   * @param {string} o.select
+   * @param {number[]} o.pick
    */
-  function gethtmlElements({rootSelect, rootNumber, select, pick}) {
+  function getHtmlElements({rootSelect, rootNumber, select, pick}) {
     const simpleSelect = () => {
       return [...document.querySelectorAll(select)];
     }
@@ -1626,6 +1690,14 @@ var {wrap, ー} = (function domAccessModule() {
     return pickedElements;
   }
 
+  /**
+   * Set event reactions on an HTMLElement.
+   *
+   * @param {Object[]} htmlElements
+   * @param {Object[]} proxies
+   * @param {Object} options - All properties in the options object for which
+   * the name begins with 'on' will be processed.
+   */
   function setAllReactions(htmlElements, proxies, options) {
     const reactions = {};
     for (let prop in options) {
@@ -1640,8 +1712,14 @@ var {wrap, ー} = (function domAccessModule() {
     });
   }
 
+  /**
+   * Find and process HTMLElements to produce proxies and attach event
+   * reactions.
+   *
+   * @param {Object} options
+   */
   function ー(options) {
-    const htmlElements = gethtmlElements(options);
+    const htmlElements = getHtmlElements(options);
     const proxies = htmlElements.map((element,idx) => {
       return toProxy(element, idx, options);
     });
