@@ -294,12 +294,56 @@ var util =
     test.ok(doesObjectMatchTemplate(c, d) === true, 'Different values match');
   });
 
+  /**
+   * Return any input in the form of an array.
+   *
+   * @param {*|*[]} input
+   * @return {*[]}
+   */
   function ensureIsArray(input) {
     if (Array.isArray(input)) {
       return input;
     }
     return [input];
   }
+  test.group('ensureIsArray', () => {
+    test.ok(ensureIsArray(5).length === 1, '5 becomes an array');
+    test.ok(ensureIsArray(5)[0] === 5, '5 becomes [5]');
+    test.ok(ensureIsArray([5]).length === 1, '[5] remains an array');
+    test.ok(ensureIsArray([5])[0] === 5, '[5] remains [5]');
+  });
+
+  /**
+   * Map a url to its domain.
+   *
+   * @param {string} url
+   * @return {string}
+   */
+  function getDomain(url) {
+    if (url === '') {
+      return '';
+    }
+    if (!/^https?:\//.test(url)) {
+      log.warn('Not a url', true);
+      return '';
+    }
+    const domain = url.match(/\/\/([^\/]*)/);
+    return domain[1];
+  }
+  test.group('getDomain', () => {
+    test.ok(
+      getDomain('https://example.com') === 'example.com',
+      'Test 1',
+    );
+    test.ok(
+      getDomain('http://www.example.com') === 'www.example.com',
+      'Test 2',
+    );
+    test.ok(
+      getDomain('http://www.example.com/test.html') === 'www.example.com',
+      'Test 3'
+    );
+  })
 
   /**
    * Test whether an object is an HTMLElement. Uses simple duck typing.
@@ -343,6 +387,7 @@ var util =
     doArraysMatch,
     doesObjectMatchTemplate,
     ensureIsArray,
+    getDomain,
     isHTMLElement,
     mapToBulletedList,
     wait,
@@ -656,7 +701,7 @@ var {config, counter, flag, log} = (function reportingModule() {
       notice: {color:'DodgerBlue', print: true},
       warn: {color:'OrangeRed', print: true},
       ok: {color:'LimeGreen', print: true},
-      lowLevel: {color:'Gainsboro', print: true},
+      lowLevel: {color:'Gainsboro', print: false},
       changeValue: {color:'LightPink', print: false},
       changeConfig: {color:'MediumOrchid', print: true},
     };
@@ -903,11 +948,11 @@ var {config, counter, flag, log} = (function reportingModule() {
       return '';
     }
     const mappedToLi = elements.map(el => {
-      return `<li>${el[valueProp]}: <em>${el[titleProp]}</em></li>`
+      return `<li>${el[valueProp]}: <em>${el[titleProp]}</em></li>`;
     });
     return (
         `<h4 style="padding: 0 0 0 10px">${title}</h4>` +
-        `<ul id=${BASE_ID}_${title}>${mappedToLi}</ul>`
+        `<ul id=${BASE_ID}_${title}>${mappedToLi.join('')}</ul>`
     );
   }
 
@@ -961,13 +1006,13 @@ var {config, counter, flag, log} = (function reportingModule() {
     function paintBorder({top, left, width, height}) {
       const div = document.createElement('div');
       div.style.cssText = `
-        box-shadow: 2px 2px 10px OrangeRed;
+        box-shadow: 0 0 6px orange;
         border-width: 0;
         height: ${height}px;
-        left: ${left + 1}px;
+        left: ${left}px;
         pointer-events: none;
         position: absolute;
-        top: ${top + 1}px;
+        top: ${top}px;
         width: ${width}px;
         z-index: 2000;
       `;
@@ -1008,6 +1053,9 @@ var {config, counter, flag, log} = (function reportingModule() {
     document.addEventListener('guiUpdate', ({detail}) => {
       const packet = detail;
       update(packet);
+    }, {passive: true});
+    document.addEventListener('scroll', () => {
+      mainGui();
     }, {passive: true});
   }
   addGuiUpdateListener();
@@ -1357,6 +1405,9 @@ var {setReactions, setGlobalReactions} = (function eventListenersModule() {
   function genericEventHandler(event) {
     const targetReactions = getMatchingReactions(event);
     runAll(targetReactions);
+//     if (targetReactions.length > 0 && event.type === 'keydown') {
+//       event.preventDefault();
+//     }
   }
 
   /**
@@ -1472,6 +1523,7 @@ var {ー} = (function domAccessModule() {
     util.wait().then(() => {
       // Blur signals a change to GWT
       htmlElement.dispatchEvent(new Event('blur'));
+      htmlElement.dispatchEvent(new Event('paste'));
     });
   }
 
@@ -1715,6 +1767,12 @@ var {ー} = (function domAccessModule() {
    * @param {number[]} o.pick
    */
   function getHtmlElements({rootSelect, rootNumber, select, pick}) {
+    if (!pick) {
+      throw new Error(
+        'Required paramers missing: ' +
+        util.mapToBulletedList([rootSelect, rootNumber, select, pick]),
+      )
+    }
     const simpleSelect = () => {
       return [...document.querySelectorAll(select)];
     }
@@ -1989,13 +2047,23 @@ var shared = (function workflowMethodsModule() {
    * @param {number} __ - Unused parameter. The index of the triggering proxy.
    * @param {Object[]} group - Array of proxies to check for duplicate values.
    */
-  function alertOnDuplicateValues (_, __, group, testing) {
+  function alertOnDuplicateValues(_, __, group, testing) {
     const values = [];
+    const dupes = [];
     const packets = [];
-    for (let i = 0; i < group.length; i++) {
-      const value = group[i].value;
-      let packet = {proxy: group[i], issueType: 'Dupes'};
+    for (let proxy of group) {
+      const value = proxy.value;
       if (values.includes(value)) {
+        dupes.push(value);
+      }
+      if (value !== '') {
+        values.push(value);
+      }
+    }
+    for (let proxy of group) {
+      const value = proxy.value;
+      let packet = {proxy, issueType: 'Dupes'};
+      if (dupes.includes(value)) {
         packet.issueLevel = 'red';
         packet.message = 'Duplicate values: ' + value;
       }
@@ -2025,12 +2093,19 @@ var shared = (function workflowMethodsModule() {
     const e = {value: 'x'};
     test.ok(run([a]).length === 0, 'Single proxy, no issue');
     test.ok(run([a, d]).length === 0, 'Two proxies, no issues');
-    test.ok(run([b, c]).length === 0, 'Two proxies, one issue');
+    test.ok(run([b, c]).length === 0, 'Two proxies, no issues, still');
     test.ok(run([a, b, c, c, d]).length === 0, 'Five proxies, no issue');
-    test.ok(run([a, b, c, d, e]).length === 1, 'Five proxies, one issue');
+    test.ok(run([a, b, c, d, e]).length === 2, 'Five proxies, two issues');
     test.todo('Async test');
   });
-  alertOnDuplicateValues = util.delay(alertOnDuplicateValues, 1000);
+  alertOnDuplicateValues = util.delay(alertOnDuplicateValues, 100);
+
+  function guessValueFromPastedValue(pastedValue) {
+    const value = (/^http/.test(pastedValue))
+        ? pastedValue.replace(/\/index/i, '').match(/[^\/]*[\/]?$/)[0]
+        : pastedValue;
+    return decodeURIComponent(value).toLowerCase().trim();
+  }
 
   /**
    * @param {Object} _ - Unused parameter. The triggering proxy.
@@ -2038,17 +2113,16 @@ var shared = (function workflowMethodsModule() {
    * @param {Object[]} group - Array of two proxies.
    */
   function fallThrough (_, idx, group) {
-    const MAX_FALLTHROUGH_LENGTH = 500;
     if (group.length !== 2) {
       throw new Error('fallThrough requires two proxies.')
     }
     if (idx > 0) {
       return;
     }
-    group[1].value = (group[0].value.length > MAX_FALLTHROUGH_LENGTH)
-        ? group[0].value.slice(0, MAX_FALLTHROUGH_LENGTH) + '...'
-        : group[0].value;
-    group[0].value = 'Moved';
+    if (/^https?:/.test(group[0].value)) {
+      group[1].value = group[0].value;
+    }
+    group[0].value = guessValueFromPastedValue(group[0].value);
     log.notice(
       `Fallthrough: '${group[1].value}' became '${group[0].value}'`,
       true,
@@ -2084,12 +2158,12 @@ var shared = (function workflowMethodsModule() {
     return cycle;
   }
   test.group('cycleSelect', () => {
-    const toggleSelectYesNo = cycleSelect(['yes', 'no']);
-    const proxy = {value: 'no', blur: () => {}};
+    const toggleSelectYesNo = cycleSelect(['YES', 'NO']);
+    const proxy = {value: 'NO', blur: () => {}};
     toggleSelectYesNo(proxy);
-    test.ok(proxy.value === 'yes', 'Changed to yes');
+    test.ok(proxy.value === 'YES', 'Changed to yes');
     toggleSelectYesNo(proxy);
-    test.ok(proxy.value === 'no', 'Changed back');
+    test.ok(proxy.value === 'NO', 'Changed back');
   });
 
 
@@ -2105,18 +2179,56 @@ var shared = (function workflowMethodsModule() {
   }
 
   /**
-   * Stub. Just a test balloon.
+   * Skip the current task.
+   * Currently takes no parameters but could be rewritten to override the
+   * locations of the buttons in the DOM.
    */
-  function skipTask() {
-    log.notice('Skipping task');
-    wrap('select', [0], 'programmable', 'Name', {
-      onLoad: cycleSelect(['yes', 'no']), 
-    });
+  async function skipTask() {
+    const RETRIES = 15;
+    const DELAY = 25; // ms
+
+    const skipButtonSelector = {
+      name: 'Skip Button',
+      select: '.taskIssueButton',
+      pick: [0],
+      mode: 'static',
+    };
+    const confirmButtonSelector = {
+      name: 'Confirm Skip',
+      select: '.gwt-SubmitButton',
+      pick: [0],
+      mode: 'static',
+    };
+
+    const skipButton = ー(skipButtonSelector)[0];
+    if (!skipButton) {
+      log.warn('Skip button not found.', true);
+      return;
+    }
+    skipButton.click();
+
+    let retries = RETRIES;
+    while(retries-- > 0) {
+      const confirmButton = ー(confirmButtonSelector)[0];
+      if (confirmButton) {
+        confirmButton.click();
+        log.notice('Skipping task', true);
+        counter.add('Skipping');
+        return;
+      }
+      await util.wait(DELAY);
+    }
+    log.warn('Skip confirmation dialog did not appear.', true);
+  }
+
+  function save(data) {
+    console.log(data);
   }
 
   return {
     resetCounter,
     skipTask,
+    save,
 
     fallThrough,
     redAlertOnDupe: alertOnDuplicateValues,
@@ -2135,11 +2247,19 @@ var shared = (function workflowMethodsModule() {
       to: '',
       when: testRegex(/---/, true),
     }),
-    removeUrl: changeValue({
+    requireUrl: changeValue({
       to: '',
-      when: testRegex(/^http/, true),
+      when: testRegex(/^http/, false),
     }),
-    toggleSelectYesNo: cycleSelect(['yes', 'no']),
+    requireScreenshot: changeValue({
+      to: '',
+      when: testRegex(/gleplex/, false),
+    }),
+    removeScreenshot: changeValue({
+      to: '',
+      when: testRegex(/gleplex/, true),
+    }),
+    toggleSelectYesNo: cycleSelect(['YES', 'NO']),
   }
 }
 )();
@@ -2153,63 +2273,56 @@ var shared = (function workflowMethodsModule() {
 // WORKFLOW module
 
 var {detectWorkflow, flows} = (function workflowModule() {
-  // @todo Check the DOM for signs (ideally using wrap).
   function detectWorkflow() {
-    return 'ratingHome';
+    const header = ー({
+      name: 'Header',
+      select: 'h1',
+      pick: [0],
+      mode: 'static',
+    })[0];
+    const headerText = header && header.textContent;
+
+    switch (true) {
+      case /Sitelinks Dutch/.test(headerText):
+        return 'slDutch';
+      case headerText === 'TwoTwentyOne':
+        return 'playground';
+      default:
+        return 'ratingHome';
+    }
   }
 
-  function ratingHome() {
+  function ratingHome(main) {
     ー({
-      name: 'NoUrl',
-      select: 'textarea',
-      pick: [3,4,5],
+      name: 'Select',
+      select: 'select',
+      pick: [0, 1, 2],
       mode: 'programmable',
-      onFocusout: shared.removeUrl,
-      onPaste: shared.removeUrl,
+      onClick: shared.toggleSelectYesNo,
     });
 
-    ー({
-      name: 'Maan',
-      select: 'textarea',
-      pick: [3],
-      mode: 'programmable',
+    setGlobalReactions({
+      onKeydown_Backquote: main,
     });
+  }
 
+  function slDutch(main) {
     ー({
       name: 'Text',
       select: 'textarea',
-      pick: [0,1,2],
+      pick: [2, 6, 10, 14, 18],
       mode: 'programmable',
       onInteract: [
         shared.redAlertExceed25Chars,
-        shared.redAlertOnDupe
+        shared.redAlertOnDupe,
       ],
       onLoad: [
         shared.redAlertExceed25Chars,
-        shared.redAlertOnDupe
+        shared.redAlertOnDupe,
       ],
     });
 
-    ー({
-      name: 'NoUrl',
-      select: 'textarea',
-      pick: [3,4,5],
-      mode: 'programmable',
-      onFocusout: shared.removeUrl,
-      onPaste: shared.removeUrl,
-    });
-
-    ー({
-      name: 'Dashes',
-      select: 'textarea',
-      pick: [6,7,8],
-      mode: 'programmable',
-      onFocusin: shared.removeDashes,
-      onFocusout: shared.addDashes,
-      onLoad: shared.addDashes,
-    });
-    
-    [[0,3],[1,4],[2,5]].forEach(pair => {
+    [[2, 3],[6, 7],[10, 11],[14, 15],[18, 19]].forEach(pair => {
       ー({
         name: 'Fall',
         select: 'textarea',
@@ -2220,31 +2333,190 @@ var {detectWorkflow, flows} = (function workflowModule() {
     });
 
     ー({
-      name: 'Select',
-      select: 'select',
-      pick: [0,1],
+      name: 'Url',
+      select: 'textarea',
+      pick: [3, 7, 11, 15, 19],
       mode: 'programmable',
-      onClick: shared.toggleSelectYesNo,
+      onFocusout: [
+        shared.requireUrl,
+        shared.removeScreenshot,
+      ],
+      onPaste: [
+        shared.requireUrl,
+        shared.removeScreenshot,
+      ],
+    });ー({
+      name: 'Urls',
+      select: 'textarea',
+      pick: [1, 3, 7, 11, 15, 19],
+      mode: 'programmable',
+      onFocusout: shared.redAlertOnDupe,
+      onPaste: shared.redAlertOnDupe,
     });
 
     ー({
-      name: 'Acquire',
-      select: 'button',
-      pick: [0],
-      mode: 'user-editable',
-      onClick: () => counter.add('Button pushes'),
-      onKeydown_Backquote: () => log.ok('Acquire'),
+      name: 'Screenshot',
+      select: 'textarea',
+      pick: [4, 8, 12, 16, 20],
+      mode: 'programmable',
+      onFocusout: [
+        shared.requireUrl,
+        shared.requireScreenshot,
+      ],
+      onPaste: [
+        shared.requireUrl,
+        shared.requireScreenshot,
+      ],
     });
 
+    ー({
+      name: 'Dashes',
+      select: 'textarea',
+      pick: [5, 9, 13, 17, 21],
+      mode: 'programmable',
+      onFocusin: shared.removeDashes,
+      onFocusout: shared.addDashes,
+      onLoad: shared.addDashes,
+    });
+
+    function save() {
+      const values = ー({
+        name: 'Save',
+        select: 'textarea',
+        pick: [1, 2, 3, 6, 7, 10, 11, 14, 15, 18, 19],
+        mode: 'programmable',
+      }).map(element => element.value);
+      const domain = util.getDomain(values[0]);
+      const data = {[domain]: values.slice(1)};
+      shared.save(data);
+    }
+
     setGlobalReactions({
-      onKeydown_Backquote: () => log.ok('Start'),
-      onKeydown_Backslash: () => log.ok('Approve'),
+      onKeydown_Backquote: main,
       onKeydown_BracketLeft: shared.resetCounter,
       onKeydown_BracketRight: shared.skipTask,
+      onKeydown_CtrlAltS: save,
     });
   }
 
-  const flows = {ratingHome};
+  function playground(main) {
+//     ー({
+//       name: 'Text',
+//       select: 'textarea',
+//       pick: [2, 6, 10, 14, 18],
+//       mode: 'programmable',
+//       onInteract: [
+//         shared.redAlertExceed25Chars,
+//         shared.redAlertOnDupe,
+//       ],
+//       onLoad: [
+//         shared.redAlertExceed25Chars,
+//         shared.redAlertOnDupe,
+//       ],
+//     });
+
+//     ー({
+//       name: 'Url',
+//       select: 'textarea',
+//       pick: [3, 7, 11, 15, 19],
+//       mode: 'programmable',
+//       onFocusout: [
+//         shared.requireUrl,
+//         shared.removeScreenshot,
+//       ],
+//       onPaste: [
+//         shared.requireUrl,
+//         shared.removeScreenshot,
+//       ],
+//     });
+
+//     ー({
+//       name: 'Urls',
+//       select: 'textarea',
+//       pick: [1, 3, 7, 11, 15, 19],
+//       mode: 'programmable',
+//       onFocusout: shared.redAlertOnDupe,
+//       onPaste: shared.redAlertOnDupe,
+//     });
+
+//     ー({
+//       name: 'Screenshot',
+//       select: 'textarea',
+//       pick: [4, 8, 12, 16, 20],
+//       mode: 'programmable',
+//       onFocusout: [
+//         shared.requireUrl,
+//         shared.requireScreenshot,
+//       ],
+//       onPaste: [
+//         shared.requireUrl,
+//         shared.requireScreenshot,
+//       ],
+//     });
+
+//     ー({
+//       name: 'Dashes',
+//       select: 'textarea',
+//       pick: [5, 9, 13, 17, 21],
+//       mode: 'programmable',
+//       onFocusin: shared.removeDashes,
+//       onFocusout: shared.addDashes,
+//       onLoad: shared.addDashes,
+//     });
+    
+//     [[2, 3],[6, 7],[10, 11],[14, 15],[18, 19]].forEach(pair => {
+//       ー({
+//         name: 'Fall',
+//         select: 'textarea',
+//         pick: pair,
+//         mode: 'programmable',
+//         onPaste: shared.fallThrough,
+//       });
+//     });
+
+//     ー({
+//       name: 'Select',
+//       select: 'select',
+//       pick: [0, 1],
+//       mode: 'programmable',
+//       onClick: shared.toggleSelectYesNo,
+//     });
+
+//     ー({
+//       name: 'Acquire',
+//       select: 'button',
+//       pick: [1],
+//       mode: 'user-editable',
+//       onClick: () => counter.add('Button pushes'),
+//       onKeydown_Backquote: () => log.ok('Acquire'),
+//     });
+
+//     function save() {
+//       const values = ー({
+//         name: 'Save',
+//         select: 'textarea',
+//         pick: [1, 2, 3, 6, 7, 10, 11, 14, 15, 18, 19],
+//         mode: 'programmable',
+//       }).map(element => element.value);
+//       const domain = util.getDomain(values[0]);
+//       const data = {[domain]: values.slice(1)};
+//       shared.save(data);
+//     }
+
+//     setGlobalReactions({
+//       onKeydown_Backquote: main,
+//       onKeydown_Backslash: () => log.ok('Approve'),
+//       onKeydown_BracketLeft: shared.resetCounter,
+//       onKeydown_BracketRight: shared.skipTask,
+//       onKeydown_CtrlAltS: save,
+//     });
+  }
+
+  const flows = {
+    ratingHome,
+    slDutch,
+    playground,
+  };
   return {detectWorkflow, flows};
 })();
 
@@ -2262,7 +2534,7 @@ function main() {
     return log.warn('No workflow identified');
   }
   const flowInit = flows[name];
-  flowInit();
+  flowInit(main);
   log.notice(`${name} screen loaded`);
 };
 
@@ -2283,5 +2555,11 @@ main();
  *
  * @todo Keep alive
  *
- * @todo ...
+ * @todo Flows manager
+ *
+ * @todo Data store for prefill and the like
+ *
+ * @todo Improve flow methods
+ *
+ * @todo Handle scrolling within divs
  */
