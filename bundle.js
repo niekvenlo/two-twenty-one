@@ -221,6 +221,12 @@ var util =
     test.ok(DEFAULT_DELAY !== undefined, 'Default delay is set');
   });
 
+  /**
+   * Function decorator. Returns a function that will run with a delay.
+   *
+   * @param {function} func - The function to be decorated.
+   * @param {number} ms - The delay in milliseconds.
+   */
   function delay(func, ms = DEFAULT_DELAY) {
     function delayed(...params) {
       wait(ms).then(() => func(...params));
@@ -236,6 +242,17 @@ var util =
     increment();
     test.ok(val === 1, 'Incrementing does work');
   });
+
+  /**
+   * @param {Object} o
+   * @param {string} o.type - E.g. 'keydown' or 'guiUpdate'.
+   * @param {Object} o.payload - E.g. event or {detail: {stage: 5}}.
+   * @param {HTMLElement} o.target - The HTMLElement emitting the event.
+   * @example 
+   */
+  function dispatch({type, payload, target = document}) {
+    target.dispatchEvent(new CustomEvent(type, payload));
+  }
 
   /**
    * Compares two arrays shallowly. Two arrays match if the i-th element in
@@ -384,6 +401,7 @@ var util =
     bundle,
     debounce,
     delay,
+    dispatch,
     doArraysMatch,
     doesObjectMatchTemplate,
     ensureIsArray,
@@ -400,15 +418,14 @@ var util =
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
-// STATEFUL module
+// REPORTING module
 
 var {
   config,
   counter,
-  flag,
+  data,
   log,
-  state,
-} = (function statefulModule() {
+} = (function reportingModule() {
   'use strict';
 
   /**
@@ -417,12 +434,32 @@ var {
    * * counter - count things.
    * * flag - flag issues.
    * * log - log things.
-   * * state - store application state.
    */
 
   const LOCALSTORE_BASENAME = 'twoTwentyOne';
+
   const CONFIG_STORE_NAME = 'Configuration';
+
   const COUNTER_STORE_NAME = 'Counter';
+
+  const DATA_STORE_NAME = 'Data';
+
+  const LOGBOOK_STORE_NAME = 'LogBook';
+  const MAX_LOG_LENGTH = 5000; // entries
+  const LOG_PAGE_SIZE = 25; // entries per page
+  const NO_COLOR_FOUND = 'yellow';
+  const TIMESTAMP_COLOR = 'color: grey';
+  const LOG_TYPES = {
+    log: {color:'black', print: true},
+    notice: {color:'DodgerBlue', print: true},
+    warn: {color:'OrangeRed', print: true},
+    ok: {color:'LimeGreen', print: true},
+    lowLevel: {color:'Gainsboro', print: false},
+    changeValue: {color:'LightPink', print: false},
+    changeConfig: {color:'MediumOrchid', print: true},
+    saveExtraction: {color:'#6370ff', print: true},
+    autoSaveExtraction: {color:'#6370ff', print: true},
+  };
 
   /**
    * Create a human readable string timestamp.
@@ -470,9 +507,7 @@ var {
    * @example - updateGui({counters: {one: 21}});
    */
   function updateGui(packet) {
-    document.dispatchEvent(
-        new CustomEvent('guiUpdate', {detail: packet})
-    );
+    util.dispatch({type: 'guiUpdate', payload: {detail: packet}});
   }
   test.group('updateGui', () => {
     let received;
@@ -635,6 +670,14 @@ var {
     test.ok(counter.get(complex) === -1, 'Counter is gone');
   }, true);
 
+  /**
+   * Manage dynamic data stores.
+   */
+  const data = (function dataMiniModule() {
+    const storedData = localStore.get(DATA_STORE_NAME);
+    return storedData;
+  })();
+
   let flaggedIssues = [];
 
   /**
@@ -699,20 +742,6 @@ var {
   * * @param {Boolean} persist Should the event be persisted to localstorage?
   */
   const log = (function loggingModule() {
-    const STORE_NAME = 'LogBook';
-    const MAX_LOG_LENGTH = 5000; // entries
-    const LOG_PAGE_SIZE = 25; // entries per page
-    const NO_COLOR_FOUND = 'yellow';
-    const TIMESTAMP_COLOR = 'color: grey';
-    const LOG_TYPES = {
-      log: {color:'black', print: true},
-      notice: {color:'DodgerBlue', print: true},
-      warn: {color:'OrangeRed', print: true},
-      ok: {color:'LimeGreen', print: true},
-      lowLevel: {color:'Gainsboro', print: false},
-      changeValue: {color:'LightPink', print: false},
-      changeConfig: {color:'MediumOrchid', print: true},
-    };
 
     /**
      * Generate a string from a log entry, in order to print to the console.
@@ -745,7 +774,7 @@ var {
      * @time {=Date} Optionally, provide a Date for the timestamp.
      */
     function toConsole({type, payload, time = new Date()}) {
-      const color = LOG_TYPES[type].color || NO_COLOR_FOUND;
+      const color = LOG_TYPES[type] && LOG_TYPES[type].color || NO_COLOR_FOUND;
       const ts = timestamp(time);
       const string = payloadToString(payload, ts.length);
       console.log(`%c${ts} %c${string}`, TIMESTAMP_COLOR, `color: ${color}`);
@@ -758,7 +787,7 @@ var {
      * @return {Object[]} Array of entries. 
      */
     function getPersistent() {
-      const logBook = localStore.get(STORE_NAME);
+      const logBook = localStore.get(LOGBOOK_STORE_NAME);
       return (logBook.entries || []).map(entry => {
         entry.time = new Date(entry.time);
         return entry;
@@ -775,7 +804,7 @@ var {
      */
     function setPersistent(entries) {
       entries = entries.slice(-MAX_LOG_LENGTH);
-      localStore.set(STORE_NAME, {entries});
+      localStore.set(LOGBOOK_STORE_NAME, {entries});
     }
 
     /**
@@ -866,6 +895,10 @@ var {
       test.todo('XXXXX');
     });
 
+    function raw(filterBy = {}) {
+      return getFilteredPersistent(filterBy);
+    }
+
     /**
      * Generate a logging function.
      *
@@ -891,236 +924,19 @@ var {
       return log;
     }
 
-    const toExport = {print: printPersistent};
+    const exports = {print: printPersistent, raw};
     for (let type in LOG_TYPES) {
-      toExport[type] = genericLog(type);
+      exports[type] = genericLog(type);
     }
-    return toExport;
+    return exports;
   })();
-
-  const state = (function stateMiniModule() { //XDC
-    const state = {
-      stage: 0,
-      flowName: undefined,
-      maxStage: 1,
-    };
-
-    function get() {
-      return {...state};
-    }
-
-    const stage = {
-      get() {
-        return state.stage;
-      },
-      decrement() {
-        log.lowLevel('Decrementing stage');
-        state.stage = Math.max(state.stage - 1, 0);
-        return state.stage;
-      },
-      increment() {
-        log.lowLevel('Incrementing stage');
-        state.stage = state.stage + 1 / state.maxStage;
-        return state.stage;
-      },
-      reset() {
-        log.lowLevel('Resetting stage');
-        state.stage = 0;
-        return state.stage;
-      },
-    }
-
-    const flowName = {
-      get() {
-        return state.flowName;
-      },
-      set(newValue) {
-        state.flowName = newValue;
-        return state.flowName;
-      },
-    }
-
-    return {
-      flowName,
-      stage,
-      get,
-    }
-  })();
-  function stages(maxStage) {
-    let stage = 0;
-
-  };
 
   return {
     config,
     counter,
+    data,
     log,
-    state,
   };
-})();
-
-
-
-
-////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
-// GUI module
-
-(function guiModule() {
-  'use strict';
-
-  /**
-   * @fileoverview Maintains the graphical interface and
-   * associated data, and exposes an update method to send
-   * updates to the data and trigger an update.
-   * A custom event listener may replace or supplement the
-   * update function.
-   * @todo Implement proper UX.
-   */
-
-  const BASE_ID = 'tto';
-
-  const guiState = Object.seal({
-    stage: 0,
-    counters: {},
-    issues: [],
-  });
-
-  function setState(packet) {
-    for (let prop in packet) {
-      const incoming = packet[prop];
-      const state = guiState[prop];
-      if (state === undefined) {
-        throw new Error(`Unknown gui state property: ${prop}`);
-      }
-      if (
-        Array.isArray(incoming) &&
-        util.doArraysMatch(state, incoming)
-      ) {
-        return false;
-      }
-      guiState[prop] = incoming;
-    }
-    return true;
-  }
-
-  function makeUl({title, elements, valueProp, titleProp}) {
-    if (elements.length < 1) {
-      return '';
-    }
-    const mappedToLi = elements.map(el => {
-      return `<li>${el[valueProp]}: <em>${el[titleProp]}</em></li>`;
-    });
-    return (
-        `<h4 style="padding: 0 0 0 10px">${title}</h4>` +
-        `<ul id=${BASE_ID}_${title}>${mappedToLi.join('')}</ul>`
-    );
-  }
-
-  const mainGui = (function mainGuiModule() {
-    const frame = document.createElement('div');
-    frame.id = BASE_ID + 'mainGui'
-    frame.style.cssText = `
-      background: rgba(255,255,200,0.8);
-      bottom: 0px;
-      height: auto;
-      left: 0px;
-      pointer-events: none;
-      position: fixed;
-      width: 100%;
-      z-index: 2000;
-    `;
-    document.body.append(frame);
-    function update() {
-      const issues = guiState.issues;
-      const counters = Object.entries(guiState.counters);
-      frame.innerHTML =
-          makeUl({
-            title: 'Issues',
-            elements: issues,
-            valueProp: 'issueType',
-            titleProp: 'message',
-          }) + 
-          makeUl({
-            title: 'Counters',
-            elements: counters,
-            valueProp: 1,
-            titleProp: 0,
-          });
-    }
-    update = util.debounce(util.delay(update));
-    return update;
-  })();
-
-  const paintBorders = (function paintBorderModule() {
-    const issueBorders = [];
-
-    /**
-     * Add a div to the DOM with specified coordinates.
-     *
-     * @param {Object} o
-     * @param {number} 0.top
-     * @param {number} 0.left
-     * @param {number} 0.width
-     * @param {number} 0.height
-     */
-    function paintBorder({top, left, width, height}) {
-      const div = document.createElement('div');
-      div.style.cssText = `
-        box-shadow: 0 0 6px orange;
-        border-width: 0;
-        height: ${height}px;
-        left: ${left}px;
-        pointer-events: none;
-        position: absolute;
-        top: ${top}px;
-        width: ${width}px;
-        z-index: 2000;
-      `;
-      issueBorders.push(div);
-      document.body.appendChild(div);
-    }
-
-    /**
-     * Paints borders around every HTMLElement proxy that has been 
-     */
-    function update() {
-      issueBorders.forEach((div) => document.body.removeChild(div));
-      issueBorders.length = 0;
-      guiState.issues
-          .map(issue => issue.proxy.getCoords())
-          .forEach(paintBorder);
-    }
-    return update;
-  })();
-
-  /**
-   * Merges new data into the local gui state, and triggers and update of
-   * the gui.
-   *
-   * @param {Object} packet - Data to be merged into the gui's state.
-   */
-  function update(packet) {
-    if (setState(packet)) {
-      mainGui();
-      paintBorders();
-    }
-  }
-
-  /**
-   * Sets a listener on the document for gui updates.
-   */
-  function addGuiUpdateListener() {
-    document.addEventListener('guiUpdate', ({detail}) => {
-      const packet = detail;
-      update(packet);
-    }, {passive: true});
-    document.addEventListener('scroll', () => {
-      paintBorders();
-    }, {passive: true});
-  }
-  addGuiUpdateListener();
 })();
 
 
@@ -1528,7 +1344,7 @@ var {
 ////////////////////////////////////////////////////////////////////////////////
 // DOM ACCESS module
 
-var {ー} = (function domAccessModule() {
+var {ー, ref} = (function domAccessModule() {
   'use strict';
 
   /**
@@ -1677,6 +1493,9 @@ var {ー} = (function domAccessModule() {
       scrollIntoView() {
         htmlElement.scrollIntoView();
       },
+      touch() {
+        touch(htmlElement);
+      },
       toString() {
         return `${name}: ${htmlElement.value}`;
       },
@@ -1799,7 +1618,7 @@ var {ー} = (function domAccessModule() {
     if (cached && options.mode === 'fresh') {
       options.mode = cached.mode;
     } else if (cached) {
-      if (cached.mode !== options.mode) {
+      if (cached.mode !== options.mode && false) { // @todo Fix warning
         log.warn(
           `Didn't change ${options.name} element mode from ${cached.mode}` +
           ` to ${options.mode}`,
@@ -1885,6 +1704,8 @@ var {ー} = (function domAccessModule() {
     });
   }
 
+  const ref = {};
+
   /**
    * Find and process HTMLElements to produce proxies and attach event
    * reactions.
@@ -1899,10 +1720,177 @@ var {ー} = (function domAccessModule() {
     if (options.mode !== 'fresh') {
       setAllReactions(htmlElements, proxies, options);
     }
+    if (options.ref) {
+      ref[options.ref] = proxies;
+    }
     return proxies;
   }
 
-  return {ー};
+  return {ー, ref};
+})();
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+// GUI module
+
+(function guiModule() {
+  'use strict';
+
+  /**
+   * @fileoverview Maintains the graphical interface and
+   * associated data, and exposes an update method to send
+   * updates to the data and trigger an update.
+   * A custom event listener may replace or supplement the
+   * update function.
+   * @todo Implement proper UX.
+   */
+
+  const BASE_ID = 'tto';
+
+  const guiState = Object.seal({
+    stage: 0,
+    counters: {},
+    issues: [],
+  });
+
+  function setState(packet) {
+    for (let prop in packet) {
+      const incoming = packet[prop];
+      const state = guiState[prop];
+      if (state === undefined) {
+        throw new Error(`Unknown gui state property: ${prop}`);
+      }
+      if (
+        Array.isArray(incoming) &&
+        util.doArraysMatch(state, incoming)
+      ) {
+        return false;
+      }
+      guiState[prop] = incoming;
+    }
+    return true;
+  }
+
+  function makeUl({title, elements, valueProp, titleProp}) {
+    if (elements.length < 1) {
+      return '';
+    }
+    const mappedToLi = elements.map(el => {
+      return `<li>${el[valueProp]}: <em>${el[titleProp]}</em></li>`;
+    });
+    return (
+        `<h4 style="padding: 0 0 0 10px">${title}</h4>` +
+        `<ul id=${BASE_ID}_${title}>${mappedToLi.join('')}</ul>`
+    );
+  }
+
+  const mainGui = (function mainGuiModule() {
+    const frame = document.createElement('div');
+    frame.id = BASE_ID + 'mainGui'
+    frame.style.cssText = `
+      background: rgba(255,255,200,0.8);
+      bottom: 0px;
+      height: auto;
+      left: 0px;
+      pointer-events: none;
+      position: fixed;
+      width: 100%;
+      z-index: 2000;
+    `;
+    document.body.append(frame);
+    function update() {
+      const issues = guiState.issues;
+      const counters = Object.entries(guiState.counters);
+      frame.innerHTML =
+          makeUl({
+            title: 'Issues',
+            elements: issues,
+            valueProp: 'issueType',
+            titleProp: 'message',
+          }) + 
+          makeUl({
+            title: 'Counters',
+            elements: counters,
+            valueProp: 1,
+            titleProp: 0,
+          });
+    }
+    update = util.debounce(util.delay(update));
+    return update;
+  })();
+
+  const paintBorders = (function paintBorderModule() {
+    const issueBorders = [];
+
+    /**
+     * Add a div to the DOM with specified coordinates.
+     *
+     * @param {Object} o
+     * @param {number} 0.top
+     * @param {number} 0.left
+     * @param {number} 0.width
+     * @param {number} 0.height
+     */
+    function paintBorder({top, left, width, height}) {
+      const div = document.createElement('div');
+      div.style.cssText = `
+        box-shadow: 0 0 6px orange;
+        border-width: 0;
+        height: ${height}px;
+        left: ${left}px;
+        pointer-events: none;
+        position: absolute;
+        top: ${top}px;
+        width: ${width}px;
+        z-index: 2000;
+      `;
+      issueBorders.push(div);
+      document.body.appendChild(div);
+    }
+
+    /**
+     * Paints borders around every HTMLElement proxy that has been 
+     */
+    function update() {
+      issueBorders.forEach((div) => document.body.removeChild(div));
+      issueBorders.length = 0;
+      guiState.issues
+          .map(issue => issue.proxy.getCoords())
+          .forEach(paintBorder);
+    }
+    return update;
+  })();
+
+  /**
+   * Merges new data into the local gui state, and triggers and update of
+   * the gui.
+   *
+   * @param {Object} packet - Data to be merged into the gui's state.
+   */
+  function update(packet) {
+    if (setState(packet)) {
+      mainGui();
+      paintBorders();
+    }
+  }
+
+  /**
+   * Sets a listener on the document for gui updates.
+   */
+  function addGuiUpdateListener() {
+    document.addEventListener('guiUpdate', ({detail}) => {
+      const packet = detail;
+      update(packet);
+    }, {passive: true});
+    document.addEventListener('scroll', () => {
+      paintBorders();
+    }, {passive: true});
+  }
+  addGuiUpdateListener();
 })();
 
 
@@ -2000,9 +1988,7 @@ var shared = (function workflowMethodsModule() {
         packet.issueLevel = issueLevel;
         packet.message = message;
       }
-      document.dispatchEvent(
-        new CustomEvent('issueUpdate', {detail: packet})
-      );
+      util.dispatch({type: 'issueUpdate', payload: {detail: packet}});
     };
     return util.delay(flagThis, 20);
   }
@@ -2034,7 +2020,7 @@ var shared = (function workflowMethodsModule() {
     const proxy = {value: 'x'};
     const one = testRegex(/x/, true)(proxy);
     test.ok(one.hit === true, 'one: hit');
-    test.ok(one.message === 'x did match /x/', 'one message');
+    test.ok(one.message === 'x did match /x/', 'one: message');
     const two = testRegex(/x/, false)(proxy);
     test.ok(two.hit === false, 'two: no hit');
     test.ok(two.message === 'x should not match /x/', 'two: message');
@@ -2063,10 +2049,12 @@ var shared = (function workflowMethodsModule() {
       const length = proxy.value.length;
       let hit = false;
       if (min && min > length) {
-        return {proxy, hit: true, message: 'Value is too short'};
+        const message = proxy.value + ' is too short';
+        return {proxy, hit: true, message};
       }
       if (max && max < length) {
-        return {proxy, hit: true, message: 'Value is too long'};
+        const message = proxy.value.slice(0, max) + '... is too long';
+        return {proxy, hit: true, message};
       }
       return {proxy, hit: false};
     }
@@ -2137,7 +2125,7 @@ var shared = (function workflowMethodsModule() {
       let packet = {proxy, issueType: 'Dupes'};
       if (dupes.includes(value)) {
         packet.issueLevel = 'red';
-        packet.message = 'Duplicate values: ' + value;
+        packet.message = `Duplicate values '${value}' in ${proxy.name}`;
       }
       packets.push(packet);
       if (value) {
@@ -2145,10 +2133,8 @@ var shared = (function workflowMethodsModule() {
       }
     }
     for (let packet of packets) {
-      if (!testing) { 
-        document.dispatchEvent(
-          new CustomEvent('issueUpdate', {detail: packet})
-        );
+      if (!testing) {     
+        util.dispatch({type: 'issueUpdate', payload: {detail: packet}});
       }
     }
     return packets;
@@ -2253,9 +2239,23 @@ var shared = (function workflowMethodsModule() {
     }
   }
 
+  async function keepAlive(_, idx, group) {
+    if (idx > 0) {
+      return;
+    }
+    const MINUTES = 6;
+    const INTERVAL = 10000; // ms
+    const times = (MINUTES * 60000) / INTERVAL;
+    for (let i = 0; i < times; i++) {
+      await util.wait(INTERVAL);
+      const idx = Math.floor(Math.random() * group.length);
+      group[idx].touch();
+    }
+  }
+
   function resetCounter() {
     const question =
-        'Please confirm. Are you sure you want to reset all counters?';
+        'Please confirm.\nAre you sure you want to reset all counters?';
     log.notice(question, true)
     if (confirm(question)) {
       counter.reset();      
@@ -2308,7 +2308,11 @@ var shared = (function workflowMethodsModule() {
   }
 
   function saveExtraction(data) {
-    log.log(data);
+    log.saveExtraction(data, true);
+  }
+
+  function autoSaveExtraction(data) {
+    log.saveExtraction(data, true);
   }
 
   async function submit(button) {
@@ -2327,6 +2331,7 @@ var shared = (function workflowMethodsModule() {
     skipTask,
     saveExtraction,
     submit,
+    keepAlive,
 
     fallThrough,
     redAlertOnDupe: alertOnDuplicateValues,
@@ -2498,30 +2503,24 @@ var {detectWorkflow, flows} = (function workflowModule() {
   }
 
   function playground(main) {
-    const finalCommentBox = ー({
-      name: 'Comment Box',
-      select: 'textarea',
-      pick: [1],
-      mode: 'programmable',
-    })[0];
-
     function markApproved() {
-      shared.editComment(finalCommentBox, 'addInitials');
+      shared.editComment(ref.finalCommentBox[0], 'addInitials');
       setStage(1);
     }
 
     function continueEditing() {
-      shared.editComment(finalCommentBox, 'removeInitials');
       setStage(0);
+      shared.editComment(ref.finalCommentBox[0], 'removeInitials');
+    }
+
+    function prefill(proxy) {
+      if (/../.test(proxy.value)) {
+        ref.prefillTarget.forEach(element => element.value = 'Boo');
+      }
     }
 
     function saveExtraction() {
-      const values = ー({
-        name: 'Save',
-        select: 'textarea',
-        pick: [1, 2, 3, 6, 7, 10, 11, 14, 15, 18, 19],
-        mode: 'programmable',
-      }).map(element => element.value);
+      const values = ref.saveExtraction.map(element => element.value);
       const domain = util.getDomain(values[0]);
       if (!domain) {
         return log.warn('Not enough data to save.');
@@ -2530,19 +2529,24 @@ var {detectWorkflow, flows} = (function workflowModule() {
       shared.saveExtraction(data);
     }
 
+    function autoSaveExtraction() {
+      const values = ref.saveExtraction.map(element => element.value);
+      const domain = util.getDomain(values[0]);
+      if (!domain) {
+        return;
+      }
+      const data = {[domain]: values.slice(1)};
+      shared.autoSaveExtraction(data);
+    }
+
     function submit() {
-      const submitButton = ー({
-        name: 'SubmitButton',
-        select: 'button',
-        pick: [4],
-        mode: 'static',
-      });
-      stage = 0;
+      const submitButton = ref.submitButton;
+      stage = -1;
+      autoSaveExtraction();
       shared.submit(submitButton);
       counter.add('Submit');
     }
 
-    // Stages
     function setStage(n) {
       stage = n;
       main();
@@ -2555,6 +2559,23 @@ var {detectWorkflow, flows} = (function workflowModule() {
 
     function editStage () {
       log.notice('Edit stage');
+
+      ー({
+        name: 'Landing Page Url',
+        select: 'textarea',
+        pick: [1],
+        mode: 'programmable',
+        onLoad: prefill,
+      });
+
+      ー({
+        name: 'Prefill',
+        select: 'textarea',
+        pick: [2, 3, 6, 7, 10, 11, 14, 15, 18, 19],
+        mode: 'programmable',
+        ref: 'prefillTarget',
+      });
+
       ー({
         name: 'Text',
         select: 'textarea',
@@ -2603,10 +2624,13 @@ var {detectWorkflow, flows} = (function workflowModule() {
         mode: 'programmable',
         onFocusin: shared.removeDashes,
         onFocusout: shared.addDashes,
-        onLoad: shared.addDashes,
+        onLoad: [
+          shared.addDashes,
+          shared.keepAlive,
+        ],
       });
 
-      [[0,3],[1,4],[2,5]].forEach(pair => {
+      [[2,3],[6,7],[10,11], [14,15]].forEach(pair => {
         ー({
           name: 'Fall',
           select: 'textarea',
@@ -2617,25 +2641,59 @@ var {detectWorkflow, flows} = (function workflowModule() {
       });
 
       ー({
-        name: 'Acquire',
+        name: 'Comment Box',
+        select: 'textarea',
+        pick: [1],
+        mode: 'programmable',
+        ref: 'finalCommentBox',
+      });
+
+      ー({
+        name: 'SubmitButton',
         select: 'button',
-        pick: [0],
+        pick: [4],
         mode: 'user-editable',
-        onClick: () => counter.add('Button pushes'),
-        onKeydown_Backquote: () => log.ok('Acquire'),
+      })[0].cssText = 'display: none';
+
+      ー({
+        name: 'Select',
+        select: 'select',
+        pick: [0, 1, 2],
+        mode: 'programmable',
+        onClick: shared.toggleSelectYesNo,
       });
 
       setGlobalReactions({
         onKeydown_CtrlEnter: markApproved,
+        onKeydown_CtrlNumpadEnter: markApproved,
         onKeydown_BracketLeft: shared.resetCounter,
-        onKeydown_CtrlAltS: saveExtraction,
+        onKeydown_CtrlAltS: () => log.warn('Please approve before saving'),
       });
     }
 
     function readyToSubmitStage() {
       log.notice('Ready to submit');
+
+      ー({
+        name: 'Save',
+        select: 'textarea',
+        pick: [0, 2, 3, 6, 7, 10, 11, 14, 15, 18, 19],
+        mode: 'programmable',
+        ref: 'saveExtraction',
+      });
+
+      ー({
+        name: 'SubmitButton',
+        select: 'button',
+        pick: [4],
+        mode: 'static',
+        ref: 'submitButton',
+      });
+
       setGlobalReactions({
+        onKeydown_CtrlAltS: saveExtraction,
         onKeydown_CtrlEnter: submit,
+        onKeydown_CtrlNumpadEnter: submit,
         onClick: continueEditing,
         onPaste: continueEditing,
       });
@@ -2644,12 +2702,14 @@ var {detectWorkflow, flows} = (function workflowModule() {
     stages[stage]();
   }
 
-  const flows = {
-    ratingHome,
-    slDutch,
-    playground,
+  return {
+    detectWorkflow,
+    flows: {
+      ratingHome,
+      slDutch,
+      playground,
+    },
   };
-  return {detectWorkflow, flows};
 })();
 
 
@@ -2683,11 +2743,10 @@ main();
  * @todo Find prefill (check key elements for matching values,
  * write to other elements)
  *
- * @todo Handle submit
- *
- * @todo Keep alive
- *
  * @todo Data store for prefill and the like
  *
  * @todo Handle scrolling within divs
+ *
+ * @todo Redesign wrap mode to create different level proxies each time
+ * with context determined when wrapping.
  */
