@@ -400,17 +400,24 @@ var util =
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
-// REPORTING module
+// STATEFUL module
 
-var {config, counter, flag, log} = (function reportingModule() {
+var {
+  config,
+  counter,
+  flag,
+  log,
+  state,
+} = (function statefulModule() {
   'use strict';
 
   /**
-   * @fileoverview Exposes objects to keep track of things.
+   * @fileoverview Exposes stateful objects to keep track of things.
    * * config - manage configuration settings.
    * * counter - count things.
    * * flag - flag issues.
    * * log - log things.
+   * * state - store application state.
    */
 
   const LOCALSTORE_BASENAME = 'twoTwentyOne';
@@ -522,7 +529,8 @@ var {config, counter, flag, log} = (function reportingModule() {
      * @param {boolean} save - Should the value be persisted to localstorage?
      */
     function set(name, newValue, save) {
-      log.changeConfig(`${name} changed to '${newValue}'`)
+      const term = (save) ? 'permanently' : 'temporarily';
+      log.changeConfig(`${name} ${term} changed to '${newValue}'`)
       config[name] = newValue;
       if (save) {
         localStore.set(CONFIG_STORE_NAME, config);
@@ -890,10 +898,64 @@ var {config, counter, flag, log} = (function reportingModule() {
     return toExport;
   })();
 
+  const state = (function stateMiniModule() { //XDC
+    const state = {
+      stage: 0,
+      flowName: undefined,
+      maxStage: 1,
+    };
+
+    function get() {
+      return {...state};
+    }
+
+    const stage = {
+      get() {
+        return state.stage;
+      },
+      decrement() {
+        log.lowLevel('Decrementing stage');
+        state.stage = Math.max(state.stage - 1, 0);
+        return state.stage;
+      },
+      increment() {
+        log.lowLevel('Incrementing stage');
+        state.stage = state.stage + 1 / state.maxStage;
+        return state.stage;
+      },
+      reset() {
+        log.lowLevel('Resetting stage');
+        state.stage = 0;
+        return state.stage;
+      },
+    }
+
+    const flowName = {
+      get() {
+        return state.flowName;
+      },
+      set(newValue) {
+        state.flowName = newValue;
+        return state.flowName;
+      },
+    }
+
+    return {
+      flowName,
+      stage,
+      get,
+    }
+  })();
+  function stages(maxStage) {
+    let stage = 0;
+
+  };
+
   return {
     config,
     counter,
-    log
+    log,
+    state,
   };
 })();
 
@@ -1055,7 +1117,7 @@ var {config, counter, flag, log} = (function reportingModule() {
       update(packet);
     }, {passive: true});
     document.addEventListener('scroll', () => {
-      mainGui();
+      paintBorders();
     }, {passive: true});
   }
   addGuiUpdateListener();
@@ -1069,7 +1131,11 @@ var {config, counter, flag, log} = (function reportingModule() {
 ////////////////////////////////////////////////////////////////////////////////
 // EVENT LISTENER module
 
-var {setReactions, setGlobalReactions} = (function eventListenersModule() {
+var {
+  resetReactions,
+  setReactions,
+  setGlobalReactions,
+} = (function eventListenersModule() {
   'use strict';
 
   /**
@@ -1118,7 +1184,7 @@ var {setReactions, setGlobalReactions} = (function eventListenersModule() {
    * }
    */
   const reactionStore = (function () {
-    const map = new WeakMap();
+    const map = new Map();
 
     /**
      * Get all reaction functions for a given HTML element and an eventType
@@ -1172,9 +1238,14 @@ var {setReactions, setGlobalReactions} = (function eventListenersModule() {
       return funcs.length;
     }
 
+    function clear() {
+      map.clear();
+    }
+
     return {
       get,
       set,
+      clear,
     }
   })();
 
@@ -1405,9 +1476,6 @@ var {setReactions, setGlobalReactions} = (function eventListenersModule() {
   function genericEventHandler(event) {
     const targetReactions = getMatchingReactions(event);
     runAll(targetReactions);
-//     if (targetReactions.length > 0 && event.type === 'keydown') {
-//       event.preventDefault();
-//     }
   }
 
   /**
@@ -1445,7 +1513,11 @@ var {setReactions, setGlobalReactions} = (function eventListenersModule() {
   })();
 
   initGenericEventHandlers();
-  return {setReactions, setGlobalReactions}
+  return {
+    resetReactions: reactionStore.clear,
+    setReactions,
+    setGlobalReactions,
+  }
 })();
 
 
@@ -2166,6 +2238,20 @@ var shared = (function workflowMethodsModule() {
     test.ok(proxy.value === 'NO', 'Changed back');
   });
 
+  function editComment(commentBox, mode) {
+    if (!commentBox || !commentBox.click) {
+      throw new Error('EditComment requires a valid textarea proxy');
+    }
+    if (mode === 'addInitials') {
+      commentBox.focus();
+      const initials = config.get('initials') || '';
+      commentBox.value = initials + '\n' + commentBox.value;
+    } else if (mode === 'removeInitials') {
+       const initials = config.get('initials') || '';
+       commentBox.value =
+           commentBox.value.replace(RegExp('^' + initials + '\n'), '');
+    }
+  }
 
   function resetCounter() {
     const question =
@@ -2221,14 +2307,26 @@ var shared = (function workflowMethodsModule() {
     log.warn('Skip confirmation dialog did not appear.', true);
   }
 
-  function save(data) {
-    console.log(data);
+  function saveExtraction(data) {
+    log.log(data);
   }
 
+  async function submit(button) {
+    if (!button || !button.click) {
+      throw new Error('Submit requires a valid submit button proxy');
+    }
+    log.notice('Submitting', true);
+    await util.wait(100);
+    button.click();
+  }
+  submit = util.debounce(submit, 100);
+
   return {
+    editComment,
     resetCounter,
     skipTask,
-    save,
+    saveExtraction,
+    submit,
 
     fallThrough,
     redAlertOnDupe: alertOnDuplicateValues,
@@ -2388,7 +2486,7 @@ var {detectWorkflow, flows} = (function workflowModule() {
       }).map(element => element.value);
       const domain = util.getDomain(values[0]);
       const data = {[domain]: values.slice(1)};
-      shared.save(data);
+      shared.saveExtraction(data);
     }
 
     setGlobalReactions({
@@ -2400,116 +2498,150 @@ var {detectWorkflow, flows} = (function workflowModule() {
   }
 
   function playground(main) {
-//     ー({
-//       name: 'Text',
-//       select: 'textarea',
-//       pick: [2, 6, 10, 14, 18],
-//       mode: 'programmable',
-//       onInteract: [
-//         shared.redAlertExceed25Chars,
-//         shared.redAlertOnDupe,
-//       ],
-//       onLoad: [
-//         shared.redAlertExceed25Chars,
-//         shared.redAlertOnDupe,
-//       ],
-//     });
+    const finalCommentBox = ー({
+      name: 'Comment Box',
+      select: 'textarea',
+      pick: [1],
+      mode: 'programmable',
+    })[0];
 
-//     ー({
-//       name: 'Url',
-//       select: 'textarea',
-//       pick: [3, 7, 11, 15, 19],
-//       mode: 'programmable',
-//       onFocusout: [
-//         shared.requireUrl,
-//         shared.removeScreenshot,
-//       ],
-//       onPaste: [
-//         shared.requireUrl,
-//         shared.removeScreenshot,
-//       ],
-//     });
+    function markApproved() {
+      shared.editComment(finalCommentBox, 'addInitials');
+      setStage(1);
+    }
 
-//     ー({
-//       name: 'Urls',
-//       select: 'textarea',
-//       pick: [1, 3, 7, 11, 15, 19],
-//       mode: 'programmable',
-//       onFocusout: shared.redAlertOnDupe,
-//       onPaste: shared.redAlertOnDupe,
-//     });
+    function continueEditing() {
+      shared.editComment(finalCommentBox, 'removeInitials');
+      setStage(0);
+    }
 
-//     ー({
-//       name: 'Screenshot',
-//       select: 'textarea',
-//       pick: [4, 8, 12, 16, 20],
-//       mode: 'programmable',
-//       onFocusout: [
-//         shared.requireUrl,
-//         shared.requireScreenshot,
-//       ],
-//       onPaste: [
-//         shared.requireUrl,
-//         shared.requireScreenshot,
-//       ],
-//     });
+    function saveExtraction() {
+      const values = ー({
+        name: 'Save',
+        select: 'textarea',
+        pick: [1, 2, 3, 6, 7, 10, 11, 14, 15, 18, 19],
+        mode: 'programmable',
+      }).map(element => element.value);
+      const domain = util.getDomain(values[0]);
+      if (!domain) {
+        return log.warn('Not enough data to save.');
+      }
+      const data = {[domain]: values.slice(1)};
+      shared.saveExtraction(data);
+    }
 
-//     ー({
-//       name: 'Dashes',
-//       select: 'textarea',
-//       pick: [5, 9, 13, 17, 21],
-//       mode: 'programmable',
-//       onFocusin: shared.removeDashes,
-//       onFocusout: shared.addDashes,
-//       onLoad: shared.addDashes,
-//     });
-    
-//     [[2, 3],[6, 7],[10, 11],[14, 15],[18, 19]].forEach(pair => {
-//       ー({
-//         name: 'Fall',
-//         select: 'textarea',
-//         pick: pair,
-//         mode: 'programmable',
-//         onPaste: shared.fallThrough,
-//       });
-//     });
+    function submit() {
+      const submitButton = ー({
+        name: 'SubmitButton',
+        select: 'button',
+        pick: [4],
+        mode: 'static',
+      });
+      stage = 0;
+      shared.submit(submitButton);
+      counter.add('Submit');
+    }
 
-//     ー({
-//       name: 'Select',
-//       select: 'select',
-//       pick: [0, 1],
-//       mode: 'programmable',
-//       onClick: shared.toggleSelectYesNo,
-//     });
+    // Stages
+    function setStage(n) {
+      stage = n;
+      main();
+    }
 
-//     ー({
-//       name: 'Acquire',
-//       select: 'button',
-//       pick: [1],
-//       mode: 'user-editable',
-//       onClick: () => counter.add('Button pushes'),
-//       onKeydown_Backquote: () => log.ok('Acquire'),
-//     });
+    const stages = [
+      editStage,
+      readyToSubmitStage,
+    ];
 
-//     function save() {
-//       const values = ー({
-//         name: 'Save',
-//         select: 'textarea',
-//         pick: [1, 2, 3, 6, 7, 10, 11, 14, 15, 18, 19],
-//         mode: 'programmable',
-//       }).map(element => element.value);
-//       const domain = util.getDomain(values[0]);
-//       const data = {[domain]: values.slice(1)};
-//       shared.save(data);
-//     }
+    function editStage () {
+      log.notice('Edit stage');
+      ー({
+        name: 'Text',
+        select: 'textarea',
+        pick: [2, 6, 10, 14, 18],
+        mode: 'programmable',
+        onInteract: [
+          shared.redAlertExceed25Chars,
+          shared.redAlertOnDupe,
+        ],
+        onLoad: [
+          shared.redAlertExceed25Chars,
+          shared.redAlertOnDupe,
+        ],
+      });
 
-//     setGlobalReactions({
-//       onKeydown_Backquote: main,
-//       onKeydown_Backslash: () => log.ok('Approve'),
-//       onKeydown_BracketLeft: shared.resetCounter,
-//       onKeydown_BracketRight: shared.skipTask,
-//       onKeydown_CtrlAltS: save,
-//     });
+      ー({
+        name: 'Link',
+        select: 'textarea',
+        pick: [3, 7, 11, 15, 19],
+        mode: 'programmable',
+        onFocusout: [
+          shared.redAlertOnDupe,
+          shared.requireUrl,
+          shared.removeScreenshot,
+        ],
+        onPaste: [
+          shared.redAlertOnDupe,
+          shared.requireUrl,
+          shared.removeScreenshot,
+        ],
+      });
+
+      ー({
+        name: 'Screenshot',
+        select: 'textarea',
+        pick: [4, 8, 12, 16, 20],
+        mode: 'programmable',
+        onFocusout: shared.requireScreenshot,
+        onPaste: shared.requireScreenshot,
+      });
+
+      ー({
+        name: 'Dashes',
+        select: 'textarea',
+        pick: [5, 9, 13, 17, 21],
+        mode: 'programmable',
+        onFocusin: shared.removeDashes,
+        onFocusout: shared.addDashes,
+        onLoad: shared.addDashes,
+      });
+
+      [[0,3],[1,4],[2,5]].forEach(pair => {
+        ー({
+          name: 'Fall',
+          select: 'textarea',
+          pick: pair,
+          mode: 'programmable',
+          onPaste: shared.fallThrough,
+        });
+      });
+
+      ー({
+        name: 'Acquire',
+        select: 'button',
+        pick: [0],
+        mode: 'user-editable',
+        onClick: () => counter.add('Button pushes'),
+        onKeydown_Backquote: () => log.ok('Acquire'),
+      });
+
+      setGlobalReactions({
+        onKeydown_CtrlEnter: markApproved,
+        onKeydown_BracketLeft: shared.resetCounter,
+        onKeydown_CtrlAltS: saveExtraction,
+      });
+    }
+
+    function readyToSubmitStage() {
+      log.notice('Ready to submit');
+      setGlobalReactions({
+        onKeydown_CtrlEnter: submit,
+        onClick: continueEditing,
+        onPaste: continueEditing,
+      });
+    }
+
+    stages[stage]();
   }
 
   const flows = {
@@ -2528,38 +2660,34 @@ var {detectWorkflow, flows} = (function workflowModule() {
 ////////////////////////////////////////////////////////////////////////////////
 // APP module
 
+var stage = -1;
+
 function main() {
-  const name = detectWorkflow();
-  if (!name) {
+  const detectedFlowName = detectWorkflow();
+  if (!detectedFlowName) {
     return log.warn('No workflow identified');
   }
-  const flowInit = flows[name];
-  flowInit(main);
-  log.notice(`${name} screen loaded`);
+  if (stage < 0) {
+    log.notice(`${detectedFlowName} initialised`);
+    stage = 0;
+  }
+  resetReactions();
+  const flowInitializer = flows[detectedFlowName];
+  flowInitializer(main);
 };
 
 main();
 
 
 /**
- * @todo Build out functional GUI
- *
- * @todo Save function (get several elements)
- *
  * @todo Find prefill (check key elements for matching values,
  * write to other elements)
- *
- * @todo Skip function
  *
  * @todo Handle submit
  *
  * @todo Keep alive
  *
- * @todo Flows manager
- *
  * @todo Data store for prefill and the like
- *
- * @todo Improve flow methods
  *
  * @todo Handle scrolling within divs
  */
