@@ -1,21 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
-//   _______         _______                 _          ____             
-//  |__   __|       |__   __|               | |        / __ \            
-//     | |_      _____ | |_      _____ _ __ | |_ _   _| |  | |_ __   ___ 
-//     | \ \ /\ / / _ \| \ \ /\ / / _ \ '_ \| __| | | | |  | | '_ \ / _ \
-//     | |\ V  V / (_) | |\ V  V /  __/ | | | |_| |_| | |__| | | | |  __/
-//     |_| \_/\_/ \___/|_| \_/\_/ \___|_| |_|\__|\__, |\____/|_| |_|\___|
-//                                                __/ |                  
-//                                               |___/                   
-////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
-
-////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
 // TEST module
 
 var test = (function testModule() {
@@ -46,6 +31,7 @@ var test = (function testModule() {
     fail: 'color: red',
     todo: 'color: purple',
   }
+
   const testingLogBook = [];
   let failuresRecorded = false;
   let enclosedInGroup = false;
@@ -341,7 +327,7 @@ var util =
       return '';
     }
     if (!/^https?:\//.test(url)) {
-      log.warn('Not a url', true);
+      log.warn('Not a url: ' + url, true);
       return '';
     }
     const domain = url.match(/\/\/([^\/]*)/);
@@ -423,7 +409,7 @@ var util =
 var {
   config,
   counter,
-  data,
+  dataStore,
   log,
 } = (function dataModule() {
   'use strict';
@@ -442,7 +428,7 @@ var {
 
   const COUNTER_STORE_NAME = 'Counter';
 
-  const DATA_STORE_NAME = 'Data';
+  const DATA_STORE_BASENAME = 'Data';
 
   const LOGBOOK_STORE_NAME = 'LogBook';
   const MAX_LOG_LENGTH = 5000; // entries
@@ -457,8 +443,6 @@ var {
     lowLevel: {color:'Gainsboro', print: false},
     changeValue: {color:'LightPink', print: false},
     changeConfig: {color:'MediumOrchid', print: true},
-    saveExtraction: {color:'#6370ff', print: true},
-    autoSaveExtraction: {color:'#6370ff', print: true},
   };
 
   /**
@@ -677,9 +661,118 @@ var {
   /**
    * Manage dynamic data stores.
    */
-  const data = (function dataMiniModule() {
-    const storedData = localStore.get(DATA_STORE_NAME);
-    return storedData;
+  const dataStore = (function dataMiniModule() {
+    /**
+     * Simply wraps around localStore to add cache in memory.
+     */
+    const store = (function storeAccess() {
+      const cache = {};
+      function get(name) {
+        if (cache[name] !== undefined) {
+          return cache[name];
+        }
+        return localStore.get(DATA_STORE_BASENAME + name);
+      }
+      function set(name, value) {
+        cache[name] = value;
+        localStore.set(DATA_STORE_BASENAME + name, value);
+      }
+      return {
+        get,
+        set,
+      }
+    })();
+    
+    /**
+     * Get a data entry for a specific feature, and optionally a specific
+     * locale. Return a locale specific entry if one exists, else returns
+     * a shared entry if one exists.
+     *
+     * @param {Object} o
+     * @param {string} o.feature
+     * @param {string=} o.locale
+     * @param {string} o.get
+     * @return {*} Returns data, or undefined.
+     */
+    function getData({feature, locale, get}) {
+      const allLocales = store.get(`${feature}`);
+      const oneLocale = store.get(`${feature}${locale}`);
+      return oneLocale[get] || allLocales[get];
+    }
+
+    /**
+     * Set a data entry for a specific feature, and optionally a specific
+     * locale. If no locale is specified, data will be added to a feature
+     * specific shared data store.
+     *
+     * @param {Object} o
+     * @param {string} o.feature
+     * @param {string=} o.locale
+     * @param {string} o.set
+     * @param {*} o.value
+     */
+    function setData({feature, locale = '', set, value}) {
+      const data = store.get(`${feature}${locale}`);
+      data[set] = value;
+      store.set(`${feature}${locale}`, data);
+    }
+    
+    /**
+     * Get all data for a specific feature, and optionally a specific
+     * locale. Return all shared entries, and all locale specific entries
+     * if a locale is specified.
+     *
+     * @param {Object} o
+     * @param {string} o.feature
+     * @param {string=} o.locale
+     */
+    function dumpData({feature, locale}) {
+      const allLocales = store.get(`${feature}`);
+      if (!locale) {
+        return allLocales;
+      }
+      const oneLocale = store.get(`${feature}${locale}`);
+      return {[locale]: oneLocale, shared: allLocales};
+    }
+
+    /**
+     * Set or replace all data for a specific feature, and optionally a
+     * specific locale. If no locale is specified, data will be added
+     * to a feature specific shared data store.
+     *
+     * @param {Object} o
+     * @param {string} o.feature
+     * @param {string=} o.locale
+     * @param {*} o.data
+     */
+    function createData({feature, locale, data}) {
+      store.set(`${feature}${locale}`, data);
+    }
+    /**
+     * Get or set data entries, or dump or create data stores,
+     * depending on the input parameters.
+     *
+     * @param {Object} o
+     * @param {string} o.feature
+     * @param {string=} o.locale
+     * @param {string=} o.get
+     * @param {string=} o.set
+     * @param {*=} o.value
+     * @param {*=} o.data
+     * @return {*}
+     */
+    function dataAccess({feature, locale, get, set, value, data}) {
+      if (get !== undefined) {
+        return getData({feature, locale, get});
+      } else if (set !== undefined) {
+        return setData({feature, locale, set, value});
+      } else if (data !== undefined) {
+        return createData({feature, locale, data});
+      } else {
+        return dumpData({feature, locale});
+      }
+    }
+    return dataAccess;
   })();
 
   let flaggedIssues = [];
@@ -943,7 +1036,7 @@ var {
   return {
     config,
     counter,
-    data,
+    dataStore,
     log,
   };
 })();
