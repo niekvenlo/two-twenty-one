@@ -1,6 +1,57 @@
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
+// ENVIRONMENT module
+
+var environment = (function environmentModule() {
+  'use strict';
+ 
+  /**
+   * @fileoverview Provides access to variables about the current workflow.
+   */
+
+  /**
+   * @return {string} Description of the current workflow.
+   */
+  function detectWorkflow() {
+    const header = ー({
+      name: 'Header',
+      select: 'h1',
+      pick: [0],
+      mode: 'static',
+    })[0];
+    const headerText = header && header.textContent;
+
+    switch (true) {
+      case /Sitelinks Dutch/.test(headerText):
+        return 'slDutch';
+      case headerText === 'TwoTwentyOne':
+        return 'slDutch';
+      default:
+        return 'ratingHome';
+    }
+  }
+
+  /**
+   * Stub. Should check DOM for locale indicators.
+   * @return {string}
+   */
+  function detectLocale() {
+    return 'Dutch';
+  }
+
+  return {
+    flowName: util.debounce(detectWorkflow, 100),
+    locale: util.debounce(detectLocale, 100),
+  };
+})();
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
 // WORKFLOW METHODS module
 
 var shared = (function workflowMethodsModule() {
@@ -30,7 +81,7 @@ var shared = (function workflowMethodsModule() {
    * })
    * This would change the value of the object returned by the 'when' function.
    */
-  function changeValue({to, when}) {
+  function changeValue({to, when, is = true}) {
     if (typeof to !== 'string') {
       throw new Error('ChangeValue requires a new string value');
     }
@@ -39,7 +90,7 @@ var shared = (function workflowMethodsModule() {
     }
     return function (...params) {
       const {hit, proxy} = when(...params);
-      if (hit) {
+      if (hit === is) {
         proxy.value = to;
       }
     }
@@ -78,10 +129,10 @@ var shared = (function workflowMethodsModule() {
       );
     }
     if (typeof when !== 'function') {
-      throw new Error('ChangeValue requires a function');
+      throw new Error('FlagIssue requires a function');
     }
     if (typeof issueType !== 'string') {
-      throw new Error('ChangeValue requires a new string value');
+      throw new Error('FlagIssue requires a new string value');
     }
     function flagThis(...params) {
       const {proxy, hit, message} = when(...params);
@@ -110,7 +161,7 @@ var shared = (function workflowMethodsModule() {
    * @example - Using testRegex(/x/, true) on a proxy with a value of 'x'
    * would return an object with hit = true, message = 'x did match /x/'
    */
-  function testRegex(regex, shouldMatch) {
+  function testRegex(regex, shouldMatch = true) {
     return (proxy) => {
       const hit = regex.test(proxy.value) === shouldMatch;
       const didOrShouldNot = shouldMatch ? 'did' : 'should not';
@@ -209,7 +260,7 @@ var shared = (function workflowMethodsModule() {
    * @param {number} __ - Unused parameter. The index of the triggering proxy.
    * @param {Object[]} group - Array of proxies to check for duplicate values.
    */
-  function alertOnDuplicateValues(_, __, group, testing) {
+  function redAlertOnDuplicateValues(_, __, group, testing) {
     const values = [];
     const dupes = [];
     const packets = [];
@@ -241,9 +292,9 @@ var shared = (function workflowMethodsModule() {
     }
     return packets;
   };
-  test.group('alertOnDuplicateValues', () => {
+  test.group('redAlertOnDuplicateValues', () => {
     const run = (group) => {
-      return alertOnDuplicateValues(0, 0, group, true)
+      return redAlertOnDuplicateValues(0, 0, group, true)
           .filter(issue => issue.message);
     }
     const a = {};
@@ -258,13 +309,15 @@ var shared = (function workflowMethodsModule() {
     test.ok(run([a, b, c, d, e]).length === 2, 'Five proxies, two issues');
     test.todo('Async test');
   });
-  alertOnDuplicateValues = util.delay(alertOnDuplicateValues, 100);
+  redAlertOnDuplicateValues = util.delay(redAlertOnDuplicateValues, 100);
 
   function guessValueFromPastedValue(pastedValue) {
     const value = (/^http/.test(pastedValue))
-        ? pastedValue.replace(/\/index/i, '').match(/[^\/]*[\/]?$/)[0]
+        ? decodeURIComponent(
+            pastedValue.replace(/\/index/i, '').match(/[^\/]*[\/]?$/)[0]
+          )
         : pastedValue;
-    return decodeURIComponent(value).toLowerCase().trim();
+    return value.toLowerCase().trim();
   }
 
   /**
@@ -273,6 +326,7 @@ var shared = (function workflowMethodsModule() {
    * @param {Object[]} group - Array of two proxies.
    */
   function fallThrough (_, idx, group) {
+    const LOG_ENTRY_MAX_LENGTH = 100;
     if (group.length !== 2) {
       throw new Error('fallThrough requires two proxies.')
     }
@@ -282,9 +336,12 @@ var shared = (function workflowMethodsModule() {
     if (/^https?:/.test(group[0].value)) {
       group[1].value = group[0].value;
     }
-    group[0].value = guessValueFromPastedValue(group[0].value);
+    let value = group[0].value = guessValueFromPastedValue(group[0].value);
+    if (value.length > LOG_ENTRY_MAX_LENGTH) {
+      value = value.slice(0,LOG_ENTRY_MAX_LENGTH - 3) + '...';
+    }
     log.notice(
-      `Fallthrough: '${group[1].value}' became '${group[0].value}'`,
+      `Fallthrough: '${group[1].value}' became '${value}'`,
       true,
     );
   };
@@ -355,6 +412,21 @@ var shared = (function workflowMethodsModule() {
     }
   }
 
+  function prefill(proxy) {
+    const values = dataStore({
+      feature: 'Prefill',
+      locale: 'Dutch',
+      get: util.getDomain(proxy.value),
+    });
+    if (values) {
+      log.notice('Found prefill values', true);
+    }
+    const targets = ref.prefillTarget;
+    for (let idx in values) {
+      targets[idx].value = values[idx];
+    }
+  }
+
   function resetCounter() {
     const question =
         'Please confirm.\nAre you sure you want to reset all counters?';
@@ -372,23 +444,18 @@ var shared = (function workflowMethodsModule() {
    * locations of the buttons in the DOM.
    */
   async function skipTask() {
+    log.notice('ggg');
     const RETRIES = 15;
     const DELAY = 25; // ms
 
-    const skipButtonSelector = {
-      name: 'Skip Button',
-      select: '.taskIssueButton',
-      pick: [0],
-      mode: 'static',
-    };
-    const confirmButtonSelector = {
+    const confirmButton = ー({
       name: 'Confirm Skip',
       select: '.gwt-SubmitButton',
       pick: [0],
       mode: 'static',
-    };
+    })[0];
 
-    const skipButton = ー(skipButtonSelector)[0];
+    const skipButton = ref.skipButton[0];
     if (!skipButton) {
       log.warn('Skip button not found.', true);
       return;
@@ -397,9 +464,9 @@ var shared = (function workflowMethodsModule() {
 
     let retries = RETRIES;
     while(retries-- > 0) {
-      const confirmButton = ー(confirmButtonSelector)[0];
-      if (confirmButton) {
-        confirmButton.click();
+      const button = confirmButton.fresh()[0];
+      if (button) {
+        button.click();
         log.notice('Skipping task', true);
         counter.add('Skipping');
         return;
@@ -409,14 +476,32 @@ var shared = (function workflowMethodsModule() {
     log.warn('Skip confirmation dialog did not appear.', true);
   }
 
-  function saveExtraction(data) {
-    log.saveExtraction(data, true);
+  /**
+   * Save the values from the current extraction.
+   * Logs the values, and adds them to the prefill data store.
+   */
+  function saveExtraction() {
+    const values = ref.saveExtraction.map(element => element.value);
+    const domain = util.getDomain(values[0]);
+    if (!domain) {
+      return log.warn('Not enough data to save.');
+    }
+    const extractionData = {[domain]: values.slice(1)};
+    dataStore({
+      feature: 'Prefill',
+      locale: 'Dutch',
+      set: domain,
+      value: values.slice(1),
+    });
+    log.ok(
+      'Saving new default extraction for ' + domain +
+      util.mapToBulletedList(values.slice(1), 2), true
+    );
   }
 
-  function autoSaveExtraction(data) {
-    log.saveExtraction(data, true);
-  }
-
+  /**
+   * Attempt to submit the task.
+   */
   async function submit() {
     const button = ref.submitButton[0];
     if (!button || !button.click) {
@@ -431,19 +516,21 @@ var shared = (function workflowMethodsModule() {
 
   return {
     editComment,
+    keepAlive,
     resetCounter,
     skipTask,
     saveExtraction,
     submit,
-    keepAlive,
-
+    prefill,
     fallThrough,
-    redAlertOnDupe: alertOnDuplicateValues,
+    redAlertOnDuplicateValues,
 
     addDashes: changeValue({
       to: '---',
-      when: testRegex(/^$/, true),
+      when: testRegex(/^$/),
+      is: true,
     }),
+
     redAlertExceed25Chars: flagIssue({
       issueLevel: 'red',
       issueType: 'More than 25 characters long',
@@ -452,20 +539,28 @@ var shared = (function workflowMethodsModule() {
 
     removeDashes: changeValue({
       to: '',
-      when: testRegex(/---/, true),
+      when: testRegex(/---/),
+      is: true,
     }),
+
     requireUrl: changeValue({
       to: '',
-      when: testRegex(/^http/, false),
+      when: testRegex(/^http/),
+      is: false,
     }),
+
     requireScreenshot: changeValue({
       to: '',
-      when: testRegex(/gleplex/, false),
+      when: testRegex(/gleplex/),
+      is: false,
     }),
+
     removeScreenshot: changeValue({
       to: '',
-      when: testRegex(/gleplex/, true),
+      when: testRegex(/gleplex/),
+      is: true,
     }),
+
     toggleSelectYesNo: cycleSelect(['YES', 'NO']),
   }
 }
@@ -479,25 +574,12 @@ var shared = (function workflowMethodsModule() {
 ////////////////////////////////////////////////////////////////////////////////
 // WORKFLOW module
 
-var {detectWorkflow, flows} = (function workflowModule() {
-  function detectWorkflow() {
-    const header = ー({
-      name: 'Header',
-      select: 'h1',
-      pick: [0],
-      mode: 'static',
-    })[0];
-    const headerText = header && header.textContent;
-
-    switch (true) {
-      case /Sitelinks Dutch/.test(headerText):
-        return 'slDutch';
-      case headerText === 'TwoTwentyOne':
-        return 'playground';
-      default:
-        return 'ratingHome';
-    }
-  }
+var flows = (function workflowModule() {
+  'use strict';
+ 
+  /**
+   * @fileoverview Exports an object for each supported workflow.
+   */
 
   const ratingHome = (function ratingHomeModule() {
 
@@ -506,12 +588,18 @@ var {detectWorkflow, flows} = (function workflowModule() {
       const CONTINUE_RETRIES = 20;
       const CONTINUE_DELAY = 25; // ms
 
+      /**
+       * Click the 'Acquire next task' button.
+       */
       function clickAcquire() {
         const button = ref.firstButton[0];
         button.click();
         clickContinue();
       }
 
+      /**
+       * Wait for the 'Continue to Task' button to appear, then click it.
+       */
       async function clickContinue() {
         let retries = CONTINUE_RETRIES;
         while(retries-- > 0) {
@@ -526,6 +614,12 @@ var {detectWorkflow, flows} = (function workflowModule() {
         }
       }
 
+      /**
+       * Trigger the onClick toggle of yes/no select HTMLElements with the
+       * keyboard.
+       *
+       * @param {number} key - Number representing the number key pressed.
+       */
       function toggleSelectWithKey(key) {
         if (key > ref.select.length) {
           throw new Error('Key too large');
@@ -566,57 +660,46 @@ var {detectWorkflow, flows} = (function workflowModule() {
 
   const slDutch = (function slDutchModule() {
 
+    /**
+     * Mark the task as Approved.
+     * * Add initials to comment box.
+     * * Move to the 'Ready to submit' stage.
+     */
     function markApproved() {
       shared.editComment(ref.finalCommentBox[0], 'addInitials');
       setStage(1);
     }
 
+    /**
+     * Remove Approved status from the task.
+     * * Move to the 'Edit' stage.
+     * * Remove initials from comment box.
+     */
     function continueEditing() {
       setStage(0);
       shared.editComment(ref.finalCommentBox[0], 'removeInitials');
     }
 
-    function prefill(proxy) {
-      if (/../.test(proxy.value)) {
-        ref.prefillTarget.forEach(element => element.value = 'Boo');
-      }
-    }
-
-    function saveExtraction() {
-      const values = ref.saveExtraction.map(element => element.value);
-      const domain = util.getDomain(values[0]);
-      if (!domain) {
-        return log.warn('Not enough data to save.');
-      }
-      const data = {[domain]: values.slice(1)};
-      shared.saveExtraction(data);
-    }
-
-    function autoSaveExtraction() {
-      const values = ref.saveExtraction.map(element => element.value);
-      const domain = util.getDomain(values[0]);
-      if (!domain) {
-        return;
-      }
-      const data = {[domain]: values.slice(1)};
-      shared.autoSaveExtraction(data);
-    }
-
+    /**
+     * Attempt to submit the task.
+     */
     function submit() {
       stage = -1;
-      autoSaveExtraction();
       shared.submit();
     }
 
+    /**
+     * Set up event handlers for the Edit stage.
+     */
     function editStage () {
       log.notice('Edit stage');
 
       ー({
         name: 'Landing Page Url',
         select: 'textarea',
-        pick: [1],
+        pick: [0],
         mode: 'programmable',
-        onLoad: prefill,
+        onLoad: shared.prefill,
       });
 
       ー({
@@ -634,11 +717,11 @@ var {detectWorkflow, flows} = (function workflowModule() {
         mode: 'programmable',
         onInteract: [
           shared.redAlertExceed25Chars,
-          shared.redAlertOnDupe,
+          shared.redAlertOnDuplicateValues,
         ],
         onLoad: [
           shared.redAlertExceed25Chars,
-          shared.redAlertOnDupe,
+          shared.redAlertOnDuplicateValues,
         ],
       });
 
@@ -662,8 +745,8 @@ var {detectWorkflow, flows} = (function workflowModule() {
         select: 'textarea',
         pick: [1, 3, 7, 11, 15, 19],
         mode: 'programmable',
-        onFocusout: shared.redAlertOnDupe,
-        onPaste: shared.redAlertOnDupe,
+        onFocusout: shared.redAlertOnDuplicateValues,
+        onPaste: shared.redAlertOnDuplicateValues,
       });
 
 
@@ -672,8 +755,14 @@ var {detectWorkflow, flows} = (function workflowModule() {
         select: 'textarea',
         pick: [4, 8, 12, 16, 20],
         mode: 'programmable',
-        onFocusout: shared.requireScreenshot,
-        onPaste: shared.requireScreenshot,
+        onFocusout: [
+          shared.requireUrl,
+          shared.requireScreenshot,
+        ],
+        onPaste: [
+          shared.requireUrl,
+          shared.requireScreenshot,
+        ],
       });
 
       ー({
@@ -716,21 +805,25 @@ var {detectWorkflow, flows} = (function workflowModule() {
       })[0].cssText = 'display: none';
 
       ー({
-        name: 'Select',
-        select: 'select',
-        pick: [0, 1, 2],
-        mode: 'programmable',
-        onClick: shared.toggleSelectYesNo,
+        name: 'Skip Button',
+        select: '.taskIssueButton',
+        pick: [0],
+        mode: 'static',
+        ref: 'skipButton'
       });
 
       setGlobalReactions({
         onKeydown_CtrlEnter: markApproved,
         onKeydown_CtrlNumpadEnter: markApproved,
         onKeydown_BracketLeft: shared.resetCounter,
+        onKeydown_Backslash: shared.skipTask,
         onKeydown_CtrlAltS: () => log.warn('Please approve before saving'),
       });
     }
 
+    /**
+     * Set up event handlers for the Submit stage.
+     */
     function readyToSubmitStage() {
       log.notice('Ready to submit');
 
@@ -751,7 +844,7 @@ var {detectWorkflow, flows} = (function workflowModule() {
       });
 
       setGlobalReactions({
-        onKeydown_CtrlAltS: saveExtraction,
+        onKeydown_CtrlAltS: shared.saveExtraction,
         onKeydown_CtrlEnter: submit,
         onKeydown_CtrlNumpadEnter: submit,
         onClick: continueEditing,
@@ -759,214 +852,9 @@ var {detectWorkflow, flows} = (function workflowModule() {
       });
     }
 
-    let reinitialise = () => {
-      throw new Error('No access to the main function');
-    };
-
-    const stages = [
-      editStage,
-      readyToSubmitStage,
-    ];
-
-    function setStage(n) {
-      stage = n;
-      reinitialise();
-    }
-
-    function init(main) {
-      reinitialise = main;
-      stages[stage]();
-    }
-    return {init};
-  })();
-
-  const playground = (function playgroundModule() {
-
-    function markApproved() {
-      shared.editComment(ref.finalCommentBox[0], 'addInitials');
-      setStage(1);
-    }
-
-    function continueEditing() {
-      setStage(0);
-      shared.editComment(ref.finalCommentBox[0], 'removeInitials');
-    }
-
-    function prefill(proxy) {
-      if (/../.test(proxy.value)) {
-        ref.prefillTarget.forEach(element => element.value = 'Boo');
-      }
-    }
-
-    function saveExtraction() {
-      const values = ref.saveExtraction.map(element => element.value);
-      const domain = util.getDomain(values[0]);
-      if (!domain) {
-        return log.warn('Not enough data to save.');
-      }
-      const data = {[domain]: values.slice(1)};
-      shared.saveExtraction(data);
-    }
-
-    function autoSaveExtraction() {
-      const values = ref.saveExtraction.map(element => element.value);
-      const domain = util.getDomain(values[0]);
-      if (!domain) {
-        return;
-      }
-      const data = {[domain]: values.slice(1)};
-      shared.autoSaveExtraction(data);
-    }
-
-    function submit() {
-      stage = -1;
-      autoSaveExtraction();
-      shared.submit();
-    }
-
-    function editStage () {
-      log.notice('Edit stage');
-
-      ー({
-        name: 'Landing Page Url',
-        select: 'textarea',
-        pick: [1],
-        mode: 'programmable',
-        onLoad: prefill,
-      });
-
-      ー({
-        name: 'Prefill',
-        select: 'textarea',
-        pick: [2, 3, 6, 7, 10, 11, 14, 15, 18, 19],
-        mode: 'programmable',
-        ref: 'prefillTarget',
-      });
-
-      ー({
-        name: 'Text',
-        select: 'textarea',
-        pick: [2, 6, 10, 14, 18],
-        mode: 'programmable',
-        onInteract: [
-          shared.redAlertExceed25Chars,
-          shared.redAlertOnDupe,
-        ],
-        onLoad: [
-          shared.redAlertExceed25Chars,
-          shared.redAlertOnDupe,
-        ],
-      });
-
-      ー({
-        name: 'Link',
-        select: 'textarea',
-        pick: [3, 7, 11, 15, 19],
-        mode: 'programmable',
-        onFocusout: [
-          shared.redAlertOnDupe,
-          shared.requireUrl,
-          shared.removeScreenshot,
-        ],
-        onPaste: [
-          shared.redAlertOnDupe,
-          shared.requireUrl,
-          shared.removeScreenshot,
-        ],
-      });
-
-      ー({
-        name: 'Screenshot',
-        select: 'textarea',
-        pick: [4, 8, 12, 16, 20],
-        mode: 'programmable',
-        onFocusout: shared.requireScreenshot,
-        onPaste: shared.requireScreenshot,
-      });
-
-      ー({
-        name: 'Dashes',
-        select: 'textarea',
-        pick: [5, 9, 13, 17, 21],
-        mode: 'programmable',
-        onFocusin: shared.removeDashes,
-        onFocusout: shared.addDashes,
-        onLoad: [
-          shared.addDashes,
-          shared.keepAlive,
-        ],
-      });
-
-      [[2, 3],[6, 7],[10, 11], [14, 15]].forEach(pair => {
-        ー({
-          name: 'Fall',
-          select: 'textarea',
-          pick: pair,
-          mode: 'programmable',
-          onPaste: shared.fallThrough,
-        });
-      });
-
-      ー({
-        name: 'Comment Box',
-        select: 'textarea',
-        pick: [1],
-        mode: 'programmable',
-        ref: 'finalCommentBox',
-      });
-
-      ー({
-        name: 'SubmitButton',
-        select: 'button',
-        pick: [4],
-        mode: 'user-editable',
-        ref: 'submitButton',
-      })[0].cssText = 'display: none';
-
-      ー({
-        name: 'Select',
-        select: 'select',
-        pick: [0, 1, 2],
-        mode: 'programmable',
-        onClick: shared.toggleSelectYesNo,
-      });
-
-      setGlobalReactions({
-        onKeydown_CtrlEnter: markApproved,
-        onKeydown_CtrlNumpadEnter: markApproved,
-        onKeydown_BracketLeft: shared.resetCounter,
-        onKeydown_CtrlAltS: () => log.warn('Please approve before saving'),
-      });
-    }
-
-    function readyToSubmitStage() {
-      log.notice('Ready to submit');
-
-      ー({
-        name: 'Save',
-        select: 'textarea',
-        pick: [0, 2, 3, 6, 7, 10, 11, 14, 15, 18, 19],
-        mode: 'programmable',
-        ref: 'saveExtraction',
-      });
-
-      ー({
-        name: 'SubmitButton',
-        select: 'button',
-        pick: [4],
-        mode: 'static',
-        ref: 'submitButton',
-      });
-
-      setGlobalReactions({
-        onKeydown_CtrlAltS: saveExtraction,
-        onKeydown_CtrlEnter: submit,
-        onKeydown_CtrlNumpadEnter: submit,
-        onClick: continueEditing,
-        onPaste: continueEditing,
-      });
-    }
-
+    /**
+     * @throws {Error} This function should be overridden.
+     */
     let reinitialise = () => {
       throw new Error('No access to the main function');
     };
@@ -989,12 +877,8 @@ var {detectWorkflow, flows} = (function workflowModule() {
   })();
 
   return {
-    detectWorkflow,
-    flows: {
-      ratingHome,
-      slDutch,
-      playground,
-    },
+    ratingHome,
+    slDutch,
   };
 })();
 
@@ -1007,20 +891,27 @@ var {detectWorkflow, flows} = (function workflowModule() {
 // APP module
 
 var stage = -1;
+var flowName = undefined;
 
 (function appModule() {
+  'use strict';
+ 
+  /**
+   * @fileoverview Starting point for the app.
+   */
   function main() {
-    const detectedFlowName = detectWorkflow();
+    const detectedFlowName = environment.flowName();
     if (!detectedFlowName) {
-      return log.warn('No workflow identified');
+      return log.warn('No workflow identified', true);
     }
-    if (stage < 0) {
+    if (stage < 0 || flowName !== detectedFlowName) {
       log.notice(`${detectedFlowName} initialised`);
+      flowName = detectedFlowName;
       stage = 0;
     }
     resetReactions();
     const flowInitializer = flows[detectedFlowName];
-    flowInitializer.init(main);
+    flowInitializer.init(main, );
   };
 
   main();
@@ -1033,4 +924,6 @@ var stage = -1;
  * with context determined when wrapping.
  *
  * @todo Use taskId somehow
+ *
+ * @todo Build dev tool that marks elements on the page
  */
