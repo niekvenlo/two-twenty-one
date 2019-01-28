@@ -1,6 +1,21 @@
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
+//   _______         _______                 _          ____             
+//  |__   __|       |__   __|               | |        / __ \            
+//     | |_      _____ | |_      _____ _ __ | |_ _   _| |  | |_ __   ___ 
+//     | \ \ /\ / / _ \| \ \ /\ / / _ \ '_ \| __| | | | |  | | '_ \ / _ \
+//     | |\ V  V / (_) | |\ V  V /  __/ | | | |_| |_| | |__| | | | |  __/
+//     |_| \_/\_/ \___/|_| \_/\_/ \___|_| |_|\__|\__, |\____/|_| |_|\___|
+//                                                __/ |                  
+//                                               |___/                   
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
 // TEST module
 
 var test = (function testModule() {
@@ -231,13 +246,22 @@ var util =
 
   /**
    * @param {Object} o
-   * @param {string} o.type - E.g. 'keydown' or 'guiUpdate'.
+   * @param {string} o.types - Comma separated string of event types.
+   * E.g. 'keydown', 'guiUpdate' or 'blur, change, input'.
    * @param {Object} o.payload - E.g. event or {detail: {stage: 5}}.
    * @param {HTMLElement} o.target - The HTMLElement emitting the event.
    * @example 
    */
-  function dispatch({type, payload, target = document}) {
-    target.dispatchEvent(new CustomEvent(type, payload));
+  function dispatch(types, {detail, target = document} = {target: document}) {
+    types.split(/, ?/).forEach(type => {
+      if (detail) {
+        target.dispatchEvent(new CustomEvent(type, {detail}, {bubbles: true}));
+      } else {
+        target.dispatchEvent(new Event(type, {bubbles: true}));
+      }
+    });
+    
+    
   }
 
   /**
@@ -327,7 +351,7 @@ var util =
       return '';
     }
     if (!/^https?:\//.test(url)) {
-      log.warn('Not a url: ' + url, true);
+      tto.log.warn(`Not a url: ${url}`);
       return '';
     }
     const domain = url.match(/\/\/([^\/]*)/);
@@ -406,12 +430,7 @@ var util =
 ////////////////////////////////////////////////////////////////////////////////
 // DATA module
 
-var {
-  config,
-  counter,
-  dataStore,
-  log,
-} = (function dataModule() {
+var tto = (function dataModule() {
   'use strict';
 
   /**
@@ -425,25 +444,185 @@ var {
   const LOCALSTORE_BASENAME = 'twoTwentyOne';
 
   const CONFIG_STORE_NAME = 'Configuration';
+  const DEFAULT_SETTINGS = {};
 
   const COUNTER_STORE_NAME = 'Counter';
 
-  const DATA_STORE_BASENAME = 'Data';
-
   const LOGBOOK_STORE_NAME = 'LogBook';
   const MAX_LOG_LENGTH = 5000; // entries
+  const MAX_CHAR_LENGTH = 500;
   const LOG_PAGE_SIZE = 25; // entries per page
   const NO_COLOR_FOUND = 'yellow';
-  const TIMESTAMP_COLOR = 'color: grey';
+  const TIMESTAMP_STYLE = 'color: grey';
   const LOG_TYPES = {
-    log: {color:'black', print: true},
-    notice: {color:'DodgerBlue', print: true},
-    warn: {color:'OrangeRed', print: true},
-    ok: {color:'LimeGreen', print: true},
-    lowLevel: {color:'Gainsboro', print: false},
-    changeValue: {color:'LightPink', print: false},
-    changeConfig: {color:'MediumOrchid', print: true},
+    log: 'black',
+    notice: 'DodgerBlue',
+    warn: 'OrangeRed',
+    ok: 'LimeGreen',
+    lowLevel: 'Gainsboro',
+    changeValue: 'LightPink',
+    changeConfig: 'MediumOrchid',
   };
+
+  /**
+   * Manage dynamic data stores.
+   */
+  const storeAccess = (function storesMiniModule() {
+    /**
+     * Wraps around localStorage to ensure an object is returned.
+     */
+    const local = {
+      /**
+       * @param {string} itemName - Name of the item in localStorage
+       * @return {(Object|string|number)} Data restored from string in storage,
+       * or empty object. Strings and numbers are supported.
+       */
+      getStore(itemName) {
+        const item = localStorage.getItem(LOCALSTORE_BASENAME + itemName);
+        return (item) ? JSON.parse(item) : {};
+      },
+      /**
+       * @param {string} itemName - Name of the item in localStorage
+       * @param {object} obj - Object, string or number to be stored.
+       * Will overwrite previously stored values.
+       */
+      setStore(itemName, obj = {}) {
+        localStorage.setItem(
+          LOCALSTORE_BASENAME + itemName,
+          JSON.stringify(obj),
+        );
+      }
+    };
+
+    /**
+     * Simply wraps around localStore to add cache in memory.
+     */
+    const cache = {};
+
+    const cached = {
+      getStore(name) {
+        if (cache[name] !== undefined) {
+          return cache[name];
+        }
+        return local.getStore(name);
+      },
+      setStore(name, value) {
+        cache[name] = value;
+        local.setStore(name, value);
+      },
+    };
+    
+    /**
+     * Get a data entry for a specific feature, and optionally a specific
+     * locale. Return a locale specific entry if one exists, else returns
+     * a shared entry if one exists.
+     *
+     * @param {Object} o
+     * @param {string} o.feature
+     * @param {string=} o.locale
+     * @param {string} o.get
+     * @return {*} Returns data, or undefined.
+     */
+    function getData({feature, locale, get}) {
+      const oneLocale = cached.getStore(`${feature}${locale}`);
+      const allLocales = cached.getStore(`${feature}`);
+      return oneLocale[get] || allLocales[get];
+    }
+
+    /**
+     * Set a data entry for a specific feature, and optionally a specific
+     * locale. If no locale is specified, data will be added to a feature
+     * specific shared data store.
+     *
+     * @param {Object} o
+     * @param {string} o.feature
+     * @param {string=} o.locale
+     * @param {string} o.set
+     * @param {*} o.value
+     */
+    function setData({feature, locale = '', set, value}) {
+      const data = cached.getStore(`${feature}${locale}`);
+      data[set] = value;
+      cached.setStore(`${feature}${locale}`, data);
+    }
+    
+    /**
+     * Get all data for a specific feature, and optionally a specific
+     * locale. Return all shared entries, and all locale specific entries
+     * if a locale is specified.
+     *
+     * @param {Object} o
+     * @param {string} o.feature
+     * @param {string=} o.locale
+     */
+    function dumpStore({feature, locale}) {
+      const allLocales = cached.getStore(`${feature}`);
+      if (!locale) {
+        return allLocales;
+      }
+      const oneLocale = cached.getStore(`${feature}${locale}`);
+      return {[locale]: oneLocale, shared: allLocales};
+    }
+
+    /**
+     * Set or replace all data for a specific feature, and optionally a
+     * specific locale. If no locale is specified, data will be added
+     * to a feature specific shared data store.
+     *
+     * @param {Object} o
+     * @param {string} o.feature
+     * @param {string=} o.locale
+     * @param {*} o.data
+     */
+    function createStore({feature, locale, data}) {
+      cached.setStore(`${feature}${locale}`, data);
+    }
+    /**
+     * Get or set data entries, or dump or create data stores,
+     * depending on the input parameters.
+     *
+     * @param {Object} o
+     * @param {string} o.feature
+     * @param {string=} o.locale
+     * @param {string=} o.get
+     * @param {string=} o.set
+     * @param {*=} o.value
+     * @param {*=} o.data
+     * @return {*}
+     * @example:
+     * storeAccess({
+     *   feature: 'Example',
+     *   data: {name: 'Lauren Ipsum'},
+     * });
+     * storeAccess({
+     *   feature: 'Example',
+     *   locale: 'English',
+     *   get: 'name',
+     * }) => 'Lauren Ipsum';
+     * storeAccess({
+     *   feature: 'Example',
+     *   locale: 'English',
+     *   set: 'name',
+     *   value: 'Yanny Ipsum',
+     * });
+     * storeAccess({
+     *   feature: 'Example',
+     *   locale: 'English',
+     * }) => {name: 'Yanny Ipsum'};
+     */
+    function storeAccess({feature, locale = '', get, set, value, data}) {
+      if (get !== undefined) {
+        return getData({feature, locale, get});
+      } else if (set !== undefined) {
+        return setData({feature, locale, set, value});
+      } else if (data !== undefined) {
+        return createStore({feature, locale, data});
+      } else {
+        return dumpStore({feature, locale});
+      }
+    }
+    return storeAccess;
+  })();
 
   /**
    * Create a human readable string timestamp.
@@ -491,7 +670,7 @@ var {
    * @example - updateGui({counters: {one: 21}});
    */
   function updateGui(packet) {
-    util.dispatch({type: 'guiUpdate', payload: {detail: packet}});
+    util.dispatch('guiUpdate', {detail: packet});
   }
   test.group('updateGui', () => {
     let received;
@@ -501,73 +680,79 @@ var {
     test.ok(received === testPacket, 'Packet succesfully sent');
   }, true);
 
-  /** Handle communication with localStorage */
-  const localStore = {
-    /**
-     * @param {string} itemName - Name of the item in localStorage
-     * @return {(Object|string|number)} Data restored from string in storage,
-     * or empty object. Strings and numbers are supported.
-     */
-    get(itemName) {
-      const item = localStorage.getItem(LOCALSTORE_BASENAME + itemName);
-      return (item) ? JSON.parse(item) : {};
-    },
-    /**
-     * @param {string} itemName - Name of the item in localStorage
-     * @param {object} obj - Object, string or number to be stored.
-     * Will overwrite previously stored values.
-     */
-    set(itemName, obj = {}) {
-      localStorage.setItem(
-        LOCALSTORE_BASENAME + itemName,
-        JSON.stringify(obj),
-      );
-    }
-  };
-
   /**
    * Track configuration settings. Settings are loaded from localStorage on
-   * load, but changes are not persisted by default.
+   * load, but changes are not saved by default.
    * #get(name) returns a value if a config setting is loaded, or undefined.
-   * #set(name, newValue, save) adds a value to the config object in memory
+   * #set(name, newValue, save) adds a value to the config options in memory
    * and optionally updates the config options stored in localStorage.
+   * #save(name, newValue) adds a value to the config object and saves to
+   * localStorage.
    * #raw() returns the config object in memory and exists mostly for
    * debugging.
    */
   const config = (function configMiniModule() {
-    const defaults = {};
-    const stored = localStore.get(CONFIG_STORE_NAME);
-    const config = {...defaults, ...stored};
+    const tempSettings = {};
     /**
      * @param {string} name - The name of the configuration option to find.
      * @return {(Object|string|number)} The associated value, or undefined if
      * none is found.
      */
     function get(name) {
-      return config[name];
+      const storedSetting = storeAccess({
+        feature: CONFIG_STORE_NAME,
+        get: name,
+      });
+      return tempSettings[name] || storedSetting || DEFAULT_SETTINGS[name];
     }
+
     /**
      * @param {string} name - The name of the configuration option to set.
      * @param {(Object|string|number)} newValue
-     * @param {boolean} save - Should the value be persisted to localstorage?
+     * @param {boolean} save - Should the value be saved to localstorage?
      */
     function set(name, newValue, save) {
       const term = (save) ? 'permanently' : 'temporarily';
-      log.changeConfig(`${name} ${term} changed to '${newValue}'`)
-      config[name] = newValue;
+      tto.log.changeConfig(
+        `${name} ${term} changed to '${newValue}'`,
+      );
+      tempSettings[name] = newValue;
       if (save) {
-        localStore.set(CONFIG_STORE_NAME, config);
+        storeAccess({
+          feature: CONFIG_STORE_NAME,
+          set: name,
+          value: newValue,
+        });
       }
     }
+
+    /**
+     * Convenience function. As #set but automatically saves.
+     *
+     * @param {string} name - The name of the configuration option to set.
+     * @param {(Object|string|number)} newValue
+     */
+    function save(name, newValue) {
+      set(name, newValue, true);
+    }
+
     /**
      * Return the raw config object. Exists mainly for debugging purposes.
      *
-     * @return {Object} - The raw config object as it exists in memory.
+     * @return {Object} All settings.
      */
     function raw() {
-      return config;
+      const stored = storeAccess({
+        feature: CONFIG_STORE_NAME,
+      });
+      return {...defaultSettings, ...stored};
     }
-    return {get, set, raw};
+    return {
+      get,
+      set,
+      save,
+      raw,
+    };
   })();
 
   /**
@@ -579,9 +764,13 @@ var {
    * provided).
    */
   const counter = (function counterMiniModule() {
-
-    function getStored() {
-      return localStore.get(COUNTER_STORE_NAME);
+    /**
+     * @return {Object<string: number>} - Maps names to counts.
+     */
+    function getStore() {
+      return storeAccess({
+        feature: COUNTER_STORE_NAME,
+      });
     }
 
     /**
@@ -594,10 +783,13 @@ var {
       if (typeof name !== 'string') {
         throw new Error('Counter add expects a name string');
       }
-      const /** object */ allCounts = getStored();
+      const /** object */ allCounts = getStore();
       const /** number */ newCount = (allCounts[name] + 1) || 1;
       allCounts[name] = newCount;
-      localStore.set(COUNTER_STORE_NAME, allCounts);
+      storeAccess({
+        feature: COUNTER_STORE_NAME,
+        data: allCounts,
+      });
       updateGui({counters: allCounts});
       return newCount;
     }
@@ -611,42 +803,48 @@ var {
       if (typeof name !== 'string') {
         throw new Error('Counter get expects a name string');
       }
-      const allCounts = getStored();
+      const allCounts = getStore();
       return allCounts[name] || -1;
     }
 
     /**
-     * @param {string=} name - Name of the counter to reset.
+     * @param {string=} name - Name of the counter to reset. If no name
+     * is provided, all counters are reset.
      */
     function reset(name) {
       if (typeof name !== 'string' && name !== undefined) {
         throw new Error('Counter reset expects a name string or nothing');
       }
-      const allCounts = getStored();
+      const allCounts = getStore();
       if (name) {
         const currentCount = allCounts[name];
         util.wait().then(() => { // @todo Fix wait hack. Used for testing.
-          log.notice(
+          tto.log.notice(
             `Resetting counter ${name} from ${currentCount}`,
-            true,
-          ), 0
+          );
         });
         delete allCounts[name];
       } else {
-        log.notice(
+        tto.log.notice(
           `Resetting all counters: ${JSON.stringify(allCounts)}`,
-          true,
         );
         for (let i in allCounts) {
           delete allCounts[i];
         }
       }
-      localStore.set(COUNTER_STORE_NAME, allCounts);
+      storeAccess({
+        feature: COUNTER_STORE_NAME,
+        data: allCounts,
+      });
       updateGui({counters: allCounts});
       return 0;
     }
-    util.wait().then(() => updateGui({counters: getStored()}));
-    return {add, get, reset};
+    util.wait().then(() => updateGui({counters: getStore()}));
+    return {
+      add,
+      get,
+      reset,
+    };
   })();
   test.group('counter', () => {
     const complex = 'aG9yc2ViYXR0ZXJ5c3RhYmxl';
@@ -658,123 +856,7 @@ var {
     test.ok(counter.get(complex) === -1, 'Counter is gone');
   }, true);
 
-  /**
-   * Manage dynamic data stores.
-   */
-  const dataStore = (function dataMiniModule() {
-    /**
-     * Simply wraps around localStore to add cache in memory.
-     */
-    const store = (function storeAccess() {
-      const cache = {};
-      function get(name) {
-        if (cache[name] !== undefined) {
-          return cache[name];
-        }
-        return localStore.get(DATA_STORE_BASENAME + name);
-      }
-      function set(name, value) {
-        cache[name] = value;
-        localStore.set(DATA_STORE_BASENAME + name, value);
-      }
-      return {
-        get,
-        set,
-      }
-    })();
-    
-    /**
-     * Get a data entry for a specific feature, and optionally a specific
-     * locale. Return a locale specific entry if one exists, else returns
-     * a shared entry if one exists.
-     *
-     * @param {Object} o
-     * @param {string} o.feature
-     * @param {string=} o.locale
-     * @param {string} o.get
-     * @return {*} Returns data, or undefined.
-     */
-    function getData({feature, locale, get}) {
-      const allLocales = store.get(`${feature}`);
-      const oneLocale = store.get(`${feature}${locale}`);
-      return oneLocale[get] || allLocales[get];
-    }
-
-    /**
-     * Set a data entry for a specific feature, and optionally a specific
-     * locale. If no locale is specified, data will be added to a feature
-     * specific shared data store.
-     *
-     * @param {Object} o
-     * @param {string} o.feature
-     * @param {string=} o.locale
-     * @param {string} o.set
-     * @param {*} o.value
-     */
-    function setData({feature, locale = '', set, value}) {
-      const data = store.get(`${feature}${locale}`);
-      data[set] = value;
-      store.set(`${feature}${locale}`, data);
-    }
-    
-    /**
-     * Get all data for a specific feature, and optionally a specific
-     * locale. Return all shared entries, and all locale specific entries
-     * if a locale is specified.
-     *
-     * @param {Object} o
-     * @param {string} o.feature
-     * @param {string=} o.locale
-     */
-    function dumpData({feature, locale}) {
-      const allLocales = store.get(`${feature}`);
-      if (!locale) {
-        return allLocales;
-      }
-      const oneLocale = store.get(`${feature}${locale}`);
-      return {[locale]: oneLocale, shared: allLocales};
-    }
-
-    /**
-     * Set or replace all data for a specific feature, and optionally a
-     * specific locale. If no locale is specified, data will be added
-     * to a feature specific shared data store.
-     *
-     * @param {Object} o
-     * @param {string} o.feature
-     * @param {string=} o.locale
-     * @param {*} o.data
-     */
-    function createData({feature, locale, data}) {
-      store.set(`${feature}${locale}`, data);
-    }
-    /**
-     * Get or set data entries, or dump or create data stores,
-     * depending on the input parameters.
-     *
-     * @param {Object} o
-     * @param {string} o.feature
-     * @param {string=} o.locale
-     * @param {string=} o.get
-     * @param {string=} o.set
-     * @param {*=} o.value
-     * @param {*=} o.data
-     * @return {*}
-     */
-    function dataAccess({feature, locale, get, set, value, data}) {
-      if (get !== undefined) {
-        return getData({feature, locale, get});
-      } else if (set !== undefined) {
-        return setData({feature, locale, set, value});
-      } else if (data !== undefined) {
-        return createData({feature, locale, data});
-      } else {
-        return dumpData({feature, locale});
-      }
-    }
-    return dataAccess;
-  })();
-
+  /** Object[] */
   let flaggedIssues = [];
 
   /**
@@ -837,8 +919,9 @@ var {
   * Object with methods to log events. The following is true for most
   * methods:
   * * @param {Object|string} payload
-  * * @param {Boolean} persist Should the event be persisted to
-  *   localstorage?
+  * * @param {Object} o
+  * * @param {boolean} o.save Should the event be saved to localstorage?
+  * * @param {boolean} o.print Should the event be printed to the console?
   */
   const log = (function loggingModule() {
 
@@ -873,12 +956,12 @@ var {
      * @param {Object|string} payload
      * @time {Date=} Optionally, provide a Date for the timestamp.
      */
-    function toConsole({type, payload, time = new Date()}) {
-      const color =
-          (LOG_TYPES[type] && LOG_TYPES[type].color) || NO_COLOR_FOUND;
+    function printToConsole({type, payload, time = new Date(), save = true}) {
+      const color = LOG_TYPES[type] || NO_COLOR_FOUND;
       const ts = timestamp(time);
       const string = payloadToString(payload, ts.length);
-      console.log(`%c${ts} %c${string}`, TIMESTAMP_COLOR, `color: ${color}`);
+      const aster = (!save) ? '*' : '';
+      console.log(`%c${ts} %c${string}${aster}`, TIMESTAMP_STYLE, `color: ${color}`);
     }
 
     /**
@@ -887,29 +970,39 @@ var {
      *
      * @return {Object[]} Array of entries.
      */
-    function getPersistent() {
-      const logBook = localStore.get(LOGBOOK_STORE_NAME);
+    function getStore() {
+      const logBook = storeAccess({
+        feature: LOGBOOK_STORE_NAME,
+      });
       return (logBook.entries || []).map(entry => {
-        entry.time = new Date(entry.time);
-        return entry;
+        return {
+          time: new Date(entry[0]),
+          type: entry[1],
+          payload: entry[2],
+        };
       });
     }
-    test.group('getPersistent', () => {
-      test.ok(Array.isArray(getPersistent()), 'Returns an array');
+    test.group('getStore', () => {
+      test.ok(Array.isArray(getStore()), 'Returns an array');
     });
 
     /**
-     * Persistently save an array of log entries.
+     * Save an array of log entries.
      *
      * @param {Object} entries - An object containing an array of log entries. 
      */
-    function setPersistent(entries) {
-      entries = entries.slice(-MAX_LOG_LENGTH);
-      localStore.set(LOGBOOK_STORE_NAME, {entries});
+    function setStore(entries) {
+      entries = entries.slice(-MAX_LOG_LENGTH).map(o => {
+        return [o.time, o.type, o.payload];
+      });
+      storeAccess({
+        feature: LOGBOOK_STORE_NAME,
+        data: {entries},
+      });
     }
 
     /**
-     * Add a single log entry to the persistent log.
+     * Add a single log entry to the saved log.
      *
      * @param {Object} entry - Log entry object.
      * @param {string} entry.type - Type of log entry.
@@ -917,15 +1010,19 @@ var {
      * log entry.
      */
     function addPersistent({type, payload}) {
-      const entries = getPersistent();
-      const newEntry = {time: new Date(), type, payload};
-      const newEntries = [...entries, newEntry];
-      setPersistent(newEntries);
+      const entries = getStore();
+      const newEntry = {
+        time: new Date(), 
+        type, 
+        payload
+      };
+      const allEntries = [...entries, newEntry];
+      setStore(allEntries);
     }
     test.group('addPersistent', () => {
-      const length = getPersistent().length;
+      const length = getStore().length;
       addPersistent({type: 'testing', payload: '1,2,3'});
-      test.ok((length + 1) === getPersistent().length), 'Added one entry';
+      test.ok((length + 1) === getStore().length), 'Added one entry';
     }, true);
 
     /**
@@ -935,25 +1032,24 @@ var {
      * @return {Object[]}
      * @example - printPersistent({before: new Date('2019-01-17')});
      */
-    function getFilteredPersistent(filterBy = {}) {
+    function getEntries(filterBy = {}) {
       const filters = {
-        after: entry => entry.time > filterBy.after,
-        before: entry => entry.time < filterBy.before,
+        after: entry => entry.time > new Date(filterBy.after),
+        before: entry => entry.time < new Date(filterBy.before),
         contains: entry => new RegExp(filterBy.contains).test(entry.payload),
+        items: entry => true,
+        page: entry => true,
         regex: entry => filterBy.regex.test(entry.payload),
         type: entry => entry.type === filterBy.type,
         typeExclude: entry => entry.type !== filterBy.typeExclude,
-      }
-      let entries = getPersistent();
+      };
+      let entries = getStore();
       for (let filterType in filterBy) {
-        if (filterType === 'page') {
-          continue;
-        }
         try {
           entries = entries.filter(filters[filterType]);
         } catch (e) {
           if (e instanceof TypeError) {
-            log.warn(
+            tto.log.warn(
               `'${filterType}' is not a valid log filter. Please use:` +
               util.mapToBulletedList(filters),
               true,
@@ -962,21 +1058,22 @@ var {
           }
         }
       }
+      const pageSize = filterBy.items || LOG_PAGE_SIZE;
       const page = (filterBy.page > 0) ? filterBy.page : 0;
-      const start = LOG_PAGE_SIZE * (page);
-      const end = LOG_PAGE_SIZE * (page + 1);
+      const start = pageSize * (page);
+      const end = pageSize * (page + 1);
       entries = entries.slice(-end, -start || undefined);
       return entries;
     }
-    test.group('getFilteredPersistent', () => {
-      const entries = getFilteredPersistent();
+    test.group('getEntries', () => {
+      const entries = getEntries();
       test.ok(
         (entries.length === LOG_PAGE_SIZE) ||
-        (getPersistent().length < LOG_PAGE_SIZE),
+        (getStore().length < LOG_PAGE_SIZE),
         'Get a full page from the log, if possible',
       );
       const randomString = Math.random().toString();
-      const filtered = getFilteredPersistent({contains: randomString});
+      const filtered = getEntries({contains: randomString});
       test.ok(
         filtered.length === 0,
         'Succesfully filter out all entries',
@@ -988,18 +1085,14 @@ var {
      *
      * @param {Object=} filterBy Filter parameters.
      * @return {Object[]}
-     * @example printPersistent({before: new Date()});
+     * @example print({before: new Date()});
      */
-    function printPersistent(filterBy = {}) {
-      getFilteredPersistent(filterBy).forEach(entry => toConsole(entry));
+    function print(filterBy = {}) {
+      getEntries(filterBy).forEach(entry => printToConsole(entry));
     }
-    test.group('printPersistent', () => {
+    test.group('print', () => {
       test.todo('XXXXX');
     });
-
-    function raw(filterBy = {}) {
-      return getFilteredPersistent(filterBy);
-    }
 
     /**
      * Generate a logging function.
@@ -1007,36 +1100,34 @@ var {
      * @param {string} type Title of the log.
      */
     function genericLog(type) {
-      /**
-       * Write to the console, and optionally to persistent log.
-       *
-       * @param {(Object|string|number)=} payload - Data associated with the
-       * log entry.
-       * @param {persist} boolean - Should the log entry be persisted to
-       * localstorage.
-       */
-      function log(payload = '', persist) {
-        if (LOG_TYPES[type].print) {
-          toConsole({type, payload});        
+      function add(payload, {print = true, save = true} = {}) {
+        if (typeof payload === 'string' &&
+            payload.length > MAX_CHAR_LENGTH) {
+          payload = payload.slice(0, MAX_CHAR_LENGTH - 3) + '...';
         }
-        if (persist) {
+        if (print) {
+          printToConsole({type, payload, save});    
+        }
+        if (save) {
           addPersistent({type, payload});
         }
       }
-      return log;
+      return add;
     }
-
-    const exports = {print: printPersistent, raw};
+    const log = {
+      print,
+      raw: getEntries,
+    }
     for (let type in LOG_TYPES) {
-      exports[type] = genericLog(type);
+      log[type] = genericLog(type);
     }
-    return exports;
+    return log;
   })();
 
   return {
     config,
     counter,
-    dataStore,
+    storeAccess,
     log,
   };
 })();
@@ -1049,11 +1140,7 @@ var {
 ////////////////////////////////////////////////////////////////////////////////
 // EVENT LISTENER module
 
-var {
-  resetReactions,
-  setReactions,
-  setGlobalReactions,
-} = (function eventListenersModule() {
+var eventReactions = (function eventListenersModule() {
   'use strict';
 
   /**
@@ -1087,6 +1174,7 @@ var {
   const INTERACT_EVENTS = Object.freeze([
     'onClick',
     'onFocusout',
+    'onInput',
     'onKeydown',
     'onPaste',
   ]);
@@ -1098,7 +1186,7 @@ var {
    * For example:
    * document.body => {
    *   click: [reaction, reaction],
-   *   focusout: [raaction],
+   *   focusout: [reaction],
    * }
    */
   const reactionStore = (function () {
@@ -1345,7 +1433,7 @@ var {
    * these reactions were attached to and which one triggered
    * the functions.
    */
-  function setReactions(htmlElement, reactions, context) {
+  function set(htmlElement, reactions, context) {
     if (!util.isHTMLElement(htmlElement)) {
       throw new Error('Not an HTMLElement');
     }
@@ -1365,8 +1453,8 @@ var {
    * @param {Object<string: function[]>} reactions - A
    * map of event types to arrays of functions.
    */
-  function setGlobalReactions(reactions) {
-    setReactions(document, reactions, {proxy: {}, idx: 0, group: []});
+  function setGlobal(reactions) {
+    eventReactions.set(document, reactions, {proxy: {}, idx: 0, group: []});
   }
 
   /**
@@ -1430,7 +1518,7 @@ var {
     function cheatCodeHandler(e) {
       (e.code === CODE[idx]) ? idx++ : idx = 0;
       if (idx === CODE.length) {
-        log.log('cheat mode');
+        tto.log.lowLevel('cheat mode');
       }
     }
     document.addEventListener('keydown', cheatCodeHandler, {passive: true});
@@ -1438,9 +1526,9 @@ var {
 
   initGenericEventHandlers();
   return {
-    resetReactions: reactionStore.clear,
-    setReactions,
-    setGlobalReactions,
+    reset: reactionStore.clear,
+    set,
+    setGlobal,
   }
 })();
 
@@ -1515,12 +1603,10 @@ var {ー, ref} = (function domAccessModule() {
    *
    * @param {HTMLElement} htmlElement
    */
-  function touch(htmlElement) {
-    util.wait().then(() => {
-      // Blur signals a change to GWT
-      htmlElement.dispatchEvent(new Event('blur'));
-      htmlElement.dispatchEvent(new Event('paste'));
-    });
+  async function touch(htmlElement) {
+    await util.wait();
+    // Blur signals a change to GWT
+    util.dispatch('blur, change, focusout, input', {target: htmlElement});
   }
 
   /**
@@ -1534,7 +1620,7 @@ var {ー, ref} = (function domAccessModule() {
   function safeSetter(htmlElement, name, newValue) {
     const currentValue = htmlElement.value;
     if (currentValue === newValue) {
-      log.lowLevel(`No change to ${name}'.`);
+      tto.log.lowLevel(`No change to ${name}'.`, {print: false});
       return;
     }
     if(!EDITABLE_ELEMENT_TYPES.includes(htmlElement.type)) {
@@ -1542,9 +1628,9 @@ var {ー, ref} = (function domAccessModule() {
     }
     htmlElement.value = newValue;
     touch(htmlElement);
-    log.changeValue(
-      `Changing '${name}' from '${currentValue}' to '${newValue}'.`,
-      true,
+    tto.log.changeValue(
+      `${name} '${currentValue}' => '${newValue}'.`,
+      {print: false},
     );
   }
 
@@ -1689,9 +1775,9 @@ var {ー, ref} = (function domAccessModule() {
       proxy.name += '|' + namePlusLetter(name, idx);
     } catch (e) {
       if (e instanceof TypeError) {
-        log.warn(
+        tto.log.warn(
           `Cannot append ${name} to name of static proxy ${proxy.name}`,
-        )
+        );
       } else {
         throw e;
       }
@@ -1730,7 +1816,7 @@ var {ー, ref} = (function domAccessModule() {
       options.mode = cached.mode;
     } else if (cached) {
       if (cached.mode !== options.mode && false) { // @todo Fix warning
-        log.warn(
+        tto.log.warn(
           `Didn't change ${options.name} element mode from ${cached.mode}` +
           ` to ${options.mode}`,
           true,
@@ -1811,7 +1897,7 @@ var {ー, ref} = (function domAccessModule() {
     proxies.forEach((proxy, idx, group) => {
       const htmlElement = htmlElements[idx];
       const context = {proxy, idx, group};
-      setReactions(htmlElement, reactions, context);
+      eventReactions.set(htmlElement, reactions, context);
     });
   }
 
