@@ -141,7 +141,7 @@ var shared = (function workflowMethodsModule() {
         packet.issueLevel = issueLevel;
         packet.message = message;
       }
-      util.dispatch({type: 'issueUpdate', payload: {detail: packet}});
+      util.dispatch('issueUpdate', {detail: packet});
     };
     return util.delay(flagThis, 20);
   }
@@ -287,7 +287,7 @@ var shared = (function workflowMethodsModule() {
     }
     for (let packet of packets) {
       if (!testing) {     
-        util.dispatch({type: 'issueUpdate', payload: {detail: packet}});
+        util.dispatch('issueUpdate', {detail: packet});
       }
     }
     return packets;
@@ -340,9 +340,8 @@ var shared = (function workflowMethodsModule() {
     if (value.length > LOG_ENTRY_MAX_LENGTH) {
       value = value.slice(0,LOG_ENTRY_MAX_LENGTH - 3) + '...';
     }
-    log.notice(
+    tto.log.notice(
       `Fallthrough: '${group[1].value}' became '${value}'`,
-      true,
     );
   };
   test.group('fallThrough', () => {
@@ -389,10 +388,10 @@ var shared = (function workflowMethodsModule() {
     }
     if (mode === 'addInitials') {
       commentBox.focus();
-      const initials = config.get('initials') || '';
+      const initials = tto.config.get('initials') || '';
       commentBox.value = initials + '\n' + commentBox.value;
     } else if (mode === 'removeInitials') {
-       const initials = config.get('initials') || '';
+       const initials = tto.config.get('initials') || '';
        commentBox.value =
            commentBox.value.replace(RegExp('^' + initials + '\n'), '');
     }
@@ -413,13 +412,13 @@ var shared = (function workflowMethodsModule() {
   }
 
   function prefill(proxy) {
-    const values = dataStore({
+    const values = tto.storeAccess({
       feature: 'Prefill',
       locale: 'Dutch',
       get: util.getDomain(proxy.value),
     });
     if (values) {
-      log.notice('Found prefill values', true);
+      tto.log.notice('Found prefill values');
     }
     const targets = ref.prefillTarget;
     for (let idx in values) {
@@ -430,11 +429,11 @@ var shared = (function workflowMethodsModule() {
   function resetCounter() {
     const question =
         'Please confirm.\nAre you sure you want to reset all counters?';
-    log.notice(question, true)
+    tto.log.notice(question)
     if (confirm(question)) {
-      counter.reset();      
+      tto.counter.reset();      
     } else {
-      log.lowLevel('Canceled', true);
+      tto.log.lowLevel('Canceled');
     }
   }
 
@@ -444,7 +443,6 @@ var shared = (function workflowMethodsModule() {
    * locations of the buttons in the DOM.
    */
   async function skipTask() {
-    log.notice('ggg');
     const RETRIES = 15;
     const DELAY = 25; // ms
 
@@ -457,7 +455,7 @@ var shared = (function workflowMethodsModule() {
 
     const skipButton = ref.skipButton[0];
     if (!skipButton) {
-      log.warn('Skip button not found.', true);
+      tto.log.warn('Skip button not found.');
       return;
     }
     skipButton.click();
@@ -467,13 +465,13 @@ var shared = (function workflowMethodsModule() {
       const button = confirmButton.fresh()[0];
       if (button) {
         button.click();
-        log.notice('Skipping task', true);
-        counter.add('Skipping');
+        tto.log.notice('Skipping task');
+        tto.counter.add('Skipping');
         return;
       }
       await util.wait(DELAY);
     }
-    log.warn('Skip confirmation dialog did not appear.', true);
+    tto.log.warn('Skip confirmation dialog did not appear.');
   }
 
   /**
@@ -484,18 +482,18 @@ var shared = (function workflowMethodsModule() {
     const values = ref.saveExtraction.map(element => element.value);
     const domain = util.getDomain(values[0]);
     if (!domain) {
-      return log.warn('Not enough data to save.');
+      return tto.log.warn('Not enough data to save.');
     }
     const extractionData = {[domain]: values.slice(1)};
-    dataStore({
+    tto.storeAccess({
       feature: 'Prefill',
       locale: 'Dutch',
       set: domain,
       value: values.slice(1),
     });
-    log.ok(
+    tto.log.ok(
       'Saving new default extraction for ' + domain +
-      util.mapToBulletedList(values.slice(1), 2), true
+      util.mapToBulletedList(values.slice(1), 2),
     );
   }
 
@@ -507,10 +505,10 @@ var shared = (function workflowMethodsModule() {
     if (!button || !button.click) {
       throw new Error('Submit requires a valid submit button proxy');
     }
-    log.notice('Submitting', true);
+    tto.log.notice('Submitting');
     await util.wait(100);
     button.click();
-    counter.add('Submit');
+    tto.counter.add('Submit');
   }
   submit = util.debounce(submit, 100);
 
@@ -647,7 +645,7 @@ var flows = (function workflowModule() {
         ref: 'firstButton',
       });
 
-      setGlobalReactions({
+      eventReactions.setGlobal({
         onKeydown_Digit1: toggleSelectWithKey(1),
         onKeydown_Digit2: toggleSelectWithKey(2),
         onKeydown_Digit3: toggleSelectWithKey(3),
@@ -692,7 +690,7 @@ var flows = (function workflowModule() {
      * Set up event handlers for the Edit stage.
      */
     function editStage () {
-      log.notice('Edit stage');
+      tto.log.notice('Edit stage', {save: false});
 
       ー({
         name: 'Landing Page Url',
@@ -812,12 +810,14 @@ var flows = (function workflowModule() {
         ref: 'skipButton'
       });
 
-      setGlobalReactions({
+      eventReactions.setGlobal({
         onKeydown_CtrlEnter: markApproved,
         onKeydown_CtrlNumpadEnter: markApproved,
         onKeydown_BracketLeft: shared.resetCounter,
         onKeydown_Backslash: shared.skipTask,
-        onKeydown_CtrlAltS: () => log.warn('Please approve before saving'),
+        onKeydown_CtrlAltS: () => {
+          tto.log.warn('Please approve before saving', {save: false});
+        },
       });
     }
 
@@ -825,7 +825,7 @@ var flows = (function workflowModule() {
      * Set up event handlers for the Submit stage.
      */
     function readyToSubmitStage() {
-      log.notice('Ready to submit');
+      tto.log.notice('Ready to submit', {save: false});
 
       ー({
         name: 'Save',
@@ -843,7 +843,7 @@ var flows = (function workflowModule() {
         ref: 'submitButton',
       });
 
-      setGlobalReactions({
+      eventReactions.setGlobal({
         onKeydown_CtrlAltS: shared.saveExtraction,
         onKeydown_CtrlEnter: submit,
         onKeydown_CtrlNumpadEnter: submit,
@@ -902,14 +902,14 @@ var flowName = undefined;
   function main() {
     const detectedFlowName = environment.flowName();
     if (!detectedFlowName) {
-      return log.warn('No workflow identified', true);
+      return tto.log.warn('No workflow identified', true);
     }
     if (stage < 0 || flowName !== detectedFlowName) {
-      log.notice(`${detectedFlowName} initialised`);
+      tto.log.notice(`${detectedFlowName} initialised`);
       flowName = detectedFlowName;
       stage = 0;
     }
-    resetReactions();
+    eventReactions.reset();
     const flowInitializer = flows[detectedFlowName];
     flowInitializer.init(main, );
   };
@@ -918,12 +918,12 @@ var flowName = undefined;
 })();
 
 /**
- * @todo Build out data store
- *
  * @todo Redesign wrap mode to create different level proxies each time
  * with context determined when wrapping.
  *
  * @todo Use taskId somehow
  *
  * @todo Build dev tool that marks elements on the page
+ *
+ * @todo Build tab opener
  */
