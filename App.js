@@ -333,16 +333,22 @@ var shared = (function workflowMethodsModule() {
     if (idx > 0) {
       return;
     }
-    if (/^https?:/.test(group[0].value)) {
-      group[1].value = group[0].value;
+    const pastedValue = group[0].value;
+    if (/^https?:/.test(pastedValue)) {
+      group[1].value = pastedValue;
     }
     let value = group[0].value = guessValueFromPastedValue(group[0].value);
     if (value.length > LOG_ENTRY_MAX_LENGTH) {
       value = value.slice(0,LOG_ENTRY_MAX_LENGTH - 3) + '...';
     }
-    tto.log.notice(
-      `Fallthrough: '${group[1].value}' became '${value}'`,
-    );
+    if (pastedValue === value) {
+      user.log.low(
+        `Fallthrough: No change to '${pastedValue}'`,
+        {print: false},
+      );
+      return;
+    }
+    user.log.notice(`Fallthrough: '${pastedValue}' became '${value}'`);
   };
   test.group('fallThrough', () => {
     const a = {value: 'a'};
@@ -382,16 +388,20 @@ var shared = (function workflowMethodsModule() {
     test.ok(proxy.value === 'NO', 'Changed back');
   });
 
-  function editComment(commentBox, mode) {
+  function editComment(mode) {
+    const commentBox = ref.finalCommentBox && ref.finalCommentBox[0];
     if (!commentBox || !commentBox.click) {
       throw new Error('EditComment requires a valid textarea proxy');
     }
     if (mode === 'addInitials') {
       commentBox.focus();
-      const initials = tto.config.get('initials') || '';
+      const initials = user.config.get('initials') || '';
+      if (new RegExp('^' + initials).test(commentBox.value)) {
+        return;
+      }
       commentBox.value = initials + '\n' + commentBox.value;
     } else if (mode === 'removeInitials') {
-       const initials = tto.config.get('initials') || '';
+       const initials = user.config.get('initials') || '';
        commentBox.value =
            commentBox.value.replace(RegExp('^' + initials + '\n'), '');
     }
@@ -411,14 +421,33 @@ var shared = (function workflowMethodsModule() {
     }
   }
 
+  const tabs = [];
+  async function openTabs() {
+    tabs.forEach(tab => tab.close());
+    tabs.length = 0;
+    const urls = ref.openInTabs
+        .map(el => el.value)
+        .filter(val => /^http/.test(val));
+    const uniqueLinks = [...new Set(urls)];
+    for (let link of uniqueLinks) {
+      tabs.push(window.open(link, link));
+    };
+    if (tabs.length !== uniqueLinks.length) {
+      user.log.warn(
+        `Could not open all tabs. Check the Chrome popup blocker.`
+      );
+    }
+  }
+
+
   function prefill(proxy) {
-    const values = tto.storeAccess({
+    const values = user.storeAccess({
       feature: 'Prefill',
       locale: 'Dutch',
       get: util.getDomain(proxy.value),
     });
     if (values) {
-      tto.log.notice('Found prefill values');
+      user.log.notice('Found prefill values');
     }
     const targets = ref.prefillTarget;
     for (let idx in values) {
@@ -429,11 +458,11 @@ var shared = (function workflowMethodsModule() {
   function resetCounter() {
     const question =
         'Please confirm.\nAre you sure you want to reset all counters?';
-    tto.log.notice(question)
+    user.log.notice(question)
     if (confirm(question)) {
-      tto.counter.reset();      
+      user.counter.reset();      
     } else {
-      tto.log.lowLevel('Canceled');
+      user.log.low('Canceled');
     }
   }
 
@@ -443,35 +472,37 @@ var shared = (function workflowMethodsModule() {
    * locations of the buttons in the DOM.
    */
   async function skipTask() {
-    const RETRIES = 15;
+    const RETRIES = 20;
     const DELAY = 25; // ms
 
-    const confirmButton = ー({
+    const confirmButtonSelector = {
       name: 'Confirm Skip',
       select: '.gwt-SubmitButton',
       pick: [0],
       mode: 'static',
-    })[0];
+    };
 
-    const skipButton = ref.skipButton[0];
+    const skipButton = ref.fresh('skipButton')[0];
     if (!skipButton) {
-      tto.log.warn('Skip button not found.');
+      user.log.warn('Skip button not found.');
       return;
     }
     skipButton.click();
+    await util.wait(500); // @todo
+    main();
 
     let retries = RETRIES;
     while(retries-- > 0) {
-      const button = confirmButton.fresh()[0];
+      const button = ー(confirmButtonSelector)[0];
       if (button) {
         button.click();
-        tto.log.notice('Skipping task');
-        tto.counter.add('Skipping');
+        user.log.notice('Skipping task');
+        user.counter.add('Skipped tasks');
         return;
       }
       await util.wait(DELAY);
     }
-    tto.log.warn('Skip confirmation dialog did not appear.');
+    user.log.warn('Skip confirmation dialog did not appear.');
   }
 
   /**
@@ -482,16 +513,16 @@ var shared = (function workflowMethodsModule() {
     const values = ref.saveExtraction.map(element => element.value);
     const domain = util.getDomain(values[0]);
     if (!domain) {
-      return tto.log.warn('Not enough data to save.');
+      return user.log.warn('Not enough data to save.');
     }
     const extractionData = {[domain]: values.slice(1)};
-    tto.storeAccess({
+    user.storeAccess({
       feature: 'Prefill',
       locale: 'Dutch',
       set: domain,
       value: values.slice(1),
     });
-    tto.log.ok(
+    user.log.ok(
       'Saving new default extraction for ' + domain +
       util.mapToBulletedList(values.slice(1), 2),
     );
@@ -505,16 +536,17 @@ var shared = (function workflowMethodsModule() {
     if (!button || !button.click) {
       throw new Error('Submit requires a valid submit button proxy');
     }
-    tto.log.notice('Submitting');
+    user.log.notice('Submitting');
     await util.wait(100);
     button.click();
-    tto.counter.add('Submit');
+    user.counter.add('Submit');
   }
   submit = util.debounce(submit, 100);
 
   return {
     editComment,
     keepAlive,
+    openTabs,
     resetCounter,
     skipTask,
     saveExtraction,
@@ -526,6 +558,13 @@ var shared = (function workflowMethodsModule() {
     addDashes: changeValue({
       to: '---',
       when: testRegex(/^$/),
+      is: true,
+    }),
+
+    orangeAlertOnSpaces: flagIssue({
+      issueLevel: 'orange',
+      issueType: 'Additional spaces found',
+      when: testRegex(/^ | $/),
       is: true,
     }),
 
@@ -581,10 +620,10 @@ var flows = (function workflowModule() {
 
   const ratingHome = (function ratingHomeModule() {
 
-    function init(main) {
+    function init() {
 
       const CONTINUE_RETRIES = 20;
-      const CONTINUE_DELAY = 25; // ms
+      const CONTINUE_DELAY = 100; // ms
 
       /**
        * Click the 'Acquire next task' button.
@@ -610,6 +649,7 @@ var flows = (function workflowModule() {
           }
           await util.wait(CONTINUE_DELAY);
         }
+        user.log.warn('Continue button did not appear.');
       }
 
       /**
@@ -658,64 +698,62 @@ var flows = (function workflowModule() {
 
   const slDutch = (function slDutchModule() {
 
-    /**
-     * Mark the task as Approved.
-     * * Add initials to comment box.
-     * * Move to the 'Ready to submit' stage.
-     */
-    function markApproved() {
-      shared.editComment(ref.finalCommentBox[0], 'addInitials');
-      setStage(1);
+    /** string - Describes the current stage */
+    let stage;
+
+    function init() {
+      setupReactions();
+      toStage('start');
+    }
+
+    const stages = {
+      'start': () => {
+        user.log.notice('Ready to edit', {save: false});
+        shared.editComment('removeInitials');
+
+      },
+      'approve': () => {
+        user.log.notice('Approved', {save: false});
+        shared.editComment('addInitials');
+
+      },
+      'submit': async () => {
+        shared.submit();
+        await util.wait(500); // @todo
+        main();
+      },
+    };
+
+    function toStage(name) {
+      stage = name;
+      stages[name]();
+    }
+
+    function backToStart() {
+      toStage('start');
+    }
+
+    function nextStage() {
+      if (stage === 'start') {
+        toStage('approve');
+      } else if (stage === 'approve') {
+        toStage('submit');
+      }
     }
 
     /**
-     * Remove Approved status from the task.
-     * * Move to the 'Edit' stage.
-     * * Remove initials from comment box.
+     * Set up event handlers.
      */
-    function continueEditing() {
-      setStage(0);
-      shared.editComment(ref.finalCommentBox[0], 'removeInitials');
-    }
-
-    /**
-     * Attempt to submit the task.
-     */
-    function submit() {
-      stage = -1;
-      shared.submit();
-    }
-
-    /**
-     * Set up event handlers for the Edit stage.
-     */
-    function editStage () {
-      tto.log.notice('Edit stage', {save: false});
-
-      ー({
-        name: 'Landing Page Url',
-        select: 'textarea',
-        pick: [0],
-        mode: 'programmable',
-        onLoad: shared.prefill,
-      });
-
-      ー({
-        name: 'Prefill',
-        select: 'textarea',
-        pick: [2, 3, 6, 7, 10, 11, 14, 15, 18, 19],
-        mode: 'programmable',
-        ref: 'prefillTarget',
-      });
+    function setupReactions() {
 
       ー({
         name: 'Text',
         select: 'textarea',
         pick: [2, 6, 10, 14, 18],
-        mode: 'programmable',
         onInteract: [
           shared.redAlertExceed25Chars,
           shared.redAlertOnDuplicateValues,
+          shared.orangeAlertOnSpaces
         ],
         onLoad: [
           shared.redAlertExceed25Chars,
@@ -727,7 +765,6 @@ var flows = (function workflowModule() {
         name: 'Link',
         select: 'textarea',
         pick: [3, 7, 11, 15, 19],
-        mode: 'programmable',
         onFocusout: [
           shared.requireUrl,
           shared.removeScreenshot,
@@ -739,12 +776,21 @@ var flows = (function workflowModule() {
       });
 
       ー({
-        name: 'Urls',
+        name: 'Links + LP',
         select: 'textarea',
         pick: [1, 3, 7, 11, 15, 19],
-        mode: 'programmable',
-        onFocusout: shared.redAlertOnDuplicateValues,
+        onInteract: shared.redAlertOnDuplicateValues,
         onPaste: shared.redAlertOnDuplicateValues,
+      });
+
+
+      ー({
+        name: 'AllUrls',
+        select: 'textarea',
+        pick: [3, 7, 11, 15, 19, 4, 8, 12, 16, 20, 1],
+        onInteract: shared.redAlertOnDuplicateValues,
+        onPaste: shared.redAlertOnDuplicateValues,
+        ref: 'openInTabs',
       });
 
 
@@ -752,7 +798,6 @@ var flows = (function workflowModule() {
         name: 'Screenshot',
         select: 'textarea',
         pick: [4, 8, 12, 16, 20],
-        mode: 'programmable',
         onFocusout: [
           shared.requireUrl,
           shared.requireScreenshot,
@@ -767,7 +812,6 @@ var flows = (function workflowModule() {
         name: 'Dashes',
         select: 'textarea',
         pick: [5, 9, 13, 17, 21],
-        mode: 'programmable',
         onFocusin: shared.removeDashes,
         onFocusout: shared.addDashes,
         onLoad: [
@@ -776,12 +820,25 @@ var flows = (function workflowModule() {
         ],
       });
 
+      ー({
+        name: 'Landing Page Url',
+        select: 'textarea',
+        pick: [0],
+        onLoad: shared.prefill,
+      });
+
+      ー({
+        name: 'Prefill',
+        select: 'textarea',
+        pick: [2, 3, 6, 7, 10, 11, 14, 15, 18, 19],
+        ref: 'prefillTarget',
+      });
+
       [[2, 3],[6, 7],[10, 11],[14, 15],[18, 19]].forEach(pair => {
         ー({
           name: 'Fall',
           select: 'textarea',
           pick: pair,
-          mode: 'programmable',
           onPaste: shared.fallThrough,
         });
       });
@@ -790,89 +847,42 @@ var flows = (function workflowModule() {
         name: 'Comment Box',
         select: 'textarea',
         pick: [1],
-        mode: 'programmable',
+        onFocusout: backToStart,
         ref: 'finalCommentBox',
       });
 
       ー({
         name: 'SubmitButton',
         select: 'button',
-        pick: [4],
-        mode: 'user-editable',
+        pick: [2],
         ref: 'submitButton',
-      })[0].cssText = 'display: none';
+      })[0].css = 'opacity: 0.2';
 
       ー({
         name: 'Skip Button',
         select: '.taskIssueButton',
         pick: [0],
-        mode: 'static',
         ref: 'skipButton'
       });
-
-      eventReactions.setGlobal({
-        onKeydown_CtrlEnter: markApproved,
-        onKeydown_CtrlNumpadEnter: markApproved,
-        onKeydown_BracketLeft: shared.resetCounter,
-        onKeydown_Backslash: shared.skipTask,
-        onKeydown_CtrlAltS: () => {
-          tto.log.warn('Please approve before saving', {save: false});
-        },
-      });
-    }
-
-    /**
-     * Set up event handlers for the Submit stage.
-     */
-    function readyToSubmitStage() {
-      tto.log.notice('Ready to submit', {save: false});
 
       ー({
         name: 'Save',
         select: 'textarea',
         pick: [0, 2, 3, 6, 7, 10, 11, 14, 15, 18, 19],
-        mode: 'programmable',
         ref: 'saveExtraction',
       });
 
-      ー({
-        name: 'SubmitButton',
-        select: 'button',
-        pick: [4],
-        mode: 'static',
-        ref: 'submitButton',
-      });
-
       eventReactions.setGlobal({
+        onKeydown_CtrlEnter: nextStage,
+        onKeydown_CtrlNumpadEnter: nextStage,
+        onKeydown_BracketLeft: shared.resetCounter,
+        onKeydown_Backslash: shared.skipTask,
         onKeydown_CtrlAltS: shared.saveExtraction,
-        onKeydown_CtrlEnter: submit,
-        onKeydown_CtrlNumpadEnter: submit,
-        onClick: continueEditing,
-        onPaste: continueEditing,
+        onKeydown_Backquote: shared.openTabs,
+        onKeydown_CtrlBackquote: main,
       });
     }
 
-    /**
-     * @throws {Error} This function should be overridden.
-     */
-    let reinitialise = () => {
-      throw new Error('No access to the main function');
-    };
-
-    const stages = [
-      editStage,
-      readyToSubmitStage,
-    ];
-
-    function setStage(n) {
-      stage = n;
-      reinitialise();
-    }
-
-    function init(main) {
-      reinitialise = main;
-      stages[stage]();
-    }
     return {init};
   })();
 
@@ -890,32 +900,18 @@ var flows = (function workflowModule() {
 ////////////////////////////////////////////////////////////////////////////////
 // APP module
 
-var stage = -1;
-var flowName = undefined;
+function main() {
+  const detectedFlowName = environment.flowName();
+  if (!detectedFlowName) {
+    return user.log.warn('No workflow identified', true);
+  }
+  eventReactions.reset();
+  const flow = flows[detectedFlowName];
+  flow.init();
+};
 
-(function appModule() {
-  'use strict';
- 
-  /**
-   * @fileoverview Starting point for the app.
-   */
-  function main() {
-    const detectedFlowName = environment.flowName();
-    if (!detectedFlowName) {
-      return tto.log.warn('No workflow identified', true);
-    }
-    if (stage < 0 || flowName !== detectedFlowName) {
-      tto.log.notice(`${detectedFlowName} initialised`);
-      flowName = detectedFlowName;
-      stage = 0;
-    }
-    eventReactions.reset();
-    const flowInitializer = flows[detectedFlowName];
-    flowInitializer.init(main, );
-  };
-
-  main();
-})();
+main();
+user.log.ok('TwoTwentyOne loaded');
 
 /**
  * @todo Redesign wrap mode to create different level proxies each time
