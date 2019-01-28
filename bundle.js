@@ -1,21 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
-//   _______         _______                 _          ____             
-//  |__   __|       |__   __|               | |        / __ \            
-//     | |_      _____ | |_      _____ _ __ | |_ _   _| |  | |_ __   ___ 
-//     | \ \ /\ / / _ \| \ \ /\ / / _ \ '_ \| __| | | | |  | | '_ \ / _ \
-//     | |\ V  V / (_) | |\ V  V /  __/ | | | |_| |_| | |__| | | | |  __/
-//     |_| \_/\_/ \___/|_| \_/\_/ \___|_| |_|\__|\__, |\____/|_| |_|\___|
-//                                                __/ |                  
-//                                               |___/                   
-////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
-
-////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
 // TEST module
 
 var test = (function testModule() {
@@ -351,7 +336,7 @@ var util =
       return '';
     }
     if (!/^https?:\//.test(url)) {
-      tto.log.warn(`Not a url: ${url}`);
+      user.log.warn(`Not a url: ${url}`);
       return '';
     }
     const domain = url.match(/\/\/([^\/]*)/);
@@ -428,9 +413,9 @@ var util =
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
-// DATA module
+// USER DATA module
 
-var tto = (function dataModule() {
+var user = (function userDataModule() {
   'use strict';
 
   /**
@@ -459,9 +444,9 @@ var tto = (function dataModule() {
     notice: 'DodgerBlue',
     warn: 'OrangeRed',
     ok: 'LimeGreen',
-    lowLevel: 'Gainsboro',
+    low: 'Gainsboro',
     changeValue: 'LightPink',
-    changeConfig: 'MediumOrchid',
+    config: 'MediumOrchid',
   };
 
   /**
@@ -713,7 +698,7 @@ var tto = (function dataModule() {
      */
     function set(name, newValue, save) {
       const term = (save) ? 'permanently' : 'temporarily';
-      tto.log.changeConfig(
+      user.log.config(
         `${name} ${term} changed to '${newValue}'`,
       );
       tempSettings[name] = newValue;
@@ -819,13 +804,13 @@ var tto = (function dataModule() {
       if (name) {
         const currentCount = allCounts[name];
         util.wait().then(() => { // @todo Fix wait hack. Used for testing.
-          tto.log.notice(
+          user.log.notice(
             `Resetting counter ${name} from ${currentCount}`,
           );
         });
         delete allCounts[name];
       } else {
-        tto.log.notice(
+        user.log.notice(
           `Resetting all counters: ${JSON.stringify(allCounts)}`,
         );
         for (let i in allCounts) {
@@ -1049,10 +1034,10 @@ var tto = (function dataModule() {
           entries = entries.filter(filters[filterType]);
         } catch (e) {
           if (e instanceof TypeError) {
-            tto.log.warn(
+            user.log.warn(
               `'${filterType}' is not a valid log filter. Please use:` +
               util.mapToBulletedList(filters),
-              true,
+              {save: false},
             );
             return [];
           }
@@ -1162,6 +1147,7 @@ var eventReactions = (function eventListenersModule() {
     'onFocusin': 'focusin',
     'onFocusout': 'focusout',
     'onKeydown': 'keydown',
+    'onInput': 'input',
     'onPaste': 'paste',
     /** load is handled separately */
     /** interact is handled separately */
@@ -1173,7 +1159,6 @@ var eventReactions = (function eventListenersModule() {
    */
   const INTERACT_EVENTS = Object.freeze([
     'onClick',
-    'onFocusout',
     'onInput',
     'onKeydown',
     'onPaste',
@@ -1268,6 +1253,9 @@ var eventReactions = (function eventListenersModule() {
     }
     switch (event.type) {
       case 'keydown':
+        if (!event.code) { // i.e. synthetic event
+          return '';
+        }
         let string = '';
         if (event.ctrlKey || event.metaKey) {
           string += 'Ctrl';
@@ -1518,7 +1506,7 @@ var eventReactions = (function eventListenersModule() {
     function cheatCodeHandler(e) {
       (e.code === CODE[idx]) ? idx++ : idx = 0;
       if (idx === CODE.length) {
-        tto.log.lowLevel('cheat mode');
+        user.log.low('cheat mode');
       }
     }
     document.addEventListener('keydown', cheatCodeHandler, {passive: true});
@@ -1569,13 +1557,12 @@ var {ー, ref} = (function domAccessModule() {
    * Get a numbered name.
    *
    * @param {string=} name
-   * @param {number} idx - Index maps to a letter from the alphabet.
+   * @param {number} idx
    * @return {string}
-   * @example - namePlusLetter('Example', 3) => 'Example C'
+   * @example - namePlusIdx('Example', 3) => 'Example-3'
    */
-  function namePlusLetter(name = 'Unnamed', idx) {
-    const letter = String.fromCharCode(65 + idx);
-    return `${name} ${letter}`;
+  function namePlusIdx(name = 'Unnamed', idx) {
+    return `${name}[${idx}]`;
   }
 
   /**
@@ -1606,7 +1593,7 @@ var {ー, ref} = (function domAccessModule() {
   async function touch(htmlElement) {
     await util.wait();
     // Blur signals a change to GWT
-    util.dispatch('blur, change, focusout, input', {target: htmlElement});
+    util.dispatch('blur, input, keydown', {target: htmlElement});
   }
 
   /**
@@ -1620,7 +1607,7 @@ var {ー, ref} = (function domAccessModule() {
   function safeSetter(htmlElement, name, newValue) {
     const currentValue = htmlElement.value;
     if (currentValue === newValue) {
-      tto.log.lowLevel(`No change to ${name}'.`, {print: false});
+      user.log.low(`No change to ${name}'.`, {print: false});
       return;
     }
     if(!EDITABLE_ELEMENT_TYPES.includes(htmlElement.type)) {
@@ -1628,7 +1615,7 @@ var {ー, ref} = (function domAccessModule() {
     }
     htmlElement.value = newValue;
     touch(htmlElement);
-    tto.log.changeValue(
+    user.log.changeValue(
       `${name} '${currentValue}' => '${newValue}'.`,
       {print: false},
     );
@@ -1675,7 +1662,7 @@ var {ー, ref} = (function domAccessModule() {
       set textContent(newValue) {
         htmlElement.textContent = newValue;
       },
-      set cssText(string) {
+      set css(string) {
         htmlElement.style.cssText = string;
       },
       click() {
@@ -1772,10 +1759,10 @@ var {ー, ref} = (function domAccessModule() {
       return proxy;
     }
     try {
-      proxy.name += '|' + namePlusLetter(name, idx);
+      proxy.name += ' | ' + namePlusIdx(name, idx);
     } catch (e) {
       if (e instanceof TypeError) {
-        tto.log.warn(
+        user.log.warn(
           `Cannot append ${name} to name of static proxy ${proxy.name}`,
         );
       } else {
@@ -1808,6 +1795,7 @@ var {ー, ref} = (function domAccessModule() {
    * @param {Object} options
    */
   function toProxy(htmlElement, idx, options) {
+    options.mode = 'programmable';
     if (!util.isHTMLElement(htmlElement)) {
       throw new Error('Not an HTMLElement');
     }
@@ -1816,7 +1804,7 @@ var {ー, ref} = (function domAccessModule() {
       options.mode = cached.mode;
     } else if (cached) {
       if (cached.mode !== options.mode && false) { // @todo Fix warning
-        tto.log.warn(
+        user.log.warn(
           `Didn't change ${options.name} element mode from ${cached.mode}` +
           ` to ${options.mode}`,
           true,
@@ -1828,7 +1816,7 @@ var {ー, ref} = (function domAccessModule() {
     }
     const proxy = makeProxy({
       htmlElement,
-      name: namePlusLetter(options.name, idx),
+      name: namePlusIdx(options.name, idx),
       mode: options.mode,
       freshSelector: makeFreshSelector(options, idx),
     });
@@ -1952,6 +1940,7 @@ var {ー, ref} = (function domAccessModule() {
    */
 
   const BASE_ID = 'tto';
+  const HIGHLIGHT_TIME = 1000; // ms
 
   const guiState = Object.seal({
     stage: 0,
@@ -2001,7 +1990,7 @@ var {ー, ref} = (function domAccessModule() {
       pointer-events: none;
       position: fixed;
       width: 100%;
-      z-index: 2000;
+      z-index: 2001;
     `;
     document.body.append(frame);
     function update() {
@@ -2040,7 +2029,7 @@ var {ー, ref} = (function domAccessModule() {
     function paintBorder({top, left, width, height}) {
       const div = document.createElement('div');
       div.style.cssText = `
-        box-shadow: 0 0 6px orange;
+        box-shadow: 0 0 16px black;
         border-width: 0;
         height: ${height}px;
         left: ${left}px;
@@ -2052,18 +2041,24 @@ var {ー, ref} = (function domAccessModule() {
       `;
       issueBorders.push(div);
       document.body.appendChild(div);
+      util.wait(HIGHLIGHT_TIME * 0.9).then(() => {
+        div.style.boxShadow = '0 0 12px black';
+      });
+      util.wait(HIGHLIGHT_TIME).then(() => {
+        div.parentNode.removeChild(div);
+      });
     }
 
     /**
      * Paints borders around every HTMLElement proxy that has been 
      */
     function update() {
-      issueBorders.forEach((div) => document.body.removeChild(div));
       issueBorders.length = 0;
       guiState.issues
           .map(issue => issue.proxy.getCoords())
           .forEach(paintBorder);
     }
+    update = util.debounce(util.delay(update, 100), HIGHLIGHT_TIME);
     return update;
   })();
 
