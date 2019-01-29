@@ -147,7 +147,8 @@ var util =
    * @fileoverview Exports utility functions.
    */
 
-  const DEFAULT_DELAY = 10; //milliseconds
+  const DEFAULT_DELAY = 15; //milliseconds
+  const DEFAULT_RETRIES = 20;
 
   /**
    * Call several functions with a single function call.
@@ -245,8 +246,6 @@ var util =
         target.dispatchEvent(new Event(type, {bubbles: true}));
       }
     });
-    
-    
   }
 
   /**
@@ -336,7 +335,6 @@ var util =
       return '';
     }
     if (!/^https?:\//.test(url)) {
-      user.log.warn(`Not a url: ${url}`);
       return '';
     }
     const domain = url.match(/\/\/([^\/]*)/);
@@ -358,6 +356,15 @@ var util =
   })
 
   /**
+   * Return true when code is running in dev mode (in a local file).
+   *
+   * @return {boolean} Is the code running locally?
+   */
+  function isDev() {
+    return /^file/.test(window.location.href);
+  }
+
+  /**
    * Test whether an object is an HTMLElement. Uses simple duck typing.
    *
    * @param {Object=} HTMLElement - Object to be tested
@@ -372,9 +379,45 @@ var util =
     test.ok(isHTMLElement(document.body) === true, 'Document body');
   });
 
+  /**
+   * Map an Object's keys, or an Array's values to a string, with a new line
+   * for each element, and an asterisk in front of each item.
+   *
+   * @param {Array|Object} arrOrObj - Array or Object
+   * @param {number=} spaces - The number of spaces to precede each item.
+   * @return {string}
+   * @example:
+   * mapToBulletedList(['One', 'Two']) // =>
+   *     * One
+   *     * Two
+   */
   function mapToBulletedList(arrOrObj, spaces = 4) {
     const arr = (Array.isArray(arrOrObj)) ? arrOrObj : Object.keys(arrOrObj);
     return arr.map(el => '\n' + ' '.repeat(spaces) + '* ' + el).join('');
+  }
+
+  /**
+   * Function decorator. Returns a function that will run repeatedly, until
+   * it returns a truthy value.
+   *
+   * @param {function} func - The function to be decorated.
+   * @param {number} retries - The number of times to run the function.
+   * @param {number} ms - The delay in milliseconds.
+   * @param {Promise} A Promise which will return the result of the function
+   * if it ran succesfully, or throw an Error otherwise.
+   */
+  function retry(func, retries = DEFAULT_RETRIES, delay = DEFAULT_DELAY) {
+    let attempts = 0;
+    return async function retrying(...params) {
+      while (attempts++ < retries) {
+        const ret = func(...params);
+        if (ret) {
+          return ret;
+        }
+        await wait(delay);
+      }
+      throw new Error('Did not succeed after ' + retries + ' retries');
+    }
   }
 
   /**
@@ -401,8 +444,10 @@ var util =
     doesObjectMatchTemplate,
     ensureIsArray,
     getDomain,
+    isDev,
     isHTMLElement,
     mapToBulletedList,
+    retry,
     wait,
     };
 })();
@@ -1662,8 +1707,10 @@ var {ー, ref} = (function domAccessModule() {
       set textContent(newValue) {
         htmlElement.textContent = newValue;
       },
-      set css(string) {
-        htmlElement.style.cssText = string;
+      set css(styles) {
+        for (let rule in styles) {
+          htmlElement.style[rule] = styles[rule];
+        }
       },
       click() {
         htmlElement.click();
