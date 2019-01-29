@@ -18,7 +18,6 @@ var environment = (function environmentModule() {
       name: 'Header',
       select: 'h1',
       pick: [0],
-      mode: 'static',
     })[0];
     const headerText = header && header.textContent;
 
@@ -40,9 +39,25 @@ var environment = (function environmentModule() {
     return 'Dutch';
   }
 
+  function detectTaskId() {
+    if (util.isDev()) {
+      return {
+      encoded: 'fffff',
+      decoded: 24,
+    };;
+    }
+    const currentTask =
+        Object.entries(JSON.parse(localStorage.acquiredTask))[0];
+    return {
+      encoded: currentTask[0],
+      decoded: currentTask[1],
+    };
+  }
+
   return {
-    flowName: util.debounce(detectWorkflow, 100),
-    locale: util.debounce(detectLocale, 100),
+    flowName: detectWorkflow,
+    locale: detectLocale,
+    taskId: detectTaskId,
   };
 })();
 
@@ -64,6 +79,11 @@ var shared = (function workflowMethodsModule() {
 
   const ALERT_LEVELS = ['red', 'orange', 'yellow'];
 
+  async function awaitNewPage() {
+    const taskId = environment.taskId().decoded;
+    const isTaskNew = () => taskId !== environment.taskId().decoded;
+  }
+
   /**
    * Convenience function. Conditionally set a new value to a proxy.
    *
@@ -83,10 +103,10 @@ var shared = (function workflowMethodsModule() {
    */
   function changeValue({to, when, is = true}) {
     if (typeof to !== 'string') {
-      throw new Error('ChangeValue requires a new string value');
+      throw new TypeError('ChangeValue requires a new string value');
     }
     if (typeof when !== 'function') {
-      throw new Error('ChangeValue requires a function');
+      throw new TypeError('ChangeValue requires a function');
     }
     return function (...params) {
       const {hit, proxy} = when(...params);
@@ -123,16 +143,16 @@ var shared = (function workflowMethodsModule() {
    */
   function flagIssue({issueLevel, issueType, when}) {
     if (!ALERT_LEVELS.includes(issueLevel)) {
-      throw new Error(
+      throw new RangeError(
         issueLevel + ' is not a known issueLevel. Please use:' +
         util.mapToBulletedList(ALERT_LEVELS),
       );
     }
     if (typeof when !== 'function') {
-      throw new Error('FlagIssue requires a function');
+      throw new TypeError('FlagIssue requires a function');
     }
     if (typeof issueType !== 'string') {
-      throw new Error('FlagIssue requires a new string value');
+      throw new TypeError('FlagIssue requires a new string value');
     }
     function flagThis(...params) {
       const {proxy, hit, message} = when(...params);
@@ -328,7 +348,7 @@ var shared = (function workflowMethodsModule() {
   function fallThrough (_, idx, group) {
     const LOG_ENTRY_MAX_LENGTH = 100;
     if (group.length !== 2) {
-      throw new Error('fallThrough requires two proxies.')
+      throw new RangeError('fallThrough requires two proxies.')
     }
     if (idx > 0) {
       return;
@@ -370,7 +390,7 @@ var shared = (function workflowMethodsModule() {
      */
     function cycle(proxy) {
       if (!options.includes(proxy.value)) {
-        throw new Error('Element does not have a matching value.');
+        throw new RangeError('Element does not have a matching value.');
       }
       const idx = options.findIndex((option) => option === proxy.value);
       const nextIdx = (idx + 1) % options.length;
@@ -391,7 +411,8 @@ var shared = (function workflowMethodsModule() {
   function editComment(mode) {
     const commentBox = ref.finalCommentBox && ref.finalCommentBox[0];
     if (!commentBox || !commentBox.click) {
-      throw new Error('EditComment requires a valid textarea proxy');
+      return;
+//       throw new Error('EditComment requires a valid textarea proxy');
     }
     if (mode === 'addInitials') {
       commentBox.focus();
@@ -479,8 +500,18 @@ var shared = (function workflowMethodsModule() {
       name: 'Confirm Skip',
       select: '.gwt-SubmitButton',
       pick: [0],
-      mode: 'static',
     };
+
+    function clickConfirm() {
+      const button = ー(confirmButtonSelector)[0];
+      if (button) {
+        button.click();
+        user.log.notice('Skipping task ' + environment.taskId().decoded);
+        user.counter.add('Skipped tasks');
+        return true;
+      }
+      return false;
+    }
 
     const skipButton = ref.fresh('skipButton')[0];
     if (!skipButton) {
@@ -488,21 +519,10 @@ var shared = (function workflowMethodsModule() {
       return;
     }
     skipButton.click();
-    await util.wait(500); // @todo
-    main();
-
-    let retries = RETRIES;
-    while(retries-- > 0) {
-      const button = ー(confirmButtonSelector)[0];
-      if (button) {
-        button.click();
-        user.log.notice('Skipping task');
-        user.counter.add('Skipped tasks');
-        return;
-      }
-      await util.wait(DELAY);
-    }
-    user.log.warn('Skip confirmation dialog did not appear.');
+    util.retry(clickConfirm, RETRIES, DELAY)()
+        .then(awaitNewPage)
+        .then(main)
+        .catch(() => user.log.warn('Skip confirmation dialog did not appear.'));
   }
 
   /**
@@ -534,16 +554,22 @@ var shared = (function workflowMethodsModule() {
   async function submit() {
     const button = ref.submitButton[0];
     if (!button || !button.click) {
-      throw new Error('Submit requires a valid submit button proxy');
+      throw new TypeError('Submit requires a valid submit button proxy');
     }
-    user.log.notice('Submitting');
+    if (button.disabled) {
+      user.log.warn('Not ready to submit');
+      return false;
+    }
+    user.log.notice('Submitting' + environment.taskId().decoded);
     await util.wait(100);
     button.click();
     user.counter.add('Submit');
+    return true;
   }
   submit = util.debounce(submit, 100);
 
   return {
+    awaitNewPage,
     editComment,
     keepAlive,
     openTabs,
@@ -622,8 +648,8 @@ var flows = (function workflowModule() {
 
     function init() {
 
-      const CONTINUE_RETRIES = 20;
-      const CONTINUE_DELAY = 100; // ms
+      const RETRIES = 20;
+      const DELAY = 100; // ms
 
       /**
        * Click the 'Acquire next task' button.
@@ -638,19 +664,17 @@ var flows = (function workflowModule() {
        * Wait for the 'Continue to Task' button to appear, then click it.
        */
       async function clickContinue() {
-        let retries = CONTINUE_RETRIES;
-        while(retries-- > 0) {
-          const continueButton = ref.fresh('firstButton')[0];
-          if (continueButton && /Continue/.test(continueButton.textContent)) {
-            continueButton.click();
-            await util.wait(500); // @todo
-            main();
-            return;
-          }
-          await util.wait(CONTINUE_DELAY);
+        const continueButton = ref.fresh('firstButton')[0];
+        if (continueButton && /Continue/.test(continueButton.textContent)) {
+          continueButton.click();
+          return true;
         }
-        user.log.warn('Continue button did not appear.');
+        return new Error('No Continue button.');
       }
+      util.retry(clickContinue, RETRIES, DELAY)()
+          .then(awaitNewPage)
+          .then(main)
+          .catch(() => user.log.warn('Continue button did not appear.'));
 
       /**
        * Trigger the onClick toggle of yes/no select HTMLElements with the
@@ -713,14 +737,22 @@ var flows = (function workflowModule() {
 
       },
       'approve': () => {
+        if (ref.submitButton[0].disabled) {
+          user.log.warn('Task is not ready');
+          toStage('start');
+          return;
+        }
         user.log.notice('Approved', {save: false});
         shared.editComment('addInitials');
 
       },
       'submit': async () => {
-        shared.submit();
-        await util.wait(500); // @todo
-        main();
+        const submitted = await shared.submit();
+        if (!submitted) {
+          toStage('start');
+          return;
+        }
+        shared.awaitNewPage().then(main);
       },
     };
 
@@ -753,7 +785,7 @@ var flows = (function workflowModule() {
         onInteract: [
           shared.redAlertExceed25Chars,
           shared.redAlertOnDuplicateValues,
-          shared.orangeAlertOnSpaces
+          shared.orangeAlertOnSpaces,
         ],
         onLoad: [
           shared.redAlertExceed25Chars,
@@ -774,25 +806,6 @@ var flows = (function workflowModule() {
           shared.removeScreenshot,
         ],
       });
-
-      ー({
-        name: 'Links + LP',
-        select: 'textarea',
-        pick: [1, 3, 7, 11, 15, 19],
-        onInteract: shared.redAlertOnDuplicateValues,
-        onPaste: shared.redAlertOnDuplicateValues,
-      });
-
-
-      ー({
-        name: 'AllUrls',
-        select: 'textarea',
-        pick: [3, 7, 11, 15, 19, 4, 8, 12, 16, 20, 1],
-        onInteract: shared.redAlertOnDuplicateValues,
-        onPaste: shared.redAlertOnDuplicateValues,
-        ref: 'openInTabs',
-      });
-
 
       ー({
         name: 'Screenshot',
@@ -825,6 +838,23 @@ var flows = (function workflowModule() {
         select: 'textarea',
         pick: [0],
         onLoad: shared.prefill,
+      });  
+
+      ー({
+        name: 'LinksAndLP',
+        select: 'textarea',
+        pick: [1, 3, 7, 11, 15, 19],
+        onInteract: shared.redAlertOnDuplicateValues,
+      });
+
+
+      ー({
+        name: 'AllUrls',
+        select: 'textarea',
+        pick: [3, 7, 11, 15, 19, 4, 8, 12, 16, 20, 1],
+        onInteract: shared.redAlertOnDuplicateValues,
+        onPaste: shared.redAlertOnDuplicateValues,
+        ref: 'openInTabs',
       });
 
       ー({
@@ -846,7 +876,7 @@ var flows = (function workflowModule() {
       ー({
         name: 'Comment Box',
         select: 'textarea',
-        pick: [1],
+        pick: [(util.isDev()) ? 0 : 64],
         onFocusout: backToStart,
         ref: 'finalCommentBox',
       });
@@ -856,7 +886,7 @@ var flows = (function workflowModule() {
         select: 'button',
         pick: [2],
         ref: 'submitButton',
-      })[0].css = 'opacity: 0.2';
+      })[0].css = {opacity: 0.2};
 
       ー({
         name: 'Skip Button',
@@ -876,7 +906,7 @@ var flows = (function workflowModule() {
         onKeydown_CtrlEnter: nextStage,
         onKeydown_CtrlNumpadEnter: nextStage,
         onKeydown_BracketLeft: shared.resetCounter,
-        onKeydown_Backslash: shared.skipTask,
+        onKeydown_BracketRight: shared.skipTask,
         onKeydown_CtrlAltS: shared.saveExtraction,
         onKeydown_Backquote: shared.openTabs,
         onKeydown_CtrlBackquote: main,
