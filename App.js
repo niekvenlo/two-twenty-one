@@ -22,8 +22,10 @@ var environment = (function environmentModule() {
     const headerText = header && header.textContent;
 
     switch (true) {
-      case /Sitelinks Dutch/.test(headerText):
+      case /telinks Dut/.test(headerText):
         return 'slDutch';
+      case /ppets Dut/.test(headerText):
+        return 'ssDutch';
       case headerText === 'TwoTwentyOne':
         return 'slDutch';
       default:
@@ -513,7 +515,7 @@ var shared = (function workflowMethodsModule() {
       return false;
     }
 
-    const skipButton = ref.fresh('skipButton')[0];
+    const skipButton = ref.fresh('skipButton');
     if (!skipButton) {
       user.log.warn('Skip button not found.');
       return;
@@ -664,7 +666,7 @@ var flows = (function workflowModule() {
        * Wait for the 'Continue to Task' button to appear, then click it.
        */
       async function clickContinue() {
-        const continueButton = ref.fresh('firstButton')[0];
+        const continueButton = ref.fresh('firstButton');
         if (continueButton && /Continue/.test(continueButton.textContent)) {
           continueButton.click();
           return true;
@@ -845,6 +847,7 @@ var flows = (function workflowModule() {
         select: 'textarea',
         pick: [1, 3, 7, 11, 15, 19],
         onInteract: shared.redAlertOnDuplicateValues,
+        onPaste: shared.redAlertOnDuplicateValues,
       });
 
 
@@ -852,8 +855,6 @@ var flows = (function workflowModule() {
         name: 'AllUrls',
         select: 'textarea',
         pick: [3, 7, 11, 15, 19, 4, 8, 12, 16, 20, 1],
-        onInteract: shared.redAlertOnDuplicateValues,
-        onPaste: shared.redAlertOnDuplicateValues,
         ref: 'openInTabs',
       });
 
@@ -916,6 +917,142 @@ var flows = (function workflowModule() {
     return {init};
   })();
 
+  const ssDutch = (function ssDutchModule() {
+
+    /** string - Describes the current stage */
+    let stage;
+
+    function init() {
+      setupReactions();
+      toStage('start');
+    }
+
+    const stages = {
+      'start': () => {
+        user.log.notice('Ready to edit', {save: false});
+        shared.editComment('removeInitials');
+
+      },
+      'approve': () => {
+        if (ref.submitButton[0].disabled) {
+          user.log.warn('Task is not ready');
+          toStage('start');
+          return;
+        }
+        user.log.notice('Approved', {save: false});
+        shared.editComment('addInitials');
+
+      },
+      'submit': async () => {
+        const submitted = await shared.submit();
+        if (!submitted) {
+          toStage('start');
+          return;
+        }
+        shared.awaitNewPage().then(main);
+      },
+    };
+
+    function toStage(name) {
+      stage = name;
+      stages[name]();
+    }
+
+    function backToStart() {
+      toStage('start');
+    }
+
+    function nextStage() {
+      if (stage === 'start') {
+        toStage('approve');
+      } else if (stage === 'approve') {
+        toStage('submit');
+      }
+    }
+
+    /**
+     * Set up event handlers.
+     */
+    function setupReactions() {
+
+      ー({
+        name: 'Text',
+        select: 'textarea',
+        pick: [3, 6, 9, 12, 15],
+        onInteract: [
+          shared.redAlertOnDuplicateValues,
+          shared.orangeAlertOnSpaces,
+        ],
+      });
+
+      ー({
+        name: 'Screenshot',
+        select: 'textarea',
+        pick: [4, 7, 10, 13, 16],
+        onFocusout: [
+          shared.requireUrl,
+          shared.requireScreenshot,
+        ],
+        onPaste: [
+          shared.requireUrl,
+          shared.requireScreenshot,
+        ],
+      });
+
+      ー({
+        name: 'Dashes',
+        select: 'textarea',
+        pick: [5, 9, 13, 17, 21],
+        onFocusin: shared.removeDashes,
+        onFocusout: shared.addDashes,
+        onLoad: [
+          shared.addDashes,
+          shared.keepAlive,
+        ],
+      });
+
+      ー({
+        name: 'AllUrls',
+        select: 'textarea',
+        pick: [4, 7, 10, 13, 16],
+        ref: 'openInTabs',
+      });
+
+      ー({ // @todo Confirm position
+        name: 'Comment Box',
+        select: 'textarea',
+        pick: [(util.isDev()) ? 0 : 64],
+        onFocusout: backToStart,
+        ref: 'finalCommentBox',
+      });
+
+      ー({ // @todo Confirm position
+        name: 'SubmitButton',
+        select: 'button',
+        pick: [2],
+        ref: 'submitButton',
+      })[0].css = {opacity: 0.2};
+
+      ー({ // @todo Confirm position
+        name: 'Skip Button',
+        select: '.taskIssueButton',
+        pick: [0],
+        ref: 'skipButton'
+      });
+
+      eventReactions.setGlobal({
+        onKeydown_CtrlEnter: nextStage,
+        onKeydown_CtrlNumpadEnter: nextStage,
+        onKeydown_BracketLeft: shared.resetCounter,
+        onKeydown_BracketRight: shared.skipTask,
+        onKeydown_Backquote: shared.openTabs,
+        onKeydown_CtrlBackquote: main,
+      });
+    }
+
+    return {init};
+  })();
+
   return {
     ratingHome,
     slDutch,
@@ -947,9 +1084,5 @@ user.log.ok('TwoTwentyOne loaded');
  * @todo Redesign wrap mode to create different level proxies each time
  * with context determined when wrapping.
  *
- * @todo Use taskId somehow
- *
  * @todo Build dev tool that marks elements on the page
- *
- * @todo Build tab opener
  */
