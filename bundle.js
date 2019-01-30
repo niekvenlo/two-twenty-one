@@ -392,7 +392,9 @@ var util =
    *     * Two
    */
   function mapToBulletedList(arrOrObj, spaces = 4) {
-    const arr = (Array.isArray(arrOrObj)) ? arrOrObj : Object.keys(arrOrObj);
+    const arr = (Array.isArray(arrOrObj))
+        ? arrOrObj
+        : Object.entries(arrOrObj).map(entry => entry.join(': '));
     return arr.map(el => '\n' + ' '.repeat(spaces) + '* ' + el).join('');
   }
 
@@ -856,7 +858,8 @@ var user = (function userDataModule() {
         delete allCounts[name];
       } else {
         user.log.notice(
-          `Resetting all counters: ${JSON.stringify(allCounts)}`,
+          'Resetting all counters:' +
+          util.mapToBulletedList(allCounts),
         );
         for (let i in allCounts) {
           delete allCounts[i];
@@ -990,8 +993,8 @@ var user = (function userDataModule() {
       const color = LOG_TYPES[type] || NO_COLOR_FOUND;
       const ts = timestamp(time);
       const string = payloadToString(payload, ts.length);
-      const aster = (!save) ? '*' : '';
-      console.log(`%c${ts} %c${string}${aster}`, TIMESTAMP_STYLE, `color: ${color}`);
+      const aster = (save) ? ' ' : '-';
+      console.log(`%c${ts}%c${aster} ${string}`, TIMESTAMP_STYLE, `color: ${color}`);
     }
 
     /**
@@ -1939,7 +1942,7 @@ var {ー, ref} = (function domAccessModule() {
   const ref = {
     fresh(name) {
       const cached = ref[name] || [];
-      return cached.map(element => element.fresh()[0]);
+      return cached[0].fresh()[0];
     }
   };
 
