@@ -22,12 +22,12 @@ var environment = (function environmentModule() {
     const headerText = header && header.textContent;
 
     switch (true) {
-      case /telinks Dut/.test(headerText):
-        return 'slDutch';
-      case /ppets Dut/.test(headerText):
-        return 'ssDutch';
+      case /telinks/.test(headerText):
+        return 'sl';
+      case /ppets/.test(headerText):
+        return 'ss';
       case headerText === 'TwoTwentyOne':
-        return 'slDutch';
+        return 'sl';
       default:
         return 'ratingHome';
     }
@@ -45,7 +45,7 @@ var environment = (function environmentModule() {
     if (util.isDev()) {
       return {
       encoded: 'fffff',
-      decoded: 24,
+      decoded: '555' + Math.round(Math.random() * 1e11),
     };;
     }
     const currentTask =
@@ -80,11 +80,6 @@ var shared = (function workflowMethodsModule() {
    */
 
   const ALERT_LEVELS = ['red', 'orange', 'yellow'];
-
-  async function awaitNewPage() {
-    const taskId = environment.taskId().decoded;
-    const isTaskNew = () => taskId !== environment.taskId().decoded;
-  }
 
   /**
    * Convenience function. Conditionally set a new value to a proxy.
@@ -274,7 +269,208 @@ var shared = (function workflowMethodsModule() {
     }
   }
 
+  function guessValueFromPastedValue(pastedValue) {
+    const value = (/^http/.test(pastedValue))
+        ? decodeURIComponent(
+            pastedValue.replace(/\/index/i, '').match(/[^\/]*[\/]?$/)[0]
+          )
+        : pastedValue;
+    return value.toLowerCase().trim();
+  }
+
   /**
+   * Cycle a select HTMLElement through a series of options.
+   *
+   * @param {string[]} options - Options to cycle through.
+   */
+  function cycleSelect(options) {
+    /**
+     * @param {Object} proxy - Select HTMLElement proxy.
+     */
+    function cycle(proxy) {
+      if (!options.includes(proxy.value)) {
+        throw new RangeError('Element does not have a matching value.');
+      }
+      const idx = options.findIndex((option) => option === proxy.value);
+      const nextIdx = (idx + 1) % options.length;
+      proxy.value = options[nextIdx];
+      proxy.blur();
+    }
+    return cycle;
+  }
+  test.group('cycleSelect', () => {
+    const toggleSelectYesNo = cycleSelect(['YES', 'NO']);
+    const proxy = {value: 'NO', blur: () => {}};
+    toggleSelectYesNo(proxy);
+    test.ok(proxy.value === 'YES', 'Changed to yes');
+    toggleSelectYesNo(proxy);
+    test.ok(proxy.value === 'NO', 'Changed back');
+  });
+
+
+
+////////////////////////////////////////////////////////////////////////////////
+  // Exported functions
+  /**
+   * Returns a promise that repeatedly checks whether the taskId changes.
+   * Promise resolves successfully if the taskId changes, or throws an error
+   * if it doesn't change.
+   *
+   * @return {Promise}
+   */
+  function awaitNewPage() {
+    const taskId = environment.taskId().decoded;
+    const isTaskNew = () => {
+      return taskId !== environment.taskId().decoded;
+    };
+    return util.retry(isTaskNew, 20, 50)();
+  }
+
+  /**
+   * Simplifies common changes to the comment box.
+   *
+   * @param {string} mode - Either 'addInitials' or 'removeInitials'.
+   * @ref {ref.finalCommentBox}
+   */
+  function editComment(mode) {
+    const commentBox = ref.finalCommentBox && ref.finalCommentBox[0];
+    if (!commentBox || !commentBox.click) {
+      throw new Error('EditComment requires a valid textarea proxy');
+    }
+    if (mode === 'addInitials') {
+      commentBox.focus();
+      const initials = user.config.get('initials') || '';
+      if (new RegExp('^' + initials).test(commentBox.value)) {
+        return;
+      }
+      commentBox.value = initials + '\n' + commentBox.value;
+    } else if (mode === 'removeInitials') {
+       const initials = user.config.get('initials') || '';
+       commentBox.value =
+           commentBox.value.replace(RegExp('^' + initials + '\n'), '');
+    }
+  }
+
+  /** Window[] - Stores open tabs */
+  const tabs = [];
+
+  /**
+   * Opens/closes tabs based on urls on the page. Always closes all currently
+   * open tabs before continuing. Optionally opens new tabs, based on unique
+   * link values in ref.openInTabs. Order of tabs is determined by
+   * ref.openInTabs.
+   *
+   * @param {Object} o
+   * @param {boolean} o.closeOnly - Should the tabs only be closed?
+   * @ref {ref.openInTabs}
+   */
+  async function handleTabs({closeOnly = false}) {
+    tabs.forEach(tab => tab.close());
+    tabs.length = 0;
+    if (closeOnly) {
+      return;
+    }
+    const urls = ref.openInTabs
+        .map(el => el.value)
+        .filter(val => /^http/.test(val));
+    const uniqueLinks = [...new Set(urls)];
+    for (let link of uniqueLinks) {
+      tabs.push(window.open(link, link));
+    };
+    if (tabs.length !== uniqueLinks.length) {
+      user.log.warn(
+        `Could not open all tabs. Check the Chrome popup blocker.`
+      );
+    }
+  }
+
+  /**
+   * When pasting a url, it is moved from one box to another. The url is also
+   * analysed and reduced to a descriptive string.
+   * E.g. pasting 'http://www.example.com/hats' into the first box, it moves
+   * the url to the second box and writes 'Hats' to the first box.
+   *
+   * @param {Object} _ - Unused parameter. The triggering proxy.
+   * @param {number} idx - Index of the proxy in the group.
+   * @param {Object[]} group - Array of two proxies.
+   */
+  function fallThrough (_, idx, group) {
+    const LOG_ENTRY_MAX_LENGTH = 100;
+    if (group.length !== 2) {
+      throw new RangeError('fallThrough requires two proxies.')
+    }
+    if (idx > 0) {
+      return;
+    }
+    const pastedValue = group[0].value;
+    if (/^https?:/.test(pastedValue)) {
+      group[1].value = pastedValue;
+    }
+    let value = group[0].value = guessValueFromPastedValue(group[0].value);
+    if (value.length > LOG_ENTRY_MAX_LENGTH) {
+      value = value.slice(0,LOG_ENTRY_MAX_LENGTH - 3) + '...';
+    }
+    if (pastedValue === value) {
+      user.log.low(
+        `Fallthrough: No change to '${pastedValue}'`,
+        {print: false},
+      );
+      return;
+    }
+    user.log.notice(`Fallthrough: '${pastedValue}' became '${value}'`);
+  };
+  test.group('fallThrough', () => {
+    const a = {value: 'a'};
+    const b = {value: 'b'};
+    fallThrough(1, 0, [a, b]);
+    test.ok(a.value === 'Moved', 'a.value = Moved');
+    test.ok(b.value === 'a', 'b.value = a');
+  }, true);
+  fallThrough = util.delay(fallThrough, 0);
+
+  /**
+   * Touches HTMLElements to keep the current task alive.
+   * Function is called on a group of elements, but only runs once.
+   * Periodically picks a random element from the group, and touches it.
+   *
+   * @param {Object} _ - Proxy object. Ignored.
+   * @param {number} __ - Element idx. Ignored.
+   * @param {Object[]} group - Array of proxies to touch.
+   */
+  async function keepAlive(_, __, group) {
+    const MINUTES = 6;
+    const INTERVAL = 10000; // ms
+    const times = (MINUTES * 60000) / INTERVAL;
+    for (let i = 0; i < times; i++) {
+      await util.wait(INTERVAL);
+      const idx = Math.floor(Math.random() * group.length);
+      group[idx].touch();
+    }
+  }
+  keepAlive = util.debounce(keepAlive);
+
+  /**
+   * Based on an extraction value, attempts to find matching data to
+   * automatically fill in.
+   * @param {Object} proxy - The proxy containing the extraction url.
+   * @todo Combine with Save feature
+   */
+  function prefill(proxy) {
+    const values = user.storeAccess({
+      feature: 'Prefill',
+      locale: environment.locale(),
+      get: util.getDomain(proxy.value),
+    });
+    if (values) {
+      user.log.notice('Found prefill values');
+    }
+    const targets = ref.prefillTarget;
+    for (let idx in values) {
+      targets[idx].value = values[idx];
+    }
+  }
+
+    /**
    * Tests whether any proxies in a group have the same value, and flags
    * proxies that repeat previous values.
    *
@@ -333,151 +529,9 @@ var shared = (function workflowMethodsModule() {
   });
   redAlertOnDuplicateValues = util.delay(redAlertOnDuplicateValues, 100);
 
-  function guessValueFromPastedValue(pastedValue) {
-    const value = (/^http/.test(pastedValue))
-        ? decodeURIComponent(
-            pastedValue.replace(/\/index/i, '').match(/[^\/]*[\/]?$/)[0]
-          )
-        : pastedValue;
-    return value.toLowerCase().trim();
-  }
-
   /**
-   * @param {Object} _ - Unused parameter. The triggering proxy.
-   * @param {number} idx - Index of the proxy in the group.
-   * @param {Object[]} group - Array of two proxies.
+   * Pops up a confirmation dialog. On confirmation, will reset all counters.
    */
-  function fallThrough (_, idx, group) {
-    const LOG_ENTRY_MAX_LENGTH = 100;
-    if (group.length !== 2) {
-      throw new RangeError('fallThrough requires two proxies.')
-    }
-    if (idx > 0) {
-      return;
-    }
-    const pastedValue = group[0].value;
-    if (/^https?:/.test(pastedValue)) {
-      group[1].value = pastedValue;
-    }
-    let value = group[0].value = guessValueFromPastedValue(group[0].value);
-    if (value.length > LOG_ENTRY_MAX_LENGTH) {
-      value = value.slice(0,LOG_ENTRY_MAX_LENGTH - 3) + '...';
-    }
-    if (pastedValue === value) {
-      user.log.low(
-        `Fallthrough: No change to '${pastedValue}'`,
-        {print: false},
-      );
-      return;
-    }
-    user.log.notice(`Fallthrough: '${pastedValue}' became '${value}'`);
-  };
-  test.group('fallThrough', () => {
-    const a = {value: 'a'};
-    const b = {value: 'b'};
-    fallThrough(1, 0, [a, b]);
-    test.ok(a.value === 'Moved', 'a.value = Moved');
-    test.ok(b.value === 'a', 'b.value = a');
-  }, true);
-  fallThrough = util.delay(fallThrough, 0);
-
-  /**
-   * Cycle a select HTMLElement through a series of options.
-   *
-   * @param {string[]} options - Options to cycle through.
-   */
-  function cycleSelect(options) {
-    /**
-     * @param {Object} proxy - Select HTMLElement proxy.
-     */
-    function cycle(proxy) {
-      if (!options.includes(proxy.value)) {
-        throw new RangeError('Element does not have a matching value.');
-      }
-      const idx = options.findIndex((option) => option === proxy.value);
-      const nextIdx = (idx + 1) % options.length;
-      proxy.value = options[nextIdx];
-      proxy.blur();
-    }
-    return cycle;
-  }
-  test.group('cycleSelect', () => {
-    const toggleSelectYesNo = cycleSelect(['YES', 'NO']);
-    const proxy = {value: 'NO', blur: () => {}};
-    toggleSelectYesNo(proxy);
-    test.ok(proxy.value === 'YES', 'Changed to yes');
-    toggleSelectYesNo(proxy);
-    test.ok(proxy.value === 'NO', 'Changed back');
-  });
-
-  function editComment(mode) {
-    const commentBox = ref.finalCommentBox && ref.finalCommentBox[0];
-    if (!commentBox || !commentBox.click) {
-      return;
-//       throw new Error('EditComment requires a valid textarea proxy');
-    }
-    if (mode === 'addInitials') {
-      commentBox.focus();
-      const initials = user.config.get('initials') || '';
-      if (new RegExp('^' + initials).test(commentBox.value)) {
-        return;
-      }
-      commentBox.value = initials + '\n' + commentBox.value;
-    } else if (mode === 'removeInitials') {
-       const initials = user.config.get('initials') || '';
-       commentBox.value =
-           commentBox.value.replace(RegExp('^' + initials + '\n'), '');
-    }
-  }
-
-  async function keepAlive(_, idx, group) {
-    if (idx > 0) {
-      return;
-    }
-    const MINUTES = 6;
-    const INTERVAL = 10000; // ms
-    const times = (MINUTES * 60000) / INTERVAL;
-    for (let i = 0; i < times; i++) {
-      await util.wait(INTERVAL);
-      const idx = Math.floor(Math.random() * group.length);
-      group[idx].touch();
-    }
-  }
-
-  const tabs = [];
-  async function openTabs() {
-    tabs.forEach(tab => tab.close());
-    tabs.length = 0;
-    const urls = ref.openInTabs
-        .map(el => el.value)
-        .filter(val => /^http/.test(val));
-    const uniqueLinks = [...new Set(urls)];
-    for (let link of uniqueLinks) {
-      tabs.push(window.open(link, link));
-    };
-    if (tabs.length !== uniqueLinks.length) {
-      user.log.warn(
-        `Could not open all tabs. Check the Chrome popup blocker.`
-      );
-    }
-  }
-
-
-  function prefill(proxy) {
-    const values = user.storeAccess({
-      feature: 'Prefill',
-      locale: 'Dutch',
-      get: util.getDomain(proxy.value),
-    });
-    if (values) {
-      user.log.notice('Found prefill values');
-    }
-    const targets = ref.prefillTarget;
-    for (let idx in values) {
-      targets[idx].value = values[idx];
-    }
-  }
-
   function resetCounter() {
     const question =
         'Please confirm.\nAre you sure you want to reset all counters?';
@@ -487,6 +541,29 @@ var shared = (function workflowMethodsModule() {
     } else {
       user.log.low('Canceled');
     }
+  }
+
+  /**
+   * Save the values from the current extraction.
+   * Logs the values, and adds them to the prefill data store.
+   */
+  function saveExtraction() {
+    const values = ref.saveExtraction.map(element => element.value);
+    const domain = util.getDomain(values[0]);
+    if (!domain) {
+      return user.log.warn('Not enough data to save.');
+    }
+    const extractionData = {[domain]: values.slice(1)};
+    user.storeAccess({
+      feature: 'Prefill',
+      locale: environment.locale(),
+      set: domain,
+      value: values.slice(1),
+    });
+    user.log.ok(
+      'Saving new default extraction for ' + domain +
+      util.mapToBulletedList(values.slice(1), 2),
+    );
   }
 
   /**
@@ -528,29 +605,6 @@ var shared = (function workflowMethodsModule() {
   }
 
   /**
-   * Save the values from the current extraction.
-   * Logs the values, and adds them to the prefill data store.
-   */
-  function saveExtraction() {
-    const values = ref.saveExtraction.map(element => element.value);
-    const domain = util.getDomain(values[0]);
-    if (!domain) {
-      return user.log.warn('Not enough data to save.');
-    }
-    const extractionData = {[domain]: values.slice(1)};
-    user.storeAccess({
-      feature: 'Prefill',
-      locale: 'Dutch',
-      set: domain,
-      value: values.slice(1),
-    });
-    user.log.ok(
-      'Saving new default extraction for ' + domain +
-      util.mapToBulletedList(values.slice(1), 2),
-    );
-  }
-
-  /**
    * Attempt to submit the task.
    */
   async function submit() {
@@ -562,7 +616,7 @@ var shared = (function workflowMethodsModule() {
       user.log.warn('Not ready to submit');
       return false;
     }
-    user.log.notice('Submitting' + environment.taskId().decoded);
+    user.log.notice('Submitting ' + environment.taskId().decoded);
     await util.wait(100);
     button.click();
     user.counter.add('Submit');
@@ -573,15 +627,15 @@ var shared = (function workflowMethodsModule() {
   return {
     awaitNewPage,
     editComment,
-    keepAlive,
-    openTabs,
-    resetCounter,
-    skipTask,
-    saveExtraction,
-    submit,
-    prefill,
+    handleTabs,
     fallThrough,
+    keepAlive,
+    prefill,
     redAlertOnDuplicateValues,
+    resetCounter,
+    saveExtraction,
+    skipTask,
+    submit,
 
     addDashes: changeValue({
       to: '---',
@@ -722,7 +776,7 @@ var flows = (function workflowModule() {
     return {init};
   })();
 
-  const slDutch = (function slDutchModule() {
+  const sl = (function slModule() {
 
     /** string - Describes the current stage */
     let stage;
@@ -734,15 +788,20 @@ var flows = (function workflowModule() {
 
     const stages = {
       'start': () => {
+        if (ref.approvalButtons.length) {
+          ref.approvalButtons[1].click();
+        }
         user.log.notice('Ready to edit', {save: false});
         shared.editComment('removeInitials');
-
       },
       'approve': () => {
         if (ref.submitButton[0].disabled) {
           user.log.warn('Task is not ready');
           toStage('start');
           return;
+        }
+        if (ref.approvalButtons.length) {
+          ref.approvalButtons[0].click();
         }
         user.log.notice('Approved', {save: false});
         shared.editComment('addInitials');
@@ -774,6 +833,7 @@ var flows = (function workflowModule() {
         toStage('submit');
       }
     }
+    nextStage = util.debounce(nextStage, 250);
 
     /**
      * Set up event handlers.
@@ -838,7 +898,7 @@ var flows = (function workflowModule() {
       ー({
         name: 'Landing Page Url',
         select: 'textarea',
-        pick: [0],
+        pick: [1],
         onLoad: shared.prefill,
       });  
 
@@ -883,11 +943,19 @@ var flows = (function workflowModule() {
       });
 
       ー({
+        name: 'ApprovalButtons',
+        select: 'label',
+        pick: [32, 32],
+        ref: 'approvalButtons',
+      });
+
+      ー({
         name: 'SubmitButton',
-        select: 'button',
-        pick: [2],
+        select: '.submitTaskButton',
+        pick: [0],
+        css: {opacity: 0.2},
         ref: 'submitButton',
-      })[0].css = {opacity: 0.2};
+      });
 
       ー({
         name: 'Skip Button',
@@ -899,7 +967,7 @@ var flows = (function workflowModule() {
       ー({
         name: 'Save',
         select: 'textarea',
-        pick: [0, 2, 3, 6, 7, 10, 11, 14, 15, 18, 19],
+        pick: [1, 2, 3, 6, 7, 10, 11, 14, 15, 18, 19],
         ref: 'saveExtraction',
       });
 
@@ -909,7 +977,7 @@ var flows = (function workflowModule() {
         onKeydown_BracketLeft: shared.resetCounter,
         onKeydown_BracketRight: shared.skipTask,
         onKeydown_CtrlAltS: shared.saveExtraction,
-        onKeydown_Backquote: shared.openTabs,
+        onKeydown_Backquote: shared.handleTabs,
         onKeydown_CtrlBackquote: main,
       });
     }
@@ -917,7 +985,7 @@ var flows = (function workflowModule() {
     return {init};
   })();
 
-  const ssDutch = (function ssDutchModule() {
+  const ss = (function ssModule() {
 
     /** string - Describes the current stage */
     let stage;
@@ -941,6 +1009,7 @@ var flows = (function workflowModule() {
         }
         user.log.notice('Approved', {save: false});
         shared.editComment('addInitials');
+        shared.handleTabs({closeOnly: true});
 
       },
       'submit': async () => {
@@ -1021,19 +1090,20 @@ var flows = (function workflowModule() {
       ー({ // @todo Confirm position
         name: 'Comment Box',
         select: 'textarea',
-        pick: [(util.isDev()) ? 0 : 64],
+        pick: [(util.isDev()) ? 0 : 52],
         onFocusout: backToStart,
         ref: 'finalCommentBox',
       });
 
-      ー({ // @todo Confirm position
+      ー({
         name: 'SubmitButton',
-        select: 'button',
-        pick: [2],
+        select: '.submitTaskButton',
+        pick: [0],
+        css: {opacity: 0.2},
         ref: 'submitButton',
-      })[0].css = {opacity: 0.2};
+      });
 
-      ー({ // @todo Confirm position
+      ー({
         name: 'Skip Button',
         select: '.taskIssueButton',
         pick: [0],
@@ -1055,7 +1125,8 @@ var flows = (function workflowModule() {
 
   return {
     ratingHome,
-    slDutch,
+    sl,
+    ss,
   };
 })();
 
@@ -1073,6 +1144,7 @@ function main() {
     return user.log.warn('No workflow identified', true);
   }
   eventReactions.reset();
+  util.dispatch('issueUpdate', {detail: {issueType: 'reset'}});
   const flow = flows[detectedFlowName];
   flow.init();
 };
