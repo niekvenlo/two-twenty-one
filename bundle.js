@@ -399,13 +399,13 @@ var util =
   }
 
   /**
-   * Function decorator. Returns a function that will run repeatedly, until
+   * Function decorator. Returns a Promise that will run repeatedly, until
    * it returns a truthy value.
    *
    * @param {function} func - The function to be decorated.
    * @param {number} retries - The number of times to run the function.
    * @param {number} ms - The delay in milliseconds.
-   * @param {Promise} A Promise which will return the result of the function
+   * @return {Promise} A Promise which will return the result of the function
    * if it ran succesfully, or throw an Error otherwise.
    */
   function retry(func, retries = DEFAULT_RETRIES, delay = DEFAULT_DELAY) {
@@ -585,7 +585,10 @@ var user = (function userDataModule() {
      *
      * @param {Object} o
      * @param {string} o.feature
-     * @param {string=} o.locale
+     * @param {string=} o.locale - Not all stores are locale specific
+     * @return {Object} The store for non-locale specific stores, or
+     * an object containing a store for the specified locale and a shared
+     * store.
      */
     function dumpStore({feature, locale}) {
       const allLocales = cached.getStore(`${feature}`);
@@ -906,6 +909,11 @@ var user = (function userDataModule() {
    * {proxy, issueType: 'Typo', issueLevel: 'red', message: 'Wrod misspelled'}
    */
   function flag(issueUpdate) {
+    if (issueUpdate.issueType === 'reset') {
+      flaggedIssues.length = 0;
+      updateGui({issues: flaggedIssues});
+      return;
+    }
     const template = {proxy: true, issueType: true};
     if (!util.doesObjectMatchTemplate(template, issueUpdate)) {
       throw new Error('Not a valid issue.');
@@ -1957,6 +1965,7 @@ var {ー, ref} = (function domAccessModule() {
     const proxies = htmlElements.map((element,idx) => {
       return toProxy(element, idx, options);
     });
+    proxies.forEach(proxy => options.css && (proxy.css = options.css));
     if (options.mode !== 'fresh') {
       setAllReactions(htmlElements, proxies, options);
     }
@@ -1990,10 +1999,9 @@ var {ー, ref} = (function domAccessModule() {
    */
 
   const BASE_ID = 'tto';
-  const HIGHLIGHT_TIME = 1000; // ms
 
   const guiState = Object.seal({
-    stage: 0,
+    stage: 'Start',
     counters: {},
     issues: [],
   });
@@ -2005,10 +2013,7 @@ var {ー, ref} = (function domAccessModule() {
       if (state === undefined) {
         throw new Error(`Unknown gui state property: ${prop}`);
       }
-      if (
-        Array.isArray(incoming) &&
-        util.doArraysMatch(state, incoming)
-      ) {
+      if (util.doArraysMatch(state, incoming)) {
         return false;
       }
       guiState[prop] = incoming;
@@ -2016,126 +2021,90 @@ var {ー, ref} = (function domAccessModule() {
     return true;
   }
 
-  function makeUl({title, elements, valueProp, titleProp}) {
-    if (elements.length < 1) {
-      return '';
-    }
-    const mappedToLi = elements.map(el => {
-      return `<li>${el[valueProp]}: <em>${el[titleProp]}</em></li>`;
-    });
-    return (
-        `<h4 style="padding: 0 0 0 10px">${title}</h4>` +
-        `<ul id=${BASE_ID}_${title}>${mappedToLi.join('')}</ul>`
-    );
-  }
-
-  const mainGui = (function mainGuiModule() {
-    const frame = document.createElement('div');
-    frame.id = BASE_ID + 'mainGui'
-    frame.style.cssText = `
-      background: rgba(255,255,200,0.8);
-      bottom: 0px;
-      height: auto;
-      left: 0px;
-      pointer-events: none;
-      position: fixed;
-      width: 100%;
-      z-index: 2001;
-    `;
-    document.body.append(frame);
-    function update() {
-      const issues = guiState.issues;
-      const counters = Object.entries(guiState.counters);
-      frame.innerHTML =
-          makeUl({
-            title: 'Issues',
-            elements: issues,
-            valueProp: 'issueType',
-            titleProp: 'message',
-          }) + 
-          makeUl({
-            title: 'Counters',
-            elements: counters,
-            valueProp: 1,
-            titleProp: 0,
-          });
-    }
-    update = util.debounce(util.delay(update));
-    return update;
-  })();
-
-  const paintBorders = (function paintBorderModule() {
-    const issueBorders = [];
-
-    /**
-     * Add a div to the DOM with specified coordinates.
-     *
-     * @param {Object} o
-     * @param {number} 0.top
-     * @param {number} 0.left
-     * @param {number} 0.width
-     * @param {number} 0.height
-     */
-    function paintBorder({top, left, width, height}) {
-      const div = document.createElement('div');
-      div.style.cssText = `
-        box-shadow: 0 0 16px black;
-        border-width: 0;
-        height: ${height}px;
-        left: ${left}px;
-        pointer-events: none;
-        position: absolute;
-        top: ${top}px;
-        width: ${width}px;
-        z-index: 2000;
-      `;
-      issueBorders.push(div);
-      document.body.appendChild(div);
-      util.wait(HIGHLIGHT_TIME * 0.9).then(() => {
-        div.style.boxShadow = '0 0 12px black';
-      });
-      util.wait(HIGHLIGHT_TIME).then(() => {
-        div.parentNode.removeChild(div);
-      });
-    }
-
-    /**
-     * Paints borders around every HTMLElement proxy that has been 
-     */
-    function update() {
-      issueBorders.length = 0;
-      guiState.issues
-          .map(issue => issue.proxy.getCoords())
-          .forEach(paintBorder);
-    }
-    update = util.debounce(util.delay(update, 100), HIGHLIGHT_TIME);
-    return update;
-  })();
-
-  /**
-   * Merges new data into the local gui state, and triggers and update of
-   * the gui.
-   *
-   * @param {Object} packet - Data to be merged into the gui's state.
-   */
-  function update(packet) {
-    if (setState(packet)) {
-      mainGui();
-      paintBorders();
-    }
-  }
+  setTimeout(updateGui, 200); //
 
   /**
    * Sets a listener on the document for gui updates.
    */
-  function addGuiUpdateListener() {
+  (function addGuiUpdateListener() {
     document.addEventListener('guiUpdate', ({detail}) => {
       const packet = detail;
-      update(packet);
+      if (setState(packet)) {
+        updateGui();
+      }
     }, {passive: true});
-    document.addEventListener('scroll', () => {
-      paintBorders();
-    }, {passive: true});
+  })();
+
+  (function addStylesheet () {
+    const style = document.createElement('style');
+    document.head.append(style);
+    const addRule = (p) => style.sheet.insertRule(`.${BASE_ID}${p}`, 0);
+    const rules = [
+      `container { background-color: #f4f4f4 }`,
+      `container { opacity: 0.8 }`,
+      `container { overflow: hidden }`,
+      `container { position: fixed }`,
+      `container { pointer-events: none }`,
+      `container { padding: 10px }`,
+      `container { right: 3px }`,
+      `container { top: 30px }`,
+      `container { width: 300px }`,
+      `container { z-index: 2000 }`,
+      `container p { margin: 4px }`,
+      `container em { font-weight: bold }`,
+      `container em { font-style: normal }`,
+      `container .red { color: #dd4b39 }`,
+      `container .orange { color: #872b20 }`,
+      `container .yellow { color: #3d130e }`,
+      `boom { background-color: black }`,
+      `boom { border-radius: 50% }`,
+      `boom { opacity: 0.4 }`,
+      `boom { padding: 20px }`,
+      `boom { position: absolute }`,
+      `boom { z-index: 1999 }`,
+    ];
+    rules.forEach(addRule);
+  })();
+
+  const container = (function createContainer() {
+    const div = document.createElement('div');
+    div.classList = BASE_ID + 'container';
+    div.innerHTML = 'Loading ...';
+    document.body.append(div);
+    async function setContent(html) {
+      await util.wait();
+      div.innerHTML = html;
+    }
+    return {div, setContent};
+  })();
+
+  async function boom({proxy}) {
+    const div = document.createElement('div');
+    div.classList = BASE_ID + 'boom';
+    div.style.top = proxy.top + 'px';
+    div.style.left = proxy.left + proxy.width + 'px';
+    document.body.append(div);
+    await util.wait(50);
+    div.style.backgroundColor = '#dd4b39';
+    await util.wait(300);
+    document.body.removeChild(div);
   }
-  addGuiUpdateListener();
+
+  function updateGui() {
+    let html = [];
+    const p = (type, text, title = '') => {
+      html.push(`<p class="${type}"><em>${title}</em> ${text}</p>`);
+    };
+    let x = [];
+    for (let counter in guiState.counters) {
+      x.push(counter + ': ' + guiState.counters[counter]);
+    }
+    p('stage', guiState.stage, 'Stage');
+    p('counter', x.join(' | '));
+    for (let issue of guiState.issues) {
+      p(issue.issueLevel, issue.message, issue.issueType);
+      boom(issue);
+    }
+    container.setContent(html.join('\n'));
+  }
 })();
