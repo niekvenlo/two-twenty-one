@@ -323,7 +323,7 @@ var shared = (function workflowMethodsModule() {
     const isTaskNew = () => {
       return taskId !== environment.taskId().decoded;
     };
-    return util.retry(isTaskNew, 20, 50)();
+    return util.retry(isTaskNew, 20, 100)();
   }
 
   /**
@@ -608,8 +608,8 @@ var shared = (function workflowMethodsModule() {
    * Attempt to submit the task.
    */
   async function submit() {
-    const button = ref.submitButton[0];
-    if (!button || !button.click) {
+    const button = ref.submitButton && ref.submitButton[0];
+    if (!button) {
       throw new TypeError('Submit requires a valid submit button proxy');
     }
     if (button.disabled) {
@@ -713,24 +713,24 @@ var flows = (function workflowModule() {
       function clickAcquire() {
         const button = ref.firstButton[0];
         button.click();
-        clickContinue();
+        util.retry(clickContinue, RETRIES, DELAY)()
+          .then(main)
+          .catch((e) => {
+            user.log.warn('Continue button did not appear.');
+          })
       }
 
       /**
        * Wait for the 'Continue to Task' button to appear, then click it.
        */
-      async function clickContinue() {
+      function clickContinue() {
         const continueButton = ref.fresh('firstButton');
         if (continueButton && /Continue/.test(continueButton.textContent)) {
           continueButton.click();
           return true;
         }
-        return new Error('No Continue button.');
+        return false;
       }
-      util.retry(clickContinue, RETRIES, DELAY)()
-          .then(awaitNewPage)
-          .then(main)
-          .catch(() => user.log.warn('Continue button did not appear.'));
 
       /**
        * Trigger the onClick toggle of yes/no select HTMLElements with the
