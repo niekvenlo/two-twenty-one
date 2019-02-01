@@ -195,7 +195,7 @@ var shared = (function workflowMethodsModule() {
     return (proxy) => {
       const hit = regex.test(proxy.value) === shouldMatch;
       const didOrShouldNot = shouldMatch ? 'did' : 'should not';
-      const message = `${proxy.value} ${didOrShouldNot} match ${regex}`;
+      const message = `'${proxy.value}' ${didOrShouldNot} match ${regex}`;
       return {proxy, hit, message};
     }
   };
@@ -290,16 +290,30 @@ var shared = (function workflowMethodsModule() {
   }
 
   function orangeAlertOnForbiddenPhrase(proxy) {
-    const phrases = user.storeAccess({feature: 'ForbiddenPhrases'});
+    const phrases = user.storeAccess({
+      feature: 'ForbiddenPhrases',
+      locale: environment.locale(),
+      });
+    if (!Array.isArray(phrases)) {
+      user.log.warn('No forbidden phrases Array set.');
+      return;
+    }
     const packet = {proxy, issueType: 'Forbidden phrase'};
     const toRegex = (string) => {
       const [,regex,flags] = string.match(/\/(.+)\/([gi]*)/);
       return RegExp(regex, flags);
     }
-    for (let phrase of phrases) {
-      if (phrase.test(proxy.value)) {
+    for (let rule of phrases) {
+      const [phrase, message] = rule;
+      if (toRegex(phrase).test(proxy.value)) {
+        const clearValue = proxy.value.replace(/\s/, '░');
+        const clearPhrase = phrase.replace(/\s/, '░');
         packet.issueLevel = 'orange';
-        packet.message = `matching '${phrase}' is forbidden`;
+        if (message) {
+          packet.message = message;          
+        } else {
+          packet.message = `'${clearValue}' matches '${clearPhrase}'`;
+        }
         break;
       }
     }
@@ -700,13 +714,6 @@ var shared = (function workflowMethodsModule() {
       is: true,
     }),
 
-    orangeAlertOnSpaces: issueUpdate({
-      issueLevel: 'orange',
-      issueType: 'Additional spaces found',
-      when: testRegex(/^ | $/),
-      is: true,
-    }),
-
     redAlertExceed25Chars: issueUpdate({
       issueLevel: 'red',
       issueType: 'More than 25 characters long',
@@ -906,7 +913,6 @@ var flows = (function workflowModule() {
         onInteract: [
           shared.redAlertExceed25Chars,
           shared.redAlertOnDuplicateValues,
-          shared.orangeAlertOnSpaces,
           shared.orangeAlertOnForbiddenPhrase,
         ],
         onLoad: [
@@ -1110,10 +1116,7 @@ var flows = (function workflowModule() {
         name: 'Text',
         select: 'textarea',
         pick: [3, 6, 9, 12, 15],
-        onInteract: [
-          shared.redAlertOnDuplicateValues,
-          shared.orangeAlertOnSpaces,
-        ],
+        onInteract: shared.redAlertOnDuplicateValues,
       });
 
       ー({
