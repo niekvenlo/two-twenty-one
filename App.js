@@ -292,21 +292,15 @@ var shared = (function workflowMethodsModule() {
   function orangeAlertOnForbiddenPhrase(proxy) {
     const phrases = user.storeAccess({feature: 'ForbiddenPhrases'});
     const packet = {proxy, issueType: 'Forbidden phrase'};
-    if (phrases[0] instanceof RegExp) {
-      for (let phrase of phrases) {
-        if (phrase.test(proxy.value)) {
-          packet.issueLevel = 'orange';
-          packet.message = `matching '${phrase}' is forbidden`;
-          break;
-        }
-      }      
-    } else {
-      for (let phrase of phrases) {
-        if (proxy.value.includes(phrase)) {
-          packet.issueLevel = 'orange';
-          packet.message = `using '${phrase}' is forbidden`;
-          break;
-        }
+    const toRegex = (string) => {
+      const [,regex,flags] = string.match(/\/(.+)\/([gi]*)/);
+      return RegExp(regex, flags);
+    }
+    for (let phrase of phrases) {
+      if (phrase.test(proxy.value)) {
+        packet.issueLevel = 'orange';
+        packet.message = `matching '${phrase}' is forbidden`;
+        break;
       }
     }
     util.dispatch('issueUpdate', {detail: packet});
