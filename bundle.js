@@ -550,7 +550,6 @@ var user = (function userDataModule() {
     const cached = {
       getStore(name) {
         if (cache[name] !== undefined) {
-          console.log(name);
           return cache[name];
         }
         const fromStore = local.getStore(name);
@@ -571,16 +570,13 @@ var user = (function userDataModule() {
      * @param {Object} o
      * @param {string} o.feature
      * @param {string=} o.locale
-     * @param {string} o.add The element to add to the Array.
+     * @param {string} o.add The element to add.
      * @param {*} o.value
-     * @return {Object|Array} The new array
      */
     function addData({feature, locale = '', add}) {
       const data = cached.getStore(`${feature}${locale}`);
       const newData = (Array.isArray(data)) ? data : [];
-      newData.push(add.toString());
-      cached.setStore(`${feature}${locale}`, newData);
-      return newData;
+      cached.setStore(`${feature}${locale}`, [...newData, add]);
     }
     
     /**
@@ -635,7 +631,16 @@ var user = (function userDataModule() {
         return allLocales;
       }
       const oneLocale = cached.getStore(`${feature}${locale}`);
-      return {[locale]: oneLocale, shared: allLocales};
+      if (!Array.isArray(oneLocale) && !Array.isArray(allLocales)) {
+        return {...oneLocale, ...allLocales};
+      }
+      if (Array.isArray(oneLocale) && Array.isArray(allLocales)) {
+        return [...oneLocale, ...allLocales];
+      }
+      if (Array.isArray(oneLocale)) {
+        return oneLocale;
+      }
+      return allLocales;
     }
 
     /**
@@ -672,7 +677,7 @@ var user = (function userDataModule() {
      *   feature: 'Example',
      *   locale: 'English',
      *   get: 'name',
-     * }) => 'Lauren Ipsum';
+     * }); => 'Lauren Ipsum';
      * storeAccess({
      *   feature: 'Example',
      *   locale: 'English',
@@ -682,7 +687,18 @@ var user = (function userDataModule() {
      * storeAccess({
      *   feature: 'Example',
      *   locale: 'English',
-     * }) => {name: 'Yanny Ipsum'};
+     * }); => {name: 'Yanny Ipsum'};
+     * storeAccess({
+     *   feature: 'ArrayExample',
+     *   data: [],
+     * });
+     * storeAccess({
+     *   feature: 'ArrayExample',
+     *   add: 2,
+     * });
+     * storeAccess({
+     *   feature: 'ArrayExample',
+     * }); // => [2]
      */
     function storeAccess({feature, locale = '', add, get, set, value, data}) {
       if (add !== undefined) {
@@ -1058,7 +1074,10 @@ var user = (function userDataModule() {
       const logBook = storeAccess({
         feature: LOGBOOK_STORE_NAME,
       });
-      return (logBook.entries || []).map(entry => {
+      if (!Array.isArray(logBook)) {
+        return [];
+      }
+      return logBook.map(entry => {
         return {
           time: new Date(entry[0]),
           type: entry[1],
@@ -1081,7 +1100,7 @@ var user = (function userDataModule() {
       });
       storeAccess({
         feature: LOGBOOK_STORE_NAME,
-        data: {entries},
+        data: entries,
       });
     }
 
@@ -2062,7 +2081,7 @@ var {ー, ref} = (function domAccessModule() {
    */
 
   const BASE_ID = 'tto';
-  const BOOM_RADIUS = 40;
+  const BOOM_RADIUS = 60;
 
   const guiState = Object.seal({
     stage: 'Loading...',
@@ -2101,6 +2120,7 @@ var {ー, ref} = (function domAccessModule() {
     const addRule = (p) => style.sheet.insertRule(`.${BASE_ID}${p}`, 0);
     const rules = [
       `container { background-color: #f4f4f4 }`,
+      `container { font-size: 1.2em }`,
       `container { opacity: 0.8 }`,
       `container { overflow: hidden }`,
       `container { position: fixed }`,
@@ -2118,7 +2138,7 @@ var {ー, ref} = (function domAccessModule() {
       `container .yellow { color: #3d130e }`,
       `boom { background-color: black }`,
       `boom { border-radius: 50% }`,
-      `boom { opacity: 0.04 }`,
+      `boom { opacity: 0.02 }`,
       `boom { padding: ${BOOM_RADIUS}px }`,
       `boom { position: absolute }`,
       `boom { z-index: 1999 }`,
