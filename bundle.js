@@ -176,6 +176,21 @@ var util =
   });
 
   /**
+   * Add capitalisation to a string.
+   */
+  function capitalise(mode, string) {
+    if (mode === 'first letter') {
+      return string.replace(/^./, c => c.toUpperCase());
+    }
+    if (mode === 'each word') {
+      return string.split(' ')
+          .map((word) => capitalise('first letter', word))
+          .join(' ');
+    }
+    return string;
+  }
+
+  /**
    * Debounce function calls.
    *
    * @param {function} func - Function to be debounced.
@@ -439,6 +454,7 @@ var util =
 
   return {
     bundle,
+    capitalise,
     debounce,
     delay,
     dispatch,
@@ -534,15 +550,38 @@ var user = (function userDataModule() {
     const cached = {
       getStore(name) {
         if (cache[name] !== undefined) {
+          console.log(name);
           return cache[name];
         }
-        return local.getStore(name);
+        const fromStore = local.getStore(name);
+        cache[name] = fromStore;
+        return fromStore;
       },
       setStore(name, value) {
         cache[name] = value;
         local.setStore(name, value);
       },
     };
+    
+    /**
+     * Add a data element for a specific feature, and optionally a specific
+     * locale. If no locale is specified, data will be added to a feature
+     * specific shared data store.
+     *
+     * @param {Object} o
+     * @param {string} o.feature
+     * @param {string=} o.locale
+     * @param {string} o.add The element to add to the Array.
+     * @param {*} o.value
+     * @return {Object|Array} The new array
+     */
+    function addData({feature, locale = '', add}) {
+      const data = cached.getStore(`${feature}${locale}`);
+      const newData = (Array.isArray(data)) ? data : [];
+      newData.push(add.toString());
+      cached.setStore(`${feature}${locale}`, newData);
+      return newData;
+    }
     
     /**
      * Get a data entry for a specific feature, and optionally a specific
@@ -645,7 +684,10 @@ var user = (function userDataModule() {
      *   locale: 'English',
      * }) => {name: 'Yanny Ipsum'};
      */
-    function storeAccess({feature, locale = '', get, set, value, data}) {
+    function storeAccess({feature, locale = '', add, get, set, value, data}) {
+      if (add !== undefined) {
+        return addData({feature, locale, add});
+      }
       if (get !== undefined) {
         return getData({feature, locale, get});
       } else if (set !== undefined) {
@@ -830,15 +872,16 @@ var user = (function userDataModule() {
     }
 
     /**
-     * @param {string} name - Name of the counter to find.
-     * @return {number} The count of the counter, or -1 if the counter
-     * does not exist.
+     * @param {string=} name - Name of the counter to find.
+     * @return {Object|number} If no name is provided, returns an object
+     * containing all the counts. Otherwise, returns the count of the
+     * counter, or -1 if the counter does not exist.
      */
     function get(name) {
-      if (typeof name !== 'string') {
-        throw new Error('Counter get expects a name string');
-      }
       const allCounts = getStore();
+      if (!name) {
+        return {...allCounts};
+      }
       return allCounts[name] || -1;
     }
 
@@ -1220,6 +1263,14 @@ var eventReactions = (function eventListenersModule() {
     'onPaste',
   ]);
 
+  const PREVENT_DEFAULT_ON = Object.freeze([
+    'Backquote',
+    'Backslash',
+    'BracketRight',
+    'BracketLeft',
+    'CtrlEnter', // Special case.
+  ]);
+
   /**
    * reactionStore maps HTMLElements to sets of events. Each event maps to
    * an array of reactions. When a browser event is fired by the
@@ -1519,6 +1570,18 @@ var eventReactions = (function eventListenersModule() {
     return [...elementReactions, ...globalReactions];
   }
 
+  function maybePreventDefault(event) {
+    if (PREVENT_DEFAULT_ON.includes(event.code)) {
+      event.preventDefault();
+    }
+    if (PREVENT_DEFAULT_ON.includes('CtrlEnter')) {
+      if (event.ctrlKey === true && /Enter/.test(event.code)) {
+        event.preventDefault();
+      }
+    }
+    
+  }
+
   /**
    * Respond to document level browser events.
    * Request matching reactions to events and run them.
@@ -1526,6 +1589,7 @@ var eventReactions = (function eventListenersModule() {
    * @param {Event} - Browser event.
    */
   function genericEventHandler(event) {
+    maybePreventDefault(event);
     const targetReactions = getMatchingReactions(event);
     runAll(targetReactions);
   }
@@ -1539,7 +1603,6 @@ var eventReactions = (function eventListenersModule() {
       document.addEventListener(
         eventType,
         genericEventHandler,
-        {passive: true}
       );
     }
   }
@@ -1999,9 +2062,10 @@ var {ー, ref} = (function domAccessModule() {
    */
 
   const BASE_ID = 'tto';
+  const BOOM_RADIUS = 40;
 
   const guiState = Object.seal({
-    stage: 'Start',
+    stage: 'Loading...',
     counters: {},
     issues: [],
   });
@@ -2013,15 +2077,12 @@ var {ー, ref} = (function domAccessModule() {
       if (state === undefined) {
         throw new Error(`Unknown gui state property: ${prop}`);
       }
-      if (util.doArraysMatch(state, incoming)) {
-        return false;
-      }
       guiState[prop] = incoming;
     }
     return true;
   }
 
-  setTimeout(updateGui, 200); //
+  setTimeout(update, 200); //
 
   /**
    * Sets a listener on the document for gui updates.
@@ -2029,9 +2090,8 @@ var {ー, ref} = (function domAccessModule() {
   (function addGuiUpdateListener() {
     document.addEventListener('guiUpdate', ({detail}) => {
       const packet = detail;
-      if (setState(packet)) {
-        updateGui();
-      }
+      setState(packet);
+      update();
     }, {passive: true});
   })();
 
@@ -2058,8 +2118,8 @@ var {ー, ref} = (function domAccessModule() {
       `container .yellow { color: #3d130e }`,
       `boom { background-color: black }`,
       `boom { border-radius: 50% }`,
-      `boom { opacity: 0.4 }`,
-      `boom { padding: 20px }`,
+      `boom { opacity: 0.04 }`,
+      `boom { padding: ${BOOM_RADIUS}px }`,
       `boom { position: absolute }`,
       `boom { z-index: 1999 }`,
     ];
@@ -2079,10 +2139,13 @@ var {ー, ref} = (function domAccessModule() {
   })();
 
   async function boom({proxy}) {
+    const coords = proxy.getCoords();
+    const top = coords.top + (coords.height / 2) - BOOM_RADIUS;
+    const left = coords.left + (coords.width / 2) - BOOM_RADIUS;
     const div = document.createElement('div');
     div.classList = BASE_ID + 'boom';
-    div.style.top = proxy.top + 'px';
-    div.style.left = proxy.left + proxy.width + 'px';
+    div.style.top = top + 'px';
+    div.style.left = left + 'px';
     document.body.append(div);
     await util.wait(50);
     div.style.backgroundColor = '#dd4b39';
@@ -2090,16 +2153,16 @@ var {ー, ref} = (function domAccessModule() {
     document.body.removeChild(div);
   }
 
-  function updateGui() {
+  function update() {
     let html = [];
     const p = (type, text, title = '') => {
       html.push(`<p class="${type}"><em>${title}</em> ${text}</p>`);
     };
-    let x = [];
+    const x = [];
     for (let counter in guiState.counters) {
       x.push(counter + ': ' + guiState.counters[counter]);
     }
-    p('stage', guiState.stage, 'Stage');
+    p('stage', util.capitalise('first letter', guiState.stage), 'Stage');
     p('counter', x.join(' | '));
     for (let issue of guiState.issues) {
       p(issue.issueLevel, issue.message, issue.issueType);
