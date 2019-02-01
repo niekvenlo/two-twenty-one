@@ -29,7 +29,7 @@ var environment = (function environmentModule() {
       case headerText === 'TwoTwentyOne':
         return 'sl';
       default:
-        return 'ratingHome';
+        return 'home';
     }
   }
 
@@ -38,7 +38,13 @@ var environment = (function environmentModule() {
    * @return {string}
    */
   function detectLocale() {
-    return 'Dutch';
+    const header = ー({
+      name: 'Header',
+      select: 'h1',
+      pick: [0],
+    })[0];
+    const headerText = header && header.textContent;
+    return headerText.trim().split(/\s+/).pop();
   }
 
   function detectTaskId() {
@@ -90,13 +96,18 @@ var shared = (function workflowMethodsModule() {
    * a hit property, a proxy property and optionally a message property.
    * If the hit property is true, the proxy value is changed.
    * The message property is ignored.
+   * @param {boolean} o.is - Should the change be made if the hit property is
+   * true?
    *
    * @example
+   * const conditional = () => ({hit: true, proxy: {value: 'originalValue'}});
    * changeValue({
    *   to: 'newValue',
-   *   when: () => ({hit: true, proxy: {value: 'originalValue'}}),
+   *   when: conditional,
+   *   is: true,
    * })
-   * This would change the value of the object returned by the 'when' function.
+   * This would change the value of the object returned by the conditional
+   * function.
    */
   function changeValue({to, when, is = true}) {
     if (typeof to !== 'string') {
@@ -132,13 +143,15 @@ var shared = (function workflowMethodsModule() {
    * The message property is attached to the issue.
    *
    * @example
-   * flagIssue({
+   * const conditional = () => ({hit: true, proxy: {value: 'originalValue'}});
+   * issueUpdate({
    *   issueType: 'Description of issue',
-   *   when: () => ({hit: true, proxy: {value: 'originalValue'}, message: ''}),
+   *   when: conditional,
+   *   is: true,
    * })
    * This would dispatch an event that means that this proxy has an issue.
    */
-  function flagIssue({issueLevel, issueType, when}) {
+  function issueUpdate({issueLevel, issueType, when, is = true}) {
     if (!ALERT_LEVELS.includes(issueLevel)) {
       throw new RangeError(
         issueLevel + ' is not a known issueLevel. Please use:' +
@@ -146,15 +159,15 @@ var shared = (function workflowMethodsModule() {
       );
     }
     if (typeof when !== 'function') {
-      throw new TypeError('FlagIssue requires a function');
+      throw new TypeError('IssueUpdate requires a function');
     }
     if (typeof issueType !== 'string') {
-      throw new TypeError('FlagIssue requires a new string value');
+      throw new TypeError('IssueUpdate requires a new string value');
     }
     function flagThis(...params) {
       const {proxy, hit, message} = when(...params);
       const packet = {proxy, issueType};
-      if (hit) {
+      if (hit === is) {
         packet.issueLevel = issueLevel;
         packet.message = message;
       }
@@ -244,8 +257,8 @@ var shared = (function workflowMethodsModule() {
   /**
    * For developers, this function is an example of a tester function.
    * Implement the actual testing logic, then hook the function into either:
-   * 1) The flagIssue function:
-   * flagIssue{
+   * 1) The issueUpdate function:
+   * issueUpdate{
    *   issueType: 'Description of the issue',
    *   when: exampleTester // Your tester function.
    * }
@@ -254,7 +267,7 @@ var shared = (function workflowMethodsModule() {
    *   to: 'newValue',
    *   when: exampleTester // Your tester function.
    * }
-   * flagIssue and changeValue will be triggered when your function returns
+   * issueUpdate and changeValue will be triggered when your function returns
    * an object with a property hit = true.
    * 
    * Note that you can also create a function that acts directly on the object.
@@ -269,13 +282,47 @@ var shared = (function workflowMethodsModule() {
     }
   }
 
+  function stripChars(string) {
+    return string.replace(/[\s++-/]+/g, ' ')
+        .replace(/[#?­*]/g, '')
+        .replace(/’/, `'`)
+        .trim();
+  }
+
+  function orangeAlertOnForbiddenPhrase(proxy) {
+    const phrases = user.storeAccess({feature: 'ForbiddenPhrases'});
+    const packet = {proxy, issueType: 'Forbidden phrase'};
+    if (phrases[0] instanceof RegExp) {
+      for (let phrase of phrases) {
+        if (phrase.test(proxy.value)) {
+          packet.issueLevel = 'orange';
+          packet.message = `matching '${phrase}' is forbidden`;
+          break;
+        }
+      }      
+    } else {
+      for (let phrase of phrases) {
+        if (proxy.value.includes(phrase)) {
+          packet.issueLevel = 'orange';
+          packet.message = `using '${phrase}' is forbidden`;
+          break;
+        }
+      }
+    }
+    util.dispatch('issueUpdate', {detail: packet});
+  }
+  orangeAlertOnForbiddenPhrase = util.debounce(orangeAlertOnForbiddenPhrase);
+
   function guessValueFromPastedValue(pastedValue) {
     const value = (/^http/.test(pastedValue))
         ? decodeURIComponent(
-            pastedValue.replace(/\/index/i, '').match(/[^\/]*[\/]?$/)[0]
+            pastedValue
+                .replace(/\/index/i, '')
+                .match(/[^\/]*[\/]?$/)[0]
+                .replace(/(\.\w+)$/i, ''),
           )
         : pastedValue;
-    return value.toLowerCase().trim();
+    return capitalise('first letter', stripChars(value.toLowerCase()));
   }
 
   /**
@@ -318,12 +365,16 @@ var shared = (function workflowMethodsModule() {
    *
    * @return {Promise}
    */
-  function awaitNewPage() {
+  async function awaitNewPage() {
     const taskId = environment.taskId().decoded;
     const isTaskNew = () => {
       return taskId !== environment.taskId().decoded;
     };
-    return util.retry(isTaskNew, 20, 100)();
+    try {
+      await util.retry(isTaskNew, 22, 100)();
+    } catch (e) {
+      user.log.warn('Time limit exceeded for new page.', {print: false});
+    }
   }
 
   /**
@@ -364,9 +415,11 @@ var shared = (function workflowMethodsModule() {
    * @param {boolean} o.closeOnly - Should the tabs only be closed?
    * @ref {ref.openInTabs}
    */
-  async function handleTabs({closeOnly = false}) {
-    tabs.forEach(tab => tab.close());
+  async function handleTabs({closeOnly = false} = {}) {
+    const currentTabs = tabs.slice();
     tabs.length = 0;
+    await util.wait(100);
+    currentTabs.forEach(tab => tab.close());
     if (closeOnly) {
       return;
     }
@@ -427,6 +480,14 @@ var shared = (function workflowMethodsModule() {
     test.ok(b.value === 'a', 'b.value = a');
   }, true);
   fallThrough = util.delay(fallThrough, 0);
+
+  /**
+   *
+   */
+  function guiUpdate(message) {
+    user.log.notice(message, {save: false});
+    util.dispatch('guiUpdate', {detail: {stage: message}});
+  };
 
   /**
    * Touches HTMLElements to keep the current task alive.
@@ -534,7 +595,8 @@ var shared = (function workflowMethodsModule() {
    */
   function resetCounter() {
     const question =
-        'Please confirm.\nAre you sure you want to reset all counters?';
+        'Please confirm.\nAre you sure you want to reset all counters?' +
+        util.mapToBulletedList(user.counter.get());
     user.log.notice(question)
     if (confirm(question)) {
       user.counter.reset();      
@@ -586,7 +648,7 @@ var shared = (function workflowMethodsModule() {
       if (button) {
         button.click();
         user.log.notice('Skipping task ' + environment.taskId().decoded);
-        user.counter.add('Skipped tasks');
+        user.counter.add('Skipped');
         return true;
       }
       return false;
@@ -598,10 +660,9 @@ var shared = (function workflowMethodsModule() {
       return;
     }
     skipButton.click();
-    util.retry(clickConfirm, RETRIES, DELAY)()
-        .then(awaitNewPage)
-        .then(main)
-        .catch(() => user.log.warn('Skip confirmation dialog did not appear.'));
+    await util.retry(clickConfirm, RETRIES, DELAY)()
+    await awaitNewPage();
+    main();
   }
 
   /**
@@ -619,7 +680,7 @@ var shared = (function workflowMethodsModule() {
     user.log.notice('Submitting ' + environment.taskId().decoded);
     await util.wait(100);
     button.click();
-    user.counter.add('Submit');
+    user.counter.add('Submitted');
     return true;
   }
   submit = util.debounce(submit, 100);
@@ -629,7 +690,9 @@ var shared = (function workflowMethodsModule() {
     editComment,
     handleTabs,
     fallThrough,
+    guiUpdate,
     keepAlive,
+    orangeAlertOnForbiddenPhrase,
     prefill,
     redAlertOnDuplicateValues,
     resetCounter,
@@ -643,14 +706,14 @@ var shared = (function workflowMethodsModule() {
       is: true,
     }),
 
-    orangeAlertOnSpaces: flagIssue({
+    orangeAlertOnSpaces: issueUpdate({
       issueLevel: 'orange',
       issueType: 'Additional spaces found',
       when: testRegex(/^ | $/),
       is: true,
     }),
 
-    redAlertExceed25Chars: flagIssue({
+    redAlertExceed25Chars: issueUpdate({
       issueLevel: 'red',
       issueType: 'More than 25 characters long',
       when: testLength({max: 25}),
@@ -700,28 +763,28 @@ var flows = (function workflowModule() {
    * @fileoverview Exports an object for each supported workflow.
    */
 
-  const ratingHome = (function ratingHomeModule() {
+  const home = (function homeModule() {
 
     function init() {
 
-      const RETRIES = 20;
-      const DELAY = 100; // ms
+      shared.guiUpdate('Ready');
 
       /**
        * Click the 'Acquire next task' button.
        */
-      function clickAcquire() {
+      async function clickAcquire() {
         const button = ref.firstButton[0];
         button.click();
-        util.retry(clickContinue, RETRIES, DELAY)()
-          .then(main)
-          .catch((e) => {
-            user.log.warn('Continue button did not appear.');
-          })
+        try {
+          await util.retry(clickContinue, 20, 100)();
+        } catch (e) {
+          user.log.warn('Continue button did not appear.', {print: true});
+        }
+        main();
       }
 
       /**
-       * Wait for the 'Continue to Task' button to appear, then click it.
+       * Click the 'Continue to Task' button if it exists.
        */
       function clickContinue() {
         const continueButton = ref.fresh('firstButton');
@@ -739,12 +802,9 @@ var flows = (function workflowModule() {
        * @param {number} key - Number representing the number key pressed.
        */
       function toggleSelectWithKey(key) {
-        if (key > ref.select.length) {
-          throw new Error('Key too large');
-        }
         return function toggle() {
           const idx = key - 1;
-          ref.select[idx].click();
+          ref.select && ref.select[idx] && ref.select[idx].click();
         }
       }
 
@@ -752,7 +812,6 @@ var flows = (function workflowModule() {
         name: 'Select',
         select: 'select',
         pick: [0, 1, 2],
-        mode: 'programmable',
         onClick: shared.toggleSelectYesNo,
         ref: 'select',
       });
@@ -761,7 +820,6 @@ var flows = (function workflowModule() {
         name: 'First Button',
         select: 'button',
         pick: [0],
-        mode: 'static',
         ref: 'firstButton',
       });
 
@@ -769,6 +827,10 @@ var flows = (function workflowModule() {
         onKeydown_Digit1: toggleSelectWithKey(1),
         onKeydown_Digit2: toggleSelectWithKey(2),
         onKeydown_Digit3: toggleSelectWithKey(3),
+        onKeydown_Digit4: toggleSelectWithKey(4),
+        onKeydown_Digit5: toggleSelectWithKey(5),
+        onKeydown_Enter: clickAcquire,
+        onKeydown_NumpadEnter: clickAcquire,
         onKeydown_Space: clickAcquire,
       });
 
@@ -786,54 +848,57 @@ var flows = (function workflowModule() {
       toStage('start');
     }
 
+    const clickApproveYesOrNo = (which) => {
+      if (ref.approvalButtons.length) {
+        const [yes, no] = ref.approvalButtons;
+        (which === 'yes') ? yes.click() : no.click();
+      }
+    }
+
     const stages = {
-      'start': () => {
-        if (ref.approvalButtons.length) {
-          ref.approvalButtons[1].click();
-        }
-        user.log.notice('Ready to edit', {save: false});
+      async start() {
+        clickApproveYesOrNo('no');
         shared.editComment('removeInitials');
+        shared.guiUpdate('Ready to edit');
       },
-      'approve': () => {
+
+      async approve() {
+        clickApproveYesOrNo('yes');
+        shared.handleTabs({closeOnly: true});
+        shared.editComment('addInitials');
+        shared.guiUpdate('Approved');
+      },
+
+      async submit() {
         if (ref.submitButton[0].disabled) {
           user.log.warn('Task is not ready');
-          toStage('start');
+          toStage('approve');
           return;
         }
-        if (ref.approvalButtons.length) {
-          ref.approvalButtons[0].click();
-        }
-        user.log.notice('Approved', {save: false});
-        shared.editComment('addInitials');
-
-      },
-      'submit': async () => {
         const submitted = await shared.submit();
         if (!submitted) {
           toStage('start');
-          return;
+          return false;
         }
         shared.awaitNewPage().then(main);
       },
     };
 
-    function toStage(name) {
+    const stageIs = (...p) => p.includes(stage);
+
+    async function toStage(name) {
       stage = name;
       stages[name]();
     }
 
-    function backToStart() {
-      toStage('start');
-    }
+    const approve = () => stageIs('start') && toStage('approve');
+    const submit = () => stageIs('approve') && toStage('submit');
+    const start = () => stageIs('approve', 'submit') && toStage('start');
 
-    function nextStage() {
-      if (stage === 'start') {
-        toStage('approve');
-      } else if (stage === 'approve') {
-        toStage('submit');
-      }
+    function skipTask() {
+      shared.handleTabs({closeOnly: true});
+      shared.skipTask();
     }
-    nextStage = util.debounce(nextStage, 250);
 
     /**
      * Set up event handlers.
@@ -848,6 +913,7 @@ var flows = (function workflowModule() {
           shared.redAlertExceed25Chars,
           shared.redAlertOnDuplicateValues,
           shared.orangeAlertOnSpaces,
+          shared.orangeAlertOnForbiddenPhrase,
         ],
         onLoad: [
           shared.redAlertExceed25Chars,
@@ -938,14 +1004,14 @@ var flows = (function workflowModule() {
         name: 'Comment Box',
         select: 'textarea',
         pick: [(util.isDev()) ? 0 : 64],
-        onFocusout: backToStart,
+        onFocusout: start,
         ref: 'finalCommentBox',
       });
 
       ー({
         name: 'ApprovalButtons',
         select: 'label',
-        pick: [32, 32],
+        pick: [32, 33],
         ref: 'approvalButtons',
       });
 
@@ -972,10 +1038,11 @@ var flows = (function workflowModule() {
       });
 
       eventReactions.setGlobal({
-        onKeydown_CtrlEnter: nextStage,
-        onKeydown_CtrlNumpadEnter: nextStage,
-        onKeydown_BracketLeft: shared.resetCounter,
-        onKeydown_BracketRight: shared.skipTask,
+        onKeydown_CtrlEnter: submit,
+        onKeydown_CtrlNumpadEnter: submit,
+        onKeydown_CtrlBackslash: approve,
+        onKeydown_CtrlBracketLeft: shared.resetCounter,
+        onKeydown_CtrlBracketRight: skipTask,
         onKeydown_CtrlAltS: shared.saveExtraction,
         onKeydown_Backquote: shared.handleTabs,
         onKeydown_CtrlBackquote: main,
@@ -1013,6 +1080,7 @@ var flows = (function workflowModule() {
 
       },
       'submit': async () => {
+        shared.handleTabs({closeOnly: true});
         const submitted = await shared.submit();
         if (!submitted) {
           toStage('start');
@@ -1124,7 +1192,7 @@ var flows = (function workflowModule() {
   })();
 
   return {
-    ratingHome,
+    home,
     sl,
     ss,
   };
@@ -1141,20 +1209,21 @@ var flows = (function workflowModule() {
 function main() {
   const detectedFlowName = environment.flowName();
   if (!detectedFlowName) {
-    return user.log.warn('No workflow identified', true);
+    const warning = 'No workflow identified';
+    shared.guiUpdate(warning)
+    return user.log.warn(warning);
   }
   eventReactions.reset();
-  util.dispatch('issueUpdate', {detail: {issueType: 'reset'}});
   const flow = flows[detectedFlowName];
+  util.dispatch('issueUpdate', {detail: {issueType: 'reset'}});
   flow.init();
 };
 
-main();
 user.log.ok('TwoTwentyOne loaded');
+main();
 
 /**
- * @todo Redesign wrap mode to create different level proxies each time
- * with context determined when wrapping.
- *
  * @todo Build dev tool that marks elements on the page
+ * @todo Improve fresh implementation
+ * @todo Remove mode system
  */
