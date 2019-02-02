@@ -293,7 +293,7 @@ var util = (function utilityModule() {
    * @param {(HTMLElement|HTMLDocument)=} o.target - The element emitting
    * the event.
    */
-  function dispatch(types, {detail, target = document} = {target: document}) {
+  function dispatch(types, detail, target = document) {
     types.split(/, ?/).forEach(type => {
       const event = (detail)
           ? new CustomEvent(type, {detail}, {bubbles: true})
@@ -439,6 +439,18 @@ var util = (function utilityModule() {
   }
 
   /**
+   * The inverse of calling toString on a RegExp.
+   * Transforms a string of the format '/abc/i' to a RegExp.
+   *
+   * @param {string}
+   * @return {RegExp}
+   */
+  const toRegex = (string)=>{
+    const [,regex,flags] = string.match(/\/(.+)\/([gimuy]*)/);
+    return RegExp(regex, flags);
+  }
+
+  /**
    * Wraps typeof but returns 'array' for Array input, and undefined
    * for undefined input.
    *
@@ -481,6 +493,7 @@ var util = (function utilityModule() {
     isHTMLElement,
     mapToBulletedList,
     retry,
+    toRegex,
     typeOf,
     wait,
   };
@@ -882,15 +895,8 @@ var user = (function userDataModule() {
    * @example - updateGui({counters: {one: 21}});
    */
   function updateGui(packet) {
-    util.dispatch('guiUpdate', {detail: packet});
+    util.dispatch('guiUpdate', packet);
   }
-  test.group('updateGui', () => {
-    let received;
-    let testPacket = {packet: {stage: 0}};
-    document.addEventListener('guiUpdate', ({detail}) => received = detail);
-    updateGui(testPacket);
-    test.ok(received === testPacket, 'Packet succesfully sent');
-  }, true);
 
   /**
    * Track configuration settings. Settings are loaded from localStorage on
@@ -1134,8 +1140,7 @@ var user = (function userDataModule() {
    */
   function addissueUpdateListener() {
     document.addEventListener('issueUpdate', ({detail}) => {
-      const issueUpdate = detail;
-      flag(issueUpdate);
+      flag(detail);
     }, {passive: true});
   }
   addissueUpdateListener();
@@ -1334,7 +1339,9 @@ var user = (function userDataModule() {
           payload = payload.slice(0, LOG_ENTRY_MAX_LENGTH - 3) + '...';
         }
         if (print) {
-          printToConsole({type, payload, save});    
+          printToConsole({type, payload, save}); 
+          updateGui({toast: payload});
+ 
         }
         if (save) {
           addPersistent({type, payload});
@@ -2207,6 +2214,7 @@ var {ー, ref} = (function domAccessModule() {
 
   const BASE_ID = 'tto';
   const BOOM_RADIUS = 60;
+  const TOAST_MAX_LENGTH = 30;
 
   const guiState = Object.seal({
     stage: 'Loading...',
@@ -2219,22 +2227,20 @@ var {ー, ref} = (function domAccessModule() {
       const incoming = packet[prop];
       const state = guiState[prop];
       if (state === undefined) {
-        throw new Error(`Unknown gui state property: ${prop}`);
+        continue;
       }
       guiState[prop] = incoming;
     }
     return true;
   }
 
-  setTimeout(update, 200); //
-
   /**
    * Sets a listener on the document for gui updates.
    */
   (function addGuiUpdateListener() {
     document.addEventListener('guiUpdate', ({detail}) => {
-      const packet = detail;
-      setState(packet);
+      detail.toast && toast(detail.toast);
+      setState(detail);
       update();
     }, {passive: true});
   })();
@@ -2269,6 +2275,32 @@ var {ー, ref} = (function domAccessModule() {
       `boom { z-index: 1999 }`,
     ];
     rules.forEach(addRule);
+  })();
+
+  var toast = (function toastMiniModule() {
+    const toast = document.createElement('div');
+    toast.classList = 'toast';
+    toast.style.position = 'fixed';
+    toast.style.bottom = '60px';
+    toast.style.right = '60px';
+    toast.style.backgroundColor = 'black';
+    toast.style.color = 'white';
+    toast.style.padding = '0.8em 1.2em';
+    toast.style.pointerEvents = 'none';
+    toast.style.boxShadow = '0 0.2em 0.5em #aaa';
+    document.body.append(toast);
+    toast.hidden = true;
+    let timer;
+    const hide = () => {
+      toast.innerText = '';
+      toast.hidden = true;
+    }
+    return (message) => {
+      clearTimeout(timer);
+      timer = setTimeout(hide , 1000);
+      toast.hidden = false;
+      toast.innerText = message.toString().slice(0, TOAST_MAX_LENGTH);
+    }
   })();
 
   const container = (function createContainer() {
