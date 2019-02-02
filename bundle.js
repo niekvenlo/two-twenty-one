@@ -139,8 +139,7 @@ var test = (function testModule() {
 ////////////////////////////////////////////////////////////////////////////////
 // UTILITY module
 
-var util =
-    (function utilityModule() {
+var util = (function utilityModule() {
   'use strict';
 
   /**
@@ -151,6 +150,35 @@ var util =
   const DEFAULT_RETRIES = 20;
 
   /**
+   * Compares two arrays shallowly. Two arrays match if the i-th element in
+   * each is exactly equal to the i-th element in the other.
+   *
+   * @param {*[]} a - First array
+   * @param {*[]} b - Second array
+   * @return {boolean} Does every element in both arrays match?
+   */
+  function arraysMatch(a, b) {
+    if (a.length !== b.length) {
+      return false;
+    }
+    for (let i = 0; i < a.length; i++) {
+      if (a[i] !== b[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
+  test.group('arraysMatch', () => {
+    test.ok(arraysMatch([], []) === true, 'Empty arrays');
+    test.ok(arraysMatch([3], [3]) === true, 'Simple arrays');
+    test.ok(arraysMatch([], [3]) === false, 'First array empty');
+    test.ok(arraysMatch([3], []) === false, 'Second array empty');
+    test.ok(arraysMatch([3,4,5], [3,4,5]) === true, 'Multiple elements');
+    test.ok(arraysMatch([3,4,7], [3,4,5]) === false, 'One mismatch');
+    test.ok(arraysMatch([5,3,4], [3,4,5]) === false, 'Different order');
+  });
+
+  /**
    * Call several functions with a single function call.
    *
    * @param {...function} functions - Functions to be bundled into a single
@@ -159,7 +187,7 @@ var util =
    */
   function bundle(...functions) {
     /**
-     * @param {...params} 
+     * @param {...params}
      */
     function bundled(...params) {
       functions.forEach(func => func(...params));
@@ -178,17 +206,27 @@ var util =
   /**
    * Add capitalisation to a string.
    */
-  function capitalise(mode, string) {
+  function capitalize(mode, string) {
     if (mode === 'first letter') {
       return string.replace(/^./, c => c.toUpperCase());
     }
     if (mode === 'each word') {
       return string.split(' ')
-          .map((word) => capitalise('first letter', word))
+          .map((word) => capitalize('first letter', word))
           .join(' ');
     }
     return string;
   }
+  test.group('capitalize', () => {
+    test.ok(
+      capitalize('first letter', 'abc abc') === 'Abc abc',
+      'First letter',
+    );
+    test.ok(
+      capitalize('each word', 'abc abc') === 'Abc Abc',
+      'Each word',
+    );
+  });
 
   /**
    * Debounce function calls.
@@ -219,12 +257,12 @@ var util =
     const funct1deb = debounce(func1, 1000);
     funct1deb();
     funct1deb();
-    test.ok(count === 1, 'Ran debounced functions');
+    test.ok(count === 1, 'Debounced functions ran');
     test.ok(DEFAULT_DELAY !== undefined, 'Default delay is set');
   });
 
   /**
-   * Function decorator. Returns a function that will run with a delay.
+   * Returns a function that will run the input function with a delay.
    *
    * @param {function} func - The function to be decorated.
    * @param {number} ms - The delay in milliseconds.
@@ -246,79 +284,23 @@ var util =
   });
 
   /**
-   * @param {Object} o
-   * @param {string} o.types - Comma separated string of event types.
+   * Dispatch events.
+   *
+   * @param {string} types - Comma separated string of event types.
    * E.g. 'keydown', 'guiUpdate' or 'blur, change, input'.
-   * @param {Object} o.payload - E.g. event or {detail: {stage: 5}}.
-   * @param {HTMLElement} o.target - The HTMLElement emitting the event.
-   * @example 
+   * @param {Object} o
+   * @param {Object=} o.detail - Optional payload.
+   * @param {(HTMLElement|HTMLDocument)=} o.target - The element emitting
+   * the event.
    */
   function dispatch(types, {detail, target = document} = {target: document}) {
     types.split(/, ?/).forEach(type => {
-      if (detail) {
-        target.dispatchEvent(new CustomEvent(type, {detail}, {bubbles: true}));
-      } else {
-        target.dispatchEvent(new Event(type, {bubbles: true}));
-      }
+      const event = (detail)
+          ? new CustomEvent(type, {detail}, {bubbles: true})
+          : new Event(type, {bubbles: true});
+      target.dispatchEvent(event);
     });
   }
-
-  /**
-   * Compares two arrays shallowly. Two arrays match if the i-th element in
-   * each is exactly equal to the i-th element in the other.
-   *
-   * @param {*[]} a - First array
-   * @param {*[]} b - Second array
-   * @return {boolean} Does every element in both arrays match?
-   */
-  function doArraysMatch(a, b) {
-    if (a.length !== b.length) {
-      return false;
-    }
-    for (let i = 0; i < a.length; i++) {
-      if (a[i] !== b[i]) {
-        return false;
-      }
-    }
-    return true;
-  }
-  test.group('doArraysMatch', () => {
-    test.ok(doArraysMatch([], []) === true, 'Empty arrays');
-    test.ok(doArraysMatch([3], [3]) === true, 'Simple arrays');
-    test.ok(doArraysMatch([], [3]) === false, 'First array empty');
-    test.ok(doArraysMatch([3], []) === false, 'Second array empty');
-    test.ok(doArraysMatch([3,4,5], [3,4,5]) === true, 'Multiple elements');
-    test.ok(doArraysMatch([3,4,7], [3,4,5]) === false, 'One mismatch');
-    test.ok(doArraysMatch([5,3,4], [3,4,5]) === false, 'Different order');
-  });
-
-  /**
-   * Test whether an object exposes the same properties as a template object.
-   *
-   * @param {object} template - Object that exposes all required properties.
-   * @param {object} toTest - Object to test.
-   * @return {boolean} Does the toTest object expose all the properties
-   * exposed by the template?
-   */
-  function doesObjectMatchTemplate(template, toTest = {}) {
-    for (let property in
-     template) {
-      if (toTest[property] === undefined) {
-        return false;
-      }
-    }
-    return true;
-  }
-  test.group('doesObjectMatchTemplate', () => {
-    const a = {};
-    const b = {};
-    const c = {test: 1};
-    const d = {test: 2};
-    test.ok(doesObjectMatchTemplate(a, b) === true, 'Empty objects match');
-    test.ok(doesObjectMatchTemplate(a, d) === true, 'Empty template');
-    test.ok(doesObjectMatchTemplate(d, a) === false, 'Non-empty template');
-    test.ok(doesObjectMatchTemplate(c, d) === true, 'Different values match');
-  });
 
   /**
    * Return any input in the form of an array.
@@ -356,18 +338,22 @@ var util =
     return domain[1];
   }
   test.group('getDomain', () => {
-    test.ok(
-      getDomain('https://example.com') === 'example.com',
-      'Test 1',
-    );
-    test.ok(
-      getDomain('http://www.example.com') === 'www.example.com',
-      'Test 2',
-    );
-    test.ok(
-      getDomain('http://www.example.com/test.html') === 'www.example.com',
-      'Test 3'
-    );
+    [
+      {
+        url: 'https://example.com',
+        domain: 'example.com',
+      },
+      {
+        url: 'https://www.example.com',
+        domain: 'www.example.com',
+      },
+      {
+        url: 'https://www.example.com/test.html',
+        domain: 'www.example.com'
+      },
+    ].forEach((pair, idx) => {
+      test.ok(getDomain(pair.url) === pair.domain, 'Test ' + idx);
+    });
   })
 
   /**
@@ -380,13 +366,17 @@ var util =
   }
 
   /**
-   * Test whether an object is an HTMLElement. Uses simple duck typing.
+   * Test whether an object is an HTMLElement or HTMLDocument.
    *
    * @param {Object=} HTMLElement - Object to be tested
-   * @return {boolean} Returns true if an HTMLElement is passed in.
+   * @return {boolean} Returns true if an HTMLElement or HTMLDocument is
+   * passed in.
    */
   function isHTMLElement(htmlElement) {
-    return doesObjectMatchTemplate({parentNode: 5}, htmlElement);
+    return (
+      htmlElement instanceof HTMLElement ||
+      htmlElement instanceof HTMLDocument
+    );
   }
   test.group('isHTMLElement', () => {
     test.ok(isHTMLElement({}) === false, 'An object is not');
@@ -407,19 +397,30 @@ var util =
    *     * Two
    */
   function mapToBulletedList(arrOrObj, spaces = 4) {
+    if (typeof arrOrObj !== 'object') {
+      throw new Error('Requires an Object or Array');
+    }
     const arr = (Array.isArray(arrOrObj))
         ? arrOrObj
         : Object.entries(arrOrObj).map(entry => entry.join(': '));
     return arr.map(el => '\n' + ' '.repeat(spaces) + '* ' + el).join('');
   }
+  test.group('mapToBulletedList', () => {
+    const arrayList = mapToBulletedList([1,2,3]);
+    const arrayListCompact = mapToBulletedList([1,2,3], 0);
+    const objectList = mapToBulletedList({a: 0, b: 1});
+    test.ok(arrayList === '\n    * 1\n    * 2\n    * 3', 'Array list');
+    test.ok(arrayListCompact === '\n* 1\n* 2\n* 3', 'Compact Array list');
+    test.ok(objectList === '\n    * a: 0\n    * b: 1', 'Object list');
+  });
 
   /**
-   * Function decorator. Returns a Promise that will run repeatedly, until
+   * Returns a Promise that will run repeatedly, until
    * it returns a truthy value.
    *
    * @param {function} func - The function to be decorated.
    * @param {number} retries - The number of times to run the function.
-   * @param {number} ms - The delay in milliseconds.
+   * @param {number} ms - The delay between iterations in milliseconds.
    * @return {Promise} A Promise which will return the result of the function
    * if it ran succesfully, or throw an Error otherwise.
    */
@@ -438,6 +439,21 @@ var util =
   }
 
   /**
+   * Wraps typeof but returns 'array' for Array input, and undefined
+   * for undefined input.
+   *
+   * @param {*} input
+   * @return {string}
+   */
+  function typeOf(input) {
+    if (Array.isArray(input)) {
+      return 'array';
+    }
+    const type = typeof input
+    return (type === 'undefined') ? undefined : type;
+  }
+
+  /**
    * Returns a promise that will resolve after a delay.
    *
    * @param {number=} ms - Time to wait before continuing, in milliseconds
@@ -453,21 +469,21 @@ var util =
   });
 
   return {
+    arraysMatch,
     bundle,
-    capitalise,
+    capitalize,
     debounce,
     delay,
     dispatch,
-    doArraysMatch,
-    doesObjectMatchTemplate,
     ensureIsArray,
     getDomain,
     isDev,
     isHTMLElement,
     mapToBulletedList,
     retry,
+    typeOf,
     wait,
-    };
+  };
 })();
 
 
@@ -485,8 +501,8 @@ var user = (function userDataModule() {
    * @fileoverview Exposes stateful objects to keep track of things.
    * * config - manage configuration settings.
    * * counter - count things.
-   * * flag - flag issues.
    * * log - log things.
+   * * storeAccess - access to data storage. 
    */
 
   const LOCALSTORE_BASENAME = 'twoTwentyOne';
@@ -497,10 +513,10 @@ var user = (function userDataModule() {
   const COUNTER_STORE_NAME = 'Counter';
 
   const LOGBOOK_STORE_NAME = 'LogBook';
-  const MAX_LOG_LENGTH = 5000; // entries
-  const MAX_CHAR_LENGTH = 500;
+  const LOG_MAX_LENGTH = 5000; // entries
+  const LOG_ENTRY_MAX_LENGTH = 500; // characters per log entry
   const LOG_PAGE_SIZE = 25; // entries per page
-  const NO_COLOR_FOUND = 'yellow';
+  const NO_COLOR_FOUND = 'yellow'; // 
   const TIMESTAMP_STYLE = 'color: grey';
   const LOG_TYPES = {
     log: 'black',
@@ -513,31 +529,37 @@ var user = (function userDataModule() {
   };
 
   /**
-   * Manage dynamic data stores.
+   * Manage dynamic data stores. Data is stored as JSON in LocalStorage so
+   * data must be serialisable. E.g. function and RegExp cannot be stored
+   * directly, and need to be converted to string, and deserialised on
+   * retrieval.
    */
   const storeAccess = (function storesMiniModule() {
+
     /**
-     * Wraps around localStorage to ensure an object is returned.
+     * Wraps around localStorage to parse JSON to object.
      */
     const local = {
       /**
-       * @param {string} itemName - Name of the item in localStorage
-       * @return {(Object|string|number)} Data restored from string in storage,
-       * or empty object. Strings and numbers are supported.
+       * @param {string} storeName - Name of the store in localStorage.
+       * @return {(Object|Array|string|number|undefined)} Data restored from
+       * string in storage, or undefined. Serialisable primitives are
+       * supported, functions and RegExp are not.
        */
-      getStore(itemName) {
-        const item = localStorage.getItem(LOCALSTORE_BASENAME + itemName);
-        return (item) ? JSON.parse(item) : {};
+      getStore(storeName) {
+        const string = localStorage.getItem(LOCALSTORE_BASENAME + storeName);
+        return (string) ? JSON.parse(string) : undefined;
       },
+
       /**
-       * @param {string} itemName - Name of the item in localStorage
-       * @param {object} obj - Object, string or number to be stored.
-       * Will overwrite previously stored values.
+       * @param {string} storeName - Name of the item in localStorage
+       * @param {object} data - Object, string or number to be stored.
+       * Will silently overwrite previously stored values.
        */
-      setStore(itemName, obj = {}) {
+      setStore(storeName, data) {
         localStorage.setItem(
-          LOCALSTORE_BASENAME + itemName,
-          JSON.stringify(obj),
+          LOCALSTORE_BASENAME + storeName,
+          JSON.stringify(data),
         );
       }
     };
@@ -545,104 +567,56 @@ var user = (function userDataModule() {
     /**
      * Simply wraps around localStore to add cache in memory.
      */
-    const cache = {};
+    const storeCache = {};
 
     const cached = {
-      getStore(name) {
-        if (cache[name] !== undefined) {
-          return cache[name];
+      /**
+       * @param {string} storeName
+       * @returns {(Object|Array|string|number)} Stored data.
+       */
+      getStore(storeName) {
+        if (storeCache.hasOwnProperty(storeName)) {
+          return storeCache[storeName];
         }
-        const fromStore = local.getStore(name);
-        cache[name] = fromStore;
+        const fromStore = local.getStore(storeName);
+        storeCache[storeName] = fromStore;
         return fromStore;
       },
-      setStore(name, value) {
-        cache[name] = value;
-        local.setStore(name, value);
+      /**
+       * @param {string} storeName
+       * @returns {(Object|Array|string|number)} Stored data.
+       */
+      setStore(storeName, data) {
+        if (!storeName) {
+          throw new Error('Cannot create nameless store');
+        }
+        storeCache[storeName] = data;
+        local.setStore(storeName, data);
       },
     };
     
     /**
-     * Add a data element for a specific feature, and optionally a specific
-     * locale. If no locale is specified, data will be added to a feature
-     * specific shared data store.
+     * Add a data element to an Array data store.
+     * If no locale is specified, element is added to a store that
+     * is shared accross locales.
      *
      * @param {Object} o
      * @param {string} o.feature
      * @param {string=} o.locale
-     * @param {string} o.add The element to add.
-     * @param {*} o.value
+     * @param {(Object|Array|string|number)} o.add The element to add.
      */
-    function addData({feature, locale = '', add}) {
-      const data = cached.getStore(`${feature}${locale}`);
-      const newData = (Array.isArray(data)) ? data : [];
-      cached.setStore(`${feature}${locale}`, [...newData, add]);
-    }
-    
-    /**
-     * Get a data entry for a specific feature, and optionally a specific
-     * locale. Return a locale specific entry if one exists, else returns
-     * a shared entry if one exists.
-     *
-     * @param {Object} o
-     * @param {string} o.feature
-     * @param {string=} o.locale
-     * @param {string} o.get
-     * @return {*} Returns data, or undefined.
-     */
-    function getData({feature, locale, get}) {
-      const oneLocale = cached.getStore(`${feature}${locale}`);
-      const allLocales = cached.getStore(`${feature}`);
-      return oneLocale[get] || allLocales[get];
-    }
-
-    /**
-     * Set a data entry for a specific feature, and optionally a specific
-     * locale. If no locale is specified, data will be added to a feature
-     * specific shared data store.
-     *
-     * @param {Object} o
-     * @param {string} o.feature
-     * @param {string=} o.locale
-     * @param {string} o.set
-     * @param {*} o.value
-     */
-    function setData({feature, locale = '', set, value}) {
-      const data = cached.getStore(`${feature}${locale}`);
-      data[set] = value;
+    function addElement({feature, locale = '', add}) {
+      if (!feature) {
+        throw new Error('Cannot add element to nameless store.');
+      }
+      const data = cached.getStore(`${feature}${locale}`) || [];
+      if (!Array.isArray(data)) {
+        throw new Error('Cannot add element to Array store. Use set/value.');
+      }
+      data.push(add);
       cached.setStore(`${feature}${locale}`, data);
     }
     
-    /**
-     * Get all data for a specific feature, and optionally a specific
-     * locale. Return all shared entries, and all locale specific entries
-     * if a locale is specified.
-     *
-     * @param {Object} o
-     * @param {string} o.feature
-     * @param {string=} o.locale - Not all stores are locale specific
-     * @return {Object} The store for non-locale specific stores, or
-     * an object containing a store for the specified locale and a shared
-     * store.
-     */
-    function dumpStore({feature, locale}) {
-      const allLocales = cached.getStore(`${feature}`);
-      if (!locale) {
-        return allLocales;
-      }
-      const oneLocale = cached.getStore(`${feature}${locale}`);
-      if (!Array.isArray(oneLocale) && !Array.isArray(allLocales)) {
-        return {...oneLocale, ...allLocales};
-      }
-      if (Array.isArray(oneLocale) && Array.isArray(allLocales)) {
-        return [...oneLocale, ...allLocales];
-      }
-      if (Array.isArray(oneLocale)) {
-        return oneLocale;
-      }
-      return allLocales;
-    }
-
     /**
      * Set or replace all data for a specific feature, and optionally a
      * specific locale. If no locale is specified, data will be added
@@ -654,8 +628,99 @@ var user = (function userDataModule() {
      * @param {*} o.data
      */
     function createStore({feature, locale, data}) {
+      if (!feature) {
+        throw new Error('Cannot set data to nameless store.');
+      }
+      if (locale) {
+        const sharedType = util.typeOf(cached.getStore(`${feature}`));
+        const dataType = util.typeOf(data);
+        if (sharedType && sharedType !== dataType) {
+          throw new TypeError('Cannot create store. Array/Object mismatch.');
+        }
+      }
       cached.setStore(`${feature}${locale}`, data);
     }
+
+    /**
+     * Get a data store for a specific feature.
+     * If no locale is specified, a shared store is returned. If a 
+     * locale is specified, a merged store containing shared and locale
+     * specific data is returned.
+     *
+     * @param {Object} o
+     * @param {string} o.feature
+     * @param {string=} o.locale - Not all stores are locale specific
+     * @return {Object} The store for non-locale specific stores, or
+     * an object containing a store for the specified locale and a shared
+     * store.
+     */
+    function dumpStore({feature, locale}) {
+      const sharedStore = cached.getStore(`${feature}`);
+      const localeStore = cached.getStore(`${feature}${locale}`);
+
+      if (!locale) {
+        return sharedStore;
+      }
+      const sharedType = util.typeOf(sharedStore);
+      const localeType = util.typeOf(localeStore);
+      if (sharedType && localeType && sharedType !== localeType) {
+        throw new TypeError('Mismatch Object/Array.');
+      }
+
+      if (localeType === 'array') {
+        return [...(sharedStore || []), ...localeStore];
+      } else if (localeType === 'object') {
+        return {...(sharedStore || {}), ...localeStore};
+      }
+      return sharedStore;
+    }
+    
+    /**
+     * Get an entry from a specific data store.
+     * If a locale is specified, entries from the matching locale specific
+     * store are prioritized. If no locale specific entry is found, the
+     * shared store is checked.
+     *
+     * @param {Object} o
+     * @param {string} o.feature
+     * @param {string=} o.locale
+     * @param {string} o.get
+     * @return {(Object|Array|string|number|undefined)}
+     */
+    function getValue({feature, locale = '', get}) {
+      const oneLocale = cached.getStore(`${feature}${locale}`);
+      if (oneLocale && oneLocale.hasOwnProperty(get)) {
+        return oneLocale[get];
+      }
+      const allLocales = cached.getStore(`${feature}`);
+      if (allLocales && allLocales.hasOwnProperty(get)) {
+        return allLocales[get];
+      }
+    }
+
+    /**
+     * Set an entry in a specific data store.
+     * If a locale is specified, the entries is added to the locale
+     * specific store. If no locale is specified, the entry is added
+     * to a store that is shared accross locales.
+     *
+     * @param {Object} o
+     * @param {string} o.feature
+     * @param {string=} o.locale
+     * @param {Object} o.set - Object to be merged into the store.
+     */
+    function setValue({feature, locale = '', set}) {
+      if (!feature) {
+        throw new Error('Cannot set data to nameless store.');
+      }
+      if (typeof set !== 'object') {
+        throw new Error('Set requires an object.');
+      }
+      const data = cached.getStore(`${feature}${locale}`) || {};
+      const newData = {...data, ...set};
+      cached.setStore(`${feature}${locale}`, newData);
+    }
+
     /**
      * Get or set data entries, or dump or create data stores,
      * depending on the input parameters.
@@ -668,52 +733,103 @@ var user = (function userDataModule() {
      * @param {*=} o.value
      * @param {*=} o.data
      * @return {*}
-     * @example:
-     * storeAccess({
-     *   feature: 'Example',
-     *   data: {name: 'Lauren Ipsum'},
-     * });
-     * storeAccess({
-     *   feature: 'Example',
-     *   locale: 'English',
-     *   get: 'name',
-     * }); => 'Lauren Ipsum';
-     * storeAccess({
-     *   feature: 'Example',
-     *   locale: 'English',
-     *   set: 'name',
-     *   value: 'Yanny Ipsum',
-     * });
-     * storeAccess({
-     *   feature: 'Example',
-     *   locale: 'English',
-     * }); => {name: 'Yanny Ipsum'};
-     * storeAccess({
-     *   feature: 'ArrayExample',
-     *   data: [],
-     * });
-     * storeAccess({
-     *   feature: 'ArrayExample',
-     *   add: 2,
-     * });
-     * storeAccess({
-     *   feature: 'ArrayExample',
-     * }); // => [2]
      */
     function storeAccess({feature, locale = '', add, get, set, value, data}) {
-      if (add !== undefined) {
-        return addData({feature, locale, add});
+      if (typeof feature !== 'string') {
+        throw new Error('Feature must be a text string');
       }
-      if (get !== undefined) {
-        return getData({feature, locale, get});
+      if (typeof locale !== 'string') {
+        throw new Error('Locale must be a text string');
+      }
+      if (add !== undefined) {
+        return addElement({feature, locale, add});
+      } else if (get !== undefined) {
+        return getValue({feature, locale, get});
       } else if (set !== undefined) {
-        return setData({feature, locale, set, value});
+        return setValue({feature, locale, set, value});
       } else if (data !== undefined) {
         return createStore({feature, locale, data});
       } else {
         return dumpStore({feature, locale});
       }
     }
+    test.group('storeAccess', () => {
+      const testObjectStoreName = 'TestingObject';
+      const testArrayStoreName = 'TestingArray';
+      const language = 'English';
+      const tokyo = 'Tokyo';
+      const lauren = 'Lauren Ipsum';
+      const yanny = 'Yanny Ipsum';
+
+      let blank = storeAccess({
+        feature: testObjectStoreName,
+        data: {city: tokyo},
+      });
+      test.ok(blank === undefined, 'Return undefined for undefined stores.');
+      storeAccess({
+        feature: testObjectStoreName,
+        data: {city: tokyo},
+      });
+      let city = storeAccess({
+        feature: testObjectStoreName,
+        locale: language,
+        get: 'city',
+      });
+      test.ok(city === tokyo, 'Create an object store and get shared value');
+      storeAccess({
+        feature: testObjectStoreName,
+        locale: language,
+        data: {name: lauren},
+      });
+      let name = storeAccess({
+        feature: testObjectStoreName,
+        locale: language,
+        get: 'name',
+      });
+      test.ok(name === lauren, 'Set and get a locale specific value');
+      storeAccess({
+        feature: testObjectStoreName,
+        locale: language,
+        set: {name: yanny},
+      });
+      name = storeAccess({
+        feature: testObjectStoreName,
+        locale: language,
+        get: 'name',
+      });
+      test.ok(name === yanny, 'Update object value');
+      storeAccess({
+        feature: testArrayStoreName,
+        data: [2,3,4],
+      });
+      test.fizzle(() => {
+        storeAccess({
+          feature: testArrayObjectName,
+          data: [2,3,4],
+        });
+      }, 'When object Store receives Array');
+      let array = storeAccess({
+        feature: testArrayStoreName,
+        locale: language,
+      });
+      test.ok(util.arraysMatch(array, [2,3,4]),'Set and get array');
+      storeAccess({
+        feature: testArrayStoreName,
+        add: 5,
+      });
+      array = storeAccess({
+        feature: testArrayStoreName,
+        locale: language,
+      });
+      test.ok(
+        util.arraysMatch(array, [2,3,4,5]),
+        'Add to array',
+      );
+      delete localStorage[LOCALSTORE_BASENAME + testObjectStoreName];
+      delete localStorage[LOCALSTORE_BASENAME + testObjectStoreName + language];
+      delete localStorage[LOCALSTORE_BASENAME + testArrayStoreName];
+      delete localStorage[LOCALSTORE_BASENAME + testArrayStoreName + language];
+    });
     return storeAccess;
   })();
 
@@ -728,7 +844,10 @@ var user = (function userDataModule() {
   function timestamp (d = new Date()) {
     /** Cast numbers into a zero prefixed two digit string format */
     const cast = (/** number */n) /** string */ => ('0' + n).slice(-2);
-    const isTodaysDate = (new Date().getDate() - d.getDate() === 0);
+    const sameDate = (new Date().getDate() - d.getDate() === 0);
+    const sameMonth = (new Date().getMonth() - d.getMonth() === 0);
+    const sameYear = (new Date().getFullYear() - d.getFullYear() === 0);
+    const isTodaysDate = sameDate && sameMonth && sameYear;
     const month = cast(d.getMonth() + 1);
     const date = cast(d.getDate());
     const hrs = cast(d.getHours());
@@ -792,11 +911,19 @@ var user = (function userDataModule() {
      * none is found.
      */
     function get(name) {
+      if (tempSettings.hasOwnProperty(name)) {
+        return tempSettings[name]
+      }
       const storedSetting = storeAccess({
         feature: CONFIG_STORE_NAME,
         get: name,
       });
-      return tempSettings[name] || storedSetting || DEFAULT_SETTINGS[name];
+      if (storedSetting) {
+        return storedSetting;
+      }
+      if (DEFAULT_SETTINGS.hasOwnProperty(name)) {
+        return DEFAULT_SETTINGS[name]
+      }
     }
 
     /**
@@ -804,7 +931,7 @@ var user = (function userDataModule() {
      * @param {(Object|string|number)} newValue
      * @param {boolean} save - Should the value be saved to localstorage?
      */
-    function set(name, newValue, save) {
+    function set(name, newValue, save = false) {
       const term = (save) ? 'permanently' : 'temporarily';
       user.log.config(
         `${name} ${term} changed to '${newValue}'`,
@@ -813,8 +940,7 @@ var user = (function userDataModule() {
       if (save) {
         storeAccess({
           feature: CONFIG_STORE_NAME,
-          set: name,
-          value: newValue,
+          set: {[name]: newValue},
         });
       }
     }
@@ -838,7 +964,7 @@ var user = (function userDataModule() {
       const stored = storeAccess({
         feature: CONFIG_STORE_NAME,
       });
-      return {...defaultSettings, ...stored};
+      return {...DEFAULT_SETTINGS, ...stored};
     }
     return {
       get,
@@ -968,13 +1094,12 @@ var user = (function userDataModule() {
    * {proxy, issueType: 'Typo', issueLevel: 'red', message: 'Wrod misspelled'}
    */
   function flag(issueUpdate) {
-    if (issueUpdate.issueType === 'reset') {
+    if (issueUpdate && issueUpdate.issueType === 'reset') {
       flaggedIssues.length = 0;
       updateGui({issues: flaggedIssues});
       return;
     }
-    const template = {proxy: true, issueType: true};
-    if (!util.doesObjectMatchTemplate(template, issueUpdate)) {
+    if (!issueUpdate || !issueUpdate.proxy || !issueUpdate.issueType) {
       throw new Error('Not a valid issue.');
     }
     /**
@@ -1095,7 +1220,7 @@ var user = (function userDataModule() {
      * @param {Object} entries - An object containing an array of log entries. 
      */
     function setStore(entries) {
-      entries = entries.slice(-MAX_LOG_LENGTH).map(o => {
+      entries = entries.slice(-LOG_MAX_LENGTH).map(o => {
         return [o.time, o.type, o.payload];
       });
       storeAccess({
@@ -1205,8 +1330,8 @@ var user = (function userDataModule() {
     function genericLog(type) {
       function add(payload, {print = true, save = true} = {}) {
         if (typeof payload === 'string' &&
-            payload.length > MAX_CHAR_LENGTH) {
-          payload = payload.slice(0, MAX_CHAR_LENGTH - 3) + '...';
+            payload.length > LOG_ENTRY_MAX_LENGTH) {
+          payload = payload.slice(0, LOG_ENTRY_MAX_LENGTH - 3) + '...';
         }
         if (print) {
           printToConsole({type, payload, save});    
@@ -2182,7 +2307,7 @@ var {ー, ref} = (function domAccessModule() {
     for (let counter in guiState.counters) {
       x.push(counter + ': ' + guiState.counters[counter]);
     }
-    p('stage', util.capitalise('first letter', guiState.stage), 'Stage');
+    p('stage', util.capitalize('first letter', guiState.stage), 'Stage');
     p('counter', x.join(' | '));
     for (let issue of guiState.issues) {
       p(issue.issueLevel, issue.message, issue.issueType);
