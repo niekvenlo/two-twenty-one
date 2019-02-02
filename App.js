@@ -34,7 +34,7 @@ var environment = (function environmentModule() {
   }
 
   /**
-   * Stub. Should check DOM for locale indicators.
+   * Checks DOM for locale indicators.
    * @return {string}
    */
   function detectLocale() {
@@ -118,7 +118,8 @@ var shared = (function workflowMethodsModule() {
     }
     return function (...params) {
       const {hit, proxy} = when(...params);
-      if (hit === is) {
+      if (hit === is && proxy.value !== to) {
+        user.log.low(`Set to ${(to) ? to : 'blank'}`, {print: true});
         proxy.value = to;
       }
     }
@@ -171,7 +172,7 @@ var shared = (function workflowMethodsModule() {
         packet.issueLevel = issueLevel;
         packet.message = message;
       }
-      util.dispatch('issueUpdate', {detail: packet});
+      util.dispatch('issueUpdate', packet);
     };
     return util.delay(flagThis, 20);
   }
@@ -293,31 +294,20 @@ var shared = (function workflowMethodsModule() {
     const phrases = user.storeAccess({
       feature: 'ForbiddenPhrases',
       locale: environment.locale(),
-      });
-    if (!Array.isArray(phrases)) {
-      user.log.warn('No forbidden phrases Array set.');
-      return;
-    }
+    }) || [];
     const packet = {proxy, issueType: 'Forbidden phrase'};
-    const toRegex = (string) => {
-      const [,regex,flags] = string.match(/\/(.+)\/([gi]*)/);
-      return RegExp(regex, flags);
-    }
     for (let rule of phrases) {
       const [phrase, message] = rule;
-      if (toRegex(phrase).test(proxy.value)) {
+      if (util.toRegex(phrase).test(proxy.value)) {
         const clearValue = proxy.value.replace(/\s/, '░');
         const clearPhrase = phrase.replace(/\s/, '░');
         packet.issueLevel = 'orange';
-        if (message) {
-          packet.message = message;          
-        } else {
-          packet.message = `'${clearValue}' matches '${clearPhrase}'`;
-        }
-        break;
+        packet.message =
+            (message) ? message : `'${clearValue}' matches '${clearPhrase}'`;
+        util.dispatch('issueUpdate', packet);
+        return;
       }
     }
-    util.dispatch('issueUpdate', {detail: packet});
   }
   orangeAlertOnForbiddenPhrase = util.debounce(orangeAlertOnForbiddenPhrase);
 
@@ -478,7 +468,7 @@ var shared = (function workflowMethodsModule() {
       );
       return;
     }
-    user.log.notice(`Fallthrough: '${pastedValue}' became '${value}'`);
+    user.log.notice(`Fallthrough: '${value}' from '${pastedValue}'`);
   };
   test.group('fallThrough', () => {
     const a = {value: 'a'};
@@ -493,8 +483,7 @@ var shared = (function workflowMethodsModule() {
    *
    */
   function guiUpdate(message) {
-    user.log.notice(message, {save: false});
-    util.dispatch('guiUpdate', {detail: {stage: message}});
+    util.dispatch('guiUpdate', {toast: message, stage: message});
   };
 
   /**
@@ -574,7 +563,7 @@ var shared = (function workflowMethodsModule() {
     }
     for (let packet of packets) {
       if (!testing) {     
-        util.dispatch('issueUpdate', {detail: packet});
+        util.dispatch('issueUpdate', packet);
       }
     }
     return packets;
@@ -627,7 +616,7 @@ var shared = (function workflowMethodsModule() {
     user.storeAccess({
       feature: 'Prefill',
       locale: environment.locale(),
-      set: {domain: values.slice(1)},
+      set: {[domain]: values.slice(1)},
       value: values.slice(1),
     });
     user.log.ok(
@@ -1213,7 +1202,7 @@ function main() {
   }
   eventReactions.reset();
   const flow = flows[detectedFlowName];
-  util.dispatch('issueUpdate', {detail: {issueType: 'reset'}});
+  util.dispatch('issueUpdate', {issueType: 'reset'});
   flow.init();
 };
 
