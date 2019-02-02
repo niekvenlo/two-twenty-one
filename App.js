@@ -330,7 +330,7 @@ var shared = (function workflowMethodsModule() {
                 .replace(/(\.\w+)$/i, ''),
           )
         : pastedValue;
-    return capitalise('first letter', stripChars(value.toLowerCase()));
+    return util.capitalize('first letter', stripChars(value.toLowerCase()));
   }
 
   /**
@@ -627,7 +627,7 @@ var shared = (function workflowMethodsModule() {
     user.storeAccess({
       feature: 'Prefill',
       locale: environment.locale(),
-      set: domain,
+      set: {domain: values.slice(1)},
       value: values.slice(1),
     });
     user.log.ok(
@@ -833,6 +833,7 @@ var flows = (function workflowModule() {
         onKeydown_Enter: clickAcquire,
         onKeydown_NumpadEnter: clickAcquire,
         onKeydown_Space: clickAcquire,
+        onKeydown_BracketLeft: shared.resetCounter,
       });
 
     }
@@ -980,7 +981,7 @@ var flows = (function workflowModule() {
       ー({
         name: 'AllUrls',
         select: 'textarea',
-        pick: [3, 7, 11, 15, 19, 4, 8, 12, 16, 20, 1],
+        pick: [3, 7, 11, 15, 19, 4, 8, 12, 16, 20, 65],
         ref: 'openInTabs',
       });
 
@@ -1040,9 +1041,9 @@ var flows = (function workflowModule() {
       eventReactions.setGlobal({
         onKeydown_CtrlEnter: submit,
         onKeydown_CtrlNumpadEnter: submit,
-        onKeydown_CtrlBackslash: approve,
-        onKeydown_CtrlBracketLeft: shared.resetCounter,
-        onKeydown_CtrlBracketRight: skipTask,
+        onKeydown_Backslash: approve,
+        onKeydown_BracketLeft: shared.resetCounter,
+        onKeydown_BracketRight: skipTask,
         onKeydown_CtrlAltS: shared.saveExtraction,
         onKeydown_Backquote: shared.handleTabs,
         onKeydown_CtrlBackquote: main,
