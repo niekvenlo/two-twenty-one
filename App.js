@@ -119,7 +119,10 @@ var shared = (function workflowMethodsModule() {
     return function (...params) {
       const {hit, proxy} = when(...params);
       if (hit === is && proxy.value !== to) {
-        user.log.low(`Set to ${(to) ? to : 'blank'}`, {print: true});
+        user.log.low(
+          `Set to ${(to) ? to : 'blank'}`,
+          {print: false, toast: true},
+        );
         proxy.value = to;
       }
     }
@@ -304,12 +307,12 @@ var shared = (function workflowMethodsModule() {
         packet.issueLevel = 'orange';
         packet.message =
             (message) ? message : `'${clearValue}' matches '${clearPhrase}'`;
-        util.dispatch('issueUpdate', packet);
-        return;
+        break;
       }
     }
+    util.dispatch('issueUpdate', packet);
   }
-  orangeAlertOnForbiddenPhrase = util.debounce(orangeAlertOnForbiddenPhrase);
+  orangeAlertOnForbiddenPhrase = util.debounce(orangeAlertOnForbiddenPhrase, 50);
 
   function guessValueFromPastedValue(pastedValue) {
     const value = (/^http/.test(pastedValue))
@@ -364,15 +367,7 @@ var shared = (function workflowMethodsModule() {
    * @return {Promise}
    */
   async function awaitNewPage() {
-    const taskId = environment.taskId().decoded;
-    const isTaskNew = () => {
-      return taskId !== environment.taskId().decoded;
-    };
-    try {
-      await util.retry(isTaskNew, 22, 100)();
-    } catch (e) {
-      user.log.warn('Time limit exceeded for new page.', {print: false});
-    }
+    await util.wait(500);
   }
 
   /**
@@ -388,6 +383,7 @@ var shared = (function workflowMethodsModule() {
     }
     if (mode === 'addInitials') {
       commentBox.focus();
+      commentBox.scrollIntoView();
       const initials = user.config.get('initials') || '';
       if (new RegExp('^' + initials).test(commentBox.value)) {
         return;
@@ -430,7 +426,7 @@ var shared = (function workflowMethodsModule() {
     };
     if (tabs.length !== uniqueLinks.length) {
       user.log.warn(
-        `Could not open all tabs. Check the Chrome popup blocker.`
+        `Could not open all tabs. Check the Chrome popup blocker.`,
       );
     }
   }
@@ -464,11 +460,13 @@ var shared = (function workflowMethodsModule() {
     if (pastedValue === value) {
       user.log.low(
         `Fallthrough: No change to '${pastedValue}'`,
-        {print: false},
+        {print: false, toast: false},
       );
       return;
     }
-    user.log.notice(`Fallthrough: '${value}' from '${pastedValue}'`);
+    user.log.notice(
+      `Fallthrough: '${value}' from '${pastedValue}'`,
+    );
   };
   test.group('fallThrough', () => {
     const a = {value: 'a'};
@@ -514,15 +512,20 @@ var shared = (function workflowMethodsModule() {
    * @todo Combine with Save feature
    */
   function prefill(proxy) {
+    const flowName = util.capitalize('first letter', environment.flowName());
     const values = user.storeAccess({
-      feature: 'Prefill',
+      feature: `${flowName}Prefill`,
       locale: environment.locale(),
       get: util.getDomain(proxy.value),
     });
-    if (values) {
-      user.log.notice('Found prefill values');
+    if (!values) {
+      return;
     }
     const targets = ref.prefillTarget;
+    if (targets.some(t => t.value)) {
+      return user.log.warn('Found prefill values, but did not override');
+    }
+    user.log.notice('Found prefill values');
     for (let idx in values) {
       targets[idx].value = values[idx];
     }
@@ -590,11 +593,12 @@ var shared = (function workflowMethodsModule() {
   /**
    * Pops up a confirmation dialog. On confirmation, will reset all counters.
    */
-  function resetCounter() {
+  async function resetCounter() {
     const question =
         'Please confirm.\nAre you sure you want to reset all counters?' +
         util.mapToBulletedList(user.counter.get());
-    user.log.notice(question)
+    user.log.notice(question, {toast: true});
+    await util.wait();
     if (confirm(question)) {
       user.counter.reset();      
     } else {
@@ -613,8 +617,9 @@ var shared = (function workflowMethodsModule() {
       return user.log.warn('Not enough data to save.');
     }
     const extractionData = {[domain]: values.slice(1)};
+    const flowName = util.capitalize('first letter', environment.flowName());
     user.storeAccess({
-      feature: 'Prefill',
+      feature: `${flowName}Prefill`,
       locale: environment.locale(),
       set: {[domain]: values.slice(1)},
       value: values.slice(1),
@@ -657,7 +662,8 @@ var shared = (function workflowMethodsModule() {
       return;
     }
     skipButton.click();
-    await util.retry(clickConfirm, RETRIES, DELAY)()
+    await util.retry(clickConfirm, RETRIES, DELAY)();
+    shared.handleTabs({closeOnly: true});
     await awaitNewPage();
     main();
   }
@@ -886,11 +892,6 @@ var flows = (function workflowModule() {
     const submit = () => stageIs('approve') && toStage('submit');
     const start = () => stageIs('approve', 'submit') && toStage('start');
 
-    function skipTask() {
-      shared.handleTabs({closeOnly: true});
-      shared.skipTask();
-    }
-
     /**
      * Set up event handlers.
      */
@@ -1032,7 +1033,7 @@ var flows = (function workflowModule() {
         onKeydown_CtrlNumpadEnter: submit,
         onKeydown_Backslash: approve,
         onKeydown_BracketLeft: shared.resetCounter,
-        onKeydown_BracketRight: skipTask,
+        onKeydown_BracketRight: shared.skipTask,
         onKeydown_CtrlAltS: shared.saveExtraction,
         onKeydown_Backquote: shared.handleTabs,
         onKeydown_CtrlBackquote: main,
@@ -1054,48 +1055,41 @@ var flows = (function workflowModule() {
 
     const stages = {
       'start': () => {
-        user.log.notice('Ready to edit', {save: false});
         shared.editComment('removeInitials');
+        shared.guiUpdate('Ready to edit');
 
       },
       'approve': () => {
-        if (ref.submitButton[0].disabled) {
-          user.log.warn('Task is not ready');
-          toStage('start');
-          return;
-        }
-        user.log.notice('Approved', {save: false});
-        shared.editComment('addInitials');
         shared.handleTabs({closeOnly: true});
+        shared.editComment('addInitials');
+        shared.guiUpdate('Approved');
 
       },
       'submit': async () => {
-        shared.handleTabs({closeOnly: true});
+        if (ref.submitButton[0].disabled) {
+          user.log.warn('Task is not ready');
+          toStage('approve');
+          return;
+        }
         const submitted = await shared.submit();
         if (!submitted) {
           toStage('start');
-          return;
+          return false;
         }
         shared.awaitNewPage().then(main);
       },
     };
 
-    function toStage(name) {
+    const stageIs = (...p) => p.includes(stage);
+
+    async function toStage(name) {
       stage = name;
       stages[name]();
     }
 
-    function backToStart() {
-      toStage('start');
-    }
-
-    function nextStage() {
-      if (stage === 'start') {
-        toStage('approve');
-      } else if (stage === 'approve') {
-        toStage('submit');
-      }
-    }
+    const approve = () => stageIs('start') && toStage('approve');
+    const submit = () => stageIs('approve') && toStage('submit');
+    const start = () => stageIs('approve', 'submit') && toStage('start');
 
     /**
      * Set up event handlers.
@@ -1106,7 +1100,14 @@ var flows = (function workflowModule() {
         name: 'Text',
         select: 'textarea',
         pick: [3, 6, 9, 12, 15],
-        onInteract: shared.redAlertOnDuplicateValues,
+        onInteract: [
+          shared.redAlertOnDuplicateValues,
+          shared.orangeAlertOnForbiddenPhrase,
+        ],
+        onLoad: [
+          shared.redAlertOnDuplicateValues,
+          shared.orangeAlertOnForbiddenPhrase,
+        ],
       });
 
       ー({
@@ -1166,11 +1167,13 @@ var flows = (function workflowModule() {
       });
 
       eventReactions.setGlobal({
-        onKeydown_CtrlEnter: nextStage,
-        onKeydown_CtrlNumpadEnter: nextStage,
+        onKeydown_CtrlEnter: submit,
+        onKeydown_CtrlNumpadEnter: submit,
+        onKeydown_Backslash: approve,
         onKeydown_BracketLeft: shared.resetCounter,
         onKeydown_BracketRight: shared.skipTask,
-        onKeydown_Backquote: shared.openTabs,
+        onKeydown_CtrlAltS: shared.saveExtraction,
+        onKeydown_Backquote: shared.handleTabs,
         onKeydown_CtrlBackquote: main,
       });
     }
@@ -1206,11 +1209,13 @@ function main() {
   flow.init();
 };
 
-user.log.ok('TwoTwentyOne loaded');
+util.wait(100).then(() => user.log.ok('TwoTwentyOne loaded'));
 main();
+
 
 /**
  * @todo Build dev tool that marks elements on the page
  * @todo Improve fresh implementation
  * @todo Remove mode system
+ * @todo Mutation listener
  */
