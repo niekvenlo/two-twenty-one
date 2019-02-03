@@ -1333,18 +1333,20 @@ var user = (function userDataModule() {
      * @param {string} type Title of the log.
      */
     function genericLog(type) {
-      function add(payload, {print = true, save = true} = {}) {
+      function add(payload, {print = true, save = true, toast = true} = {}) {
         if (typeof payload === 'string' &&
             payload.length > LOG_ENTRY_MAX_LENGTH) {
           payload = payload.slice(0, LOG_ENTRY_MAX_LENGTH - 3) + '...';
         }
         if (print) {
-          printToConsole({type, payload, save}); 
-          updateGui({toast: payload});
+          printToConsole({type, payload, save});
  
         }
         if (save) {
           addPersistent({type, payload});
+        }
+        if (toast) {
+          updateGui({toast: payload});
         }
       }
       return add;
@@ -2299,7 +2301,11 @@ var {ー, ref} = (function domAccessModule() {
       clearTimeout(timer);
       timer = setTimeout(hide , 1000);
       toast.hidden = false;
-      toast.innerText = message.toString().slice(0, TOAST_MAX_LENGTH);
+      toast.innerText = message
+          .toString()
+          .slice(0, TOAST_MAX_LENGTH)
+          .split('\n')[0]
+          .replace(/[:*.,]$/, '');
     }
   })();
 
