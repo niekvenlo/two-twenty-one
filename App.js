@@ -26,7 +26,7 @@ var environment = (function environmentModule() {
         return 'sl';
       case /ppets/.test(headerText):
         return 'ss';
-      case headerText === 'TwoTwentyOne':
+      case headerText === 'TwoTwentyOne Dutch':
         return 'sl';
       default:
         return 'home';
@@ -177,7 +177,7 @@ var shared = (function workflowMethodsModule() {
       }
       util.dispatch('issueUpdate', packet);
     };
-    return util.delay(flagThis, 20);
+    return util.delay(flagThis, 200);
   }
 
   /**
@@ -415,7 +415,7 @@ var shared = (function workflowMethodsModule() {
   function commonReplacements(value) {
     const replacementStore = user.storeAccess({
       feature: 'CommonReplacements',
-      locale: 'Dutch',
+      locale: environment.locale(),
     });
     let tmpValue = (/^http/.test(value))
         ? decodeURIComponent(
@@ -437,6 +437,17 @@ var shared = (function workflowMethodsModule() {
           .trim();
     return util.capitalize('first letter', tmpValue);
   }
+  switch (environment.locale()) {
+    case 'Dutch':
+      atest.group('commonReplacements', {
+        'About us': () => commonReplacements('overons') === 'Over ons',
+        'Read our blog': () => commonReplacements('blog') === 'Lees onze blog',
+      });
+      break;
+    default:
+      break;
+  }
+  
 
   function brandCapitalisation(value) {
     const brands = user.storeAccess({
@@ -448,6 +459,9 @@ var shared = (function workflowMethodsModule() {
     }
     return tmpValue;
   }
+  atest.group('brandCapitalisation', {
+    'iPhone': () => brandCapitalisation('Iphone') === 'iPhone',
+  });
 
   /**
    * When pasting a url, it is moved from one box to another. The url is also
@@ -468,6 +482,12 @@ var shared = (function workflowMethodsModule() {
       return;
     }
     const pastedValue = group[0].value;
+    if (/plex/.test(pastedValue)) {
+      group[0].value = '';
+      user.log.warn('Cannot paste a screenshot here');
+      util.wait().then(() => group[0].click());
+      return;
+    }
     if (/^https?:/.test(pastedValue)) {
       group[1].value = pastedValue;
     }
@@ -707,6 +727,12 @@ var shared = (function workflowMethodsModule() {
   }
   submit = util.debounce(submit, 100);
 
+
+
+  function removeTabIndex(proxy) {
+    proxy.tabIndex = -1;
+  }
+
   return {
     awaitNewPage,
     editComment,
@@ -717,6 +743,7 @@ var shared = (function workflowMethodsModule() {
     orangeAlertOnForbiddenPhrase,
     prefill,
     redAlertOnDuplicateValues,
+    removeTabIndex,
     resetCounter,
     saveExtraction,
     skipTask,
@@ -880,6 +907,7 @@ var flows = (function workflowModule() {
 
       async approve() {
         clickApproveYesOrNo('yes');
+        completeScreenshots();
         shared.handleTabs({closeOnly: true});
         shared.editComment('addInitials');
         shared.guiUpdate('Approved');
@@ -910,6 +938,55 @@ var flows = (function workflowModule() {
     const approve = () => stageIs('start') && toStage('approve');
     const submit = () => stageIs('approve') && toStage('submit');
     const start = () => stageIs('approve', 'submit') && toStage('start');
+
+    function setStatus(type) {
+      const keys = {
+        'canExtract':    [0, 2, 0],
+        'insufficient':  [1, 2, 1],
+        'pageError':     [1, 2, 2],
+        'dynamic':       [1, 2, 4],
+        'geo':           [1, 3, 2],
+        'nonLocale':     [1, 2, 5],
+        'supernatural':  [1, 2, 10],
+        'pII':           [1, 2, 12],
+        'other':         [1, 2, 0],
+        'drugDomain':    [4, 1, 3],
+        'alcoholDomain': [4, 1, 4],
+        'adultDomain':   [4, 1, 6],
+        'gambling':      [4, 1, 5],
+      };
+      if (!ref.statusDropdown) {
+        throw new Error('No status dropdown menus selected.');
+      }
+      function setTo() {
+        const values = keys[type];
+        const dropdowns = ref.statusDropdown;
+        for (let idx of ref.statusDropdown) {
+          dropdowns[idx].value = values[idx];
+        }
+      }
+      return setTo;
+    }
+
+    function completeScreenshots() {
+      const screenshots = ref.screenshots;
+      const link = screenshots[0].value || screenshots[1].value;
+      if (link) {
+        for (let screenshot of screenshots) {
+          screenshot.value || (screenshot.value = link);
+        }
+      }
+    }
+
+    function focusOnAddData() {
+      ref.addData[0].focus();
+    }
+    
+    function clickAddItem() {
+      for (let button of ref.addItem) {
+        button.click();
+      }
+    }
 
     /**
      * Set up event handlers.
@@ -943,6 +1020,7 @@ var flows = (function workflowModule() {
           shared.requireUrl,
           shared.removeScreenshot,
         ],
+        css: {color: 'darkblue'},
       });
 
       ー({
@@ -957,6 +1035,8 @@ var flows = (function workflowModule() {
           shared.requireUrl,
           shared.requireScreenshot,
         ],
+        css: {color: 'purple'},
+        ref: 'screenshots',
       });
 
       ー({
@@ -968,6 +1048,7 @@ var flows = (function workflowModule() {
         onLoad: [
           shared.addDashes,
           shared.keepAlive,
+          shared.removeTabIndex,
         ],
       });
 
@@ -1008,6 +1089,28 @@ var flows = (function workflowModule() {
           pick: pair,
           onPaste: shared.fallThrough,
         });
+      });
+
+      ー({
+        name: 'StatusDropdown',
+        select: 'select',
+        pick: [0, 1, 2],
+        ref: 'statusDropdown',
+      });
+
+      ー({
+        name: 'Add Data',
+        select: 'label',
+        pick: [2],
+        onKeydown: clickAddItem,
+        ref: 'addData',
+      });
+
+      ー({
+        name: 'Add Item',
+        select: 'label',
+        pick: [5, 7, 9],
+        ref: 'addItem',
       });
 
       ー({
@@ -1054,8 +1157,12 @@ var flows = (function workflowModule() {
         onKeydown_BracketLeft: shared.resetCounter,
         onKeydown_BracketRight: shared.skipTask,
         onKeydown_CtrlAltS: shared.saveExtraction,
-        onKeydown_Backquote: shared.handleTabs,
+        onKeydown_Backquote: [
+          shared.handleTabs,
+          focusOnAddData,
+        ],
         onKeydown_CtrlBackquote: main,
+        onKeydown_Digit1: setStatus('geo'),
       });
     }
 
@@ -1141,6 +1248,7 @@ var flows = (function workflowModule() {
           shared.requireUrl,
           shared.requireScreenshot,
         ],
+        css: {color: 'purple'},
       });
 
       ー({
@@ -1182,7 +1290,7 @@ var flows = (function workflowModule() {
         name: 'Skip Button',
         select: '.taskIssueButton',
         pick: [0],
-        ref: 'skipButton'
+        ref: 'skipButton',
       });
 
       eventReactions.setGlobal({
