@@ -286,13 +286,6 @@ var shared = (function workflowMethodsModule() {
     }
   }
 
-  function stripChars(string) {
-    return string.replace(/[\s++-/]+/g, ' ')
-        .replace(/[#?­*]/g, '')
-        .replace(/’/, `'`)
-        .trim();
-  }
-
   function orangeAlertOnForbiddenPhrase(proxy) {
     const phrases = user.storeAccess({
       feature: 'ForbiddenPhrases',
@@ -313,18 +306,6 @@ var shared = (function workflowMethodsModule() {
     util.dispatch('issueUpdate', packet);
   }
   orangeAlertOnForbiddenPhrase = util.debounce(orangeAlertOnForbiddenPhrase, 50);
-
-  function guessValueFromPastedValue(pastedValue) {
-    const value = (/^http/.test(pastedValue))
-        ? decodeURIComponent(
-            pastedValue
-                .replace(/\/index/i, '')
-                .match(/[^\/]*[\/]?$/)[0]
-                .replace(/(\.\w+)$/i, ''),
-          )
-        : pastedValue;
-    return util.capitalize('first letter', stripChars(value.toLowerCase()));
-  }
 
   /**
    * Cycle a select HTMLElement through a series of options.
@@ -431,6 +412,43 @@ var shared = (function workflowMethodsModule() {
     }
   }
 
+  function commonReplacements(value) {
+    const replacementStore = user.storeAccess({
+      feature: 'CommonReplacements',
+      locale: 'Dutch',
+    });
+    let tmpValue = (/^http/.test(value))
+        ? decodeURIComponent(
+            value
+                .replace(/\/index/i, '')
+                .match(/[^\/]*[\/]?$/)[0]
+                .replace(/(\.\w+)$/i, ''),
+          )
+        : value;
+    tmpValue = tmpValue.trim().toLowerCase()
+    for (let rule of replacementStore) {
+      const [regex, replaceWith] = rule;
+      tmpValue = tmpValue.replace(util.toRegex(regex), replaceWith);
+    }
+
+    tmpValue = tmpValue.replace(/[\s++-/]+/g, ' ')
+          .replace(/[#?­*]/g, '')
+          .replace(/’/, `'`)
+          .trim();
+    return util.capitalize('first letter', tmpValue);
+  }
+
+  function brandCapitalisation(value) {
+    const brands = user.storeAccess({
+      feature: 'BrandCapitalisation',
+    });
+    let tmpValue = value;
+    for (let brand of brands) {
+      tmpValue = tmpValue.replace(new RegExp(brand, 'gi'), brand);
+    }
+    return tmpValue;
+  }
+
   /**
    * When pasting a url, it is moved from one box to another. The url is also
    * analysed and reduced to a descriptive string.
@@ -453,19 +471,20 @@ var shared = (function workflowMethodsModule() {
     if (/^https?:/.test(pastedValue)) {
       group[1].value = pastedValue;
     }
-    let value = group[0].value = guessValueFromPastedValue(group[0].value);
+    let value = brandCapitalisation(commonReplacements(group[0].value));
+    group[0].value = value;
     if (value.length > LOG_ENTRY_MAX_LENGTH) {
       value = value.slice(0,LOG_ENTRY_MAX_LENGTH - 3) + '...';
     }
     if (pastedValue === value) {
       user.log.low(
-        `Fallthrough: No change to '${pastedValue}'`,
+        `No change to '${pastedValue}'`,
         {print: false, toast: false},
       );
       return;
     }
     user.log.notice(
-      `Fallthrough: '${value}' from '${pastedValue}'`,
+      `'${value}' from '${pastedValue}'`,
     );
   };
   test.group('fallThrough', () => {
