@@ -1889,7 +1889,7 @@ var {ー, ref} = (function domAccessModule() {
     touch(htmlElement);
     user.log.changeValue(
       `${name} '${currentValue}' => '${newValue}'.`,
-      {print: false},
+      {print: false, toast: false},
     );
   }
 
