@@ -137,6 +137,72 @@ var test = (function testModule() {
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
+// ASYNC TEST module
+
+var atest = (function testModule() {
+  const promises = [];
+  let ts;
+
+  function group(groupName, functions) {
+    clearTimeout(ts);
+    ts = setTimeout(run, 100);
+    for (let unitName in functions) {
+      if (unitName === 'before' || unitName === 'after') {
+        continue;
+      }
+      const promise = (async () => {
+        functions.before && await functions.before();
+        const success = await functions[unitName]();
+        functions.after && await functions.after();
+        return {groupName, unitName, success};
+      })();
+      promises.push(promise);
+    }
+  }
+
+
+  function throws(func, type = Error) {
+    try {
+      func();
+    } catch (e) {
+      return (e instanceof type);
+    }
+    return false;
+  }
+
+  async function run() {
+    let testcount = 0;
+    const results = await Promise.all(promises);
+    const failGroups = results.filter(r => !r.success).map(r => r.groupName);
+    for (let result of results) {
+      testcount++;
+      if (!failGroups.includes(result.groupName)) {
+        continue;
+      }
+      console.log(
+        `%c${result.groupName}/${result.unitName} ${result.success ? 'OK' : 'FAIL'}`,
+        `color: ${result.success ? 'darkgreen' : 'darkred'}`
+      )
+    }
+    const failures = failGroups.length;
+    const successes = testcount - failures;
+    console.log(
+      `%c${testcount} tests, ${successes} successes, ${failures} failures.`,
+      'color: darkblue',
+    );
+  }
+  return {
+    group,
+    throws,
+  };
+})();
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
 // UTILITY module
 
 var util = (function utilityModule() {
@@ -168,14 +234,14 @@ var util = (function utilityModule() {
     }
     return true;
   }
-  test.group('arraysMatch', () => {
-    test.ok(arraysMatch([], []) === true, 'Empty arrays');
-    test.ok(arraysMatch([3], [3]) === true, 'Simple arrays');
-    test.ok(arraysMatch([], [3]) === false, 'First array empty');
-    test.ok(arraysMatch([3], []) === false, 'Second array empty');
-    test.ok(arraysMatch([3,4,5], [3,4,5]) === true, 'Multiple elements');
-    test.ok(arraysMatch([3,4,7], [3,4,5]) === false, 'One mismatch');
-    test.ok(arraysMatch([5,3,4], [3,4,5]) === false, 'Different order');
+  atest.group('arraysMatch', {
+    'Empty arrays': () => arraysMatch([], []) === true,
+    'Simple arrays': () => arraysMatch([2], [2]) === true,
+    'First empty': () => arraysMatch([], [2]) === false,
+    'Second empty': () => arraysMatch([2], []) === false,
+    'Multiple elements': () => arraysMatch([3, 4, 5], [3, 4, 5]) === true,
+    'One mismatch': () => arraysMatch([5, 4, 5], [3, 4, 5]) === false,
+    'Different order': () => arraysMatch([3, 4, 5], [4, 3, 5]) === false,
   });
 
   /**
@@ -186,21 +252,31 @@ var util = (function utilityModule() {
    * @return {function} Calling this function calls all bundled function.
    */
   function bundle(...functions) {
+    for (let func of functions) {
+      if (typeof func !== 'function') {
+        throw new TypeError('Not a function');
+      }
+    }
     /**
      * @param {...params}
      */
     function bundled(...params) {
-      functions.forEach(func => func(...params));
+      for (let func of functions) {
+        func(...params);
+      }
     }
     return bundled;
   }
-  test.group('bundle', () => {
-    let count = 0;
-    const func1 = () => count++;
-    const func2 = () => count++;
-    const func3 = () => count++;
-    bundle(func1, func2, func3)();
-    test.ok(count === 3, 'Ran three bundled functions')
+  atest.group('bundle', {
+    'Three bundled functions': () => {
+      let count = 0;
+      const func1 = () => count++;
+      const func2 = () => count++;
+      const func3 = () => count++;
+      bundle(func1, func2, func3)();
+      return count === 3;
+    },
+    'Requires functions': () => atest.throws(() => bundle(4,3)()),
   });
 
   /**
@@ -217,15 +293,9 @@ var util = (function utilityModule() {
     }
     return string;
   }
-  test.group('capitalize', () => {
-    test.ok(
-      capitalize('first letter', 'abc abc') === 'Abc abc',
-      'First letter',
-    );
-    test.ok(
-      capitalize('each word', 'abc abc') === 'Abc Abc',
-      'Each word',
-    );
+  atest.group('capitalize', {
+    'First letter': () => capitalize('first letter', 'abc abc') === 'Abc abc',
+    'Each word': () => capitalize('each word', 'abc abc') === 'Abc Abc',
   });
 
   /**
@@ -251,14 +321,25 @@ var util = (function utilityModule() {
     }
     return debounced;
   }
-  test.group('debounce', () => {
-    let count = 0;
-    const func1 = () => count++;
-    const funct1deb = debounce(func1, 1000);
-    funct1deb();
-    funct1deb();
-    test.ok(count === 1, 'Debounced functions ran');
-    test.ok(DEFAULT_DELAY !== undefined, 'Default delay is set');
+  atest.group('debounce', {
+    'Runs only once if called twice quickly': async () => {
+      let count = 0;
+      const func = () => count++;
+      const funcDebounced = debounce(func, 10);
+      funcDebounced();
+      funcDebounced();
+      return count === 1;
+    },
+    'Runs twice if called with delay': async () => {
+      let count = 0;
+      const func = () => count++;
+      const funcDebounced = debounce(func, 10);
+      funcDebounced();
+      await wait(20);
+      funcDebounced();
+      return count === 2;
+    },
+    'Delay is set': () => DEFAULT_DELAY !== undefined,
   });
 
   /**
@@ -398,7 +479,7 @@ var util = (function utilityModule() {
    */
   function mapToBulletedList(arrOrObj, spaces = 4) {
     if (typeof arrOrObj !== 'object') {
-      throw new Error('Requires an Object or Array');
+      throw new TypeError('Requires an Object or Array');
     }
     const arr = (Array.isArray(arrOrObj))
         ? arrOrObj
@@ -601,7 +682,7 @@ var user = (function userDataModule() {
        */
       setStore(storeName, data) {
         if (!storeName) {
-          throw new Error('Cannot create nameless store');
+          throw new TypeError('Cannot create nameless store');
         }
         storeCache[storeName] = data;
         local.setStore(storeName, data);
@@ -620,11 +701,11 @@ var user = (function userDataModule() {
      */
     function addElement({feature, locale = '', add}) {
       if (!feature) {
-        throw new Error('Cannot add element to nameless store.');
+        throw new TypeError('Cannot add element to nameless store.');
       }
       const data = cached.getStore(`${feature}${locale}`) || [];
       if (!Array.isArray(data)) {
-        throw new Error('Cannot add element to Array store. Use set/value.');
+        throw new TypeError('Cannot add element to Array store. Use set/value.');
       }
       data.push(add);
       cached.setStore(`${feature}${locale}`, data);
@@ -995,7 +1076,7 @@ var user = (function userDataModule() {
     function getStore() {
       return storeAccess({
         feature: COUNTER_STORE_NAME,
-      });
+      }) || {};
     }
 
     /**
@@ -1577,27 +1658,19 @@ var eventReactions = (function eventListenersModule() {
    * Run an array of functions without blocking.
    * @param {function[]} functions.
    */
-  function runAll(functions) {
-    functions.forEach(func => {
+  function runAll(...functions) {
+    for (let func of functions) {
       if (typeof func === 'function') {
-        util.wait().then(func);
+        func();
       } else {
         throw new Error('Not a function.');
       }
-    });
+    }
   }
   test.group('runAll', () => {
     let sum = 0;
     const func = () => sum++;
     test.todo('Async');
-    test.fizzle(
-      () => runAll([3, 5]),
-      'run an array of numbers'
-    );
-    test.fizzle(
-      () => runAll(5),
-      'run a number'
-    );
   });
 
   /**
@@ -1645,7 +1718,7 @@ var eventReactions = (function eventListenersModule() {
       delete cloneReaction.onInteract;
     }
     if (cloneReaction.onLoad) {
-      runAll(cloneReaction.onLoad);
+      runAll(...cloneReaction.onLoad);
       delete cloneReaction.onLoad;
     }
     const filteredClone = {};
@@ -1744,7 +1817,7 @@ var eventReactions = (function eventListenersModule() {
   function genericEventHandler(event) {
     maybePreventDefault(event);
     const targetReactions = getMatchingReactions(event);
-    runAll(targetReactions);
+    runAll(...targetReactions);
   }
 
   /**
@@ -1933,6 +2006,12 @@ var {ー, ref} = (function domAccessModule() {
       },
       set textContent(newValue) {
         htmlElement.textContent = newValue;
+      },
+      get tabIndex() {
+        return htmlElement.tabIndex;
+      },
+      set tabIndex(value) {
+        htmlElement.tabIndex = value;
       },
       set css(styles) {
         for (let rule in styles) {
