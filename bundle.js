@@ -140,10 +140,19 @@ var test = (function testModule() {
 // ASYNC TEST module
 
 var atest = (function testModule() {
+  const RUN_UNSAFE_TESTS = false;
   const promises = [];
   let ts;
 
-  function group(groupName, functions) {
+  function group(groupName, functions, unsafe) {
+    if (unsafe && !RUN_UNSAFE_TESTS) {
+      return;
+    }
+    for (let func in functions) {
+      if (typeof functions[func] !== 'function') {
+        throw new Error('Atest requires an object with function values.')
+      }
+    }
     clearTimeout(ts);
     ts = setTimeout(run, 100);
     for (let unitName in functions) {
@@ -170,6 +179,9 @@ var atest = (function testModule() {
     return false;
   }
 
+  function todo() {
+  }
+
   async function run() {
     let testcount = 0;
     const results = await Promise.all(promises);
@@ -194,6 +206,7 @@ var atest = (function testModule() {
   return {
     group,
     throws,
+    todo,
   };
 })();
 
@@ -296,6 +309,8 @@ var util = (function utilityModule() {
   atest.group('capitalize', {
     'First letter': () => capitalize('first letter', 'abc abc') === 'Abc abc',
     'Each word': () => capitalize('each word', 'abc abc') === 'Abc Abc',
+    '1 number': () => capitalize('first letter', '1 number') === '1 number',
+    'Japanese': () => capitalize('each word', 'お問い合わせ') === 'お問い合わせ',
   });
 
   /**
@@ -354,14 +369,17 @@ var util = (function utilityModule() {
     }
     return delayed;
   }
-  test.group('delay', () => {
-    let val = 0;
-    const increment = () => val++;
-    const delayedIncrement = delay(increment);
-    delayedIncrement();
-    test.ok(val === 0, 'Value is not immediately affected');
-    increment();
-    test.ok(val === 1, 'Incrementing does work');
+  atest.group('delay', {
+    'Effect delayed': async () => {
+      let count = 0;
+      let increment = () => count++;
+      increment = delay(increment);
+      increment();
+      const unaffectedCount = count;
+      await wait();
+      const affectedCount = count;
+      return unaffectedCount === 0 && affectedCount === 1;
+    },
   });
 
   /**
@@ -382,6 +400,7 @@ var util = (function utilityModule() {
       target.dispatchEvent(event);
     });
   }
+  atest.todo();
 
   /**
    * Return any input in the form of an array.
@@ -395,11 +414,11 @@ var util = (function utilityModule() {
     }
     return [input];
   }
-  test.group('ensureIsArray', () => {
-    test.ok(ensureIsArray(5).length === 1, '5 becomes an array');
-    test.ok(ensureIsArray(5)[0] === 5, '5 becomes [5]');
-    test.ok(ensureIsArray([5]).length === 1, '[5] remains an array');
-    test.ok(ensureIsArray([5])[0] === 5, '[5] remains [5]');
+  atest.group('ensureIsArray', {
+    '5 becomes an array': () => Array.isArray(ensureIsArray(5)),
+    '5 becomes [5]': () => ensureIsArray(5)[0] === 5,
+    '[5] remains an array': () => Array.isArray(ensureIsArray([5])),
+    '[5] remains [5]': () => ensureIsArray([5])[0] === 5,
   });
 
   /**
@@ -418,24 +437,16 @@ var util = (function utilityModule() {
     const domain = url.match(/\/\/([^\/]*)/);
     return domain[1];
   }
-  test.group('getDomain', () => {
-    [
-      {
-        url: 'https://example.com',
-        domain: 'example.com',
-      },
-      {
-        url: 'https://www.example.com',
-        domain: 'www.example.com',
-      },
-      {
-        url: 'https://www.example.com/test.html',
-        domain: 'www.example.com'
-      },
-    ].forEach((pair, idx) => {
-      test.ok(getDomain(pair.url) === pair.domain, 'Test ' + idx);
-    });
-  })
+  atest.group('getDomain', {
+    'https://example.com':
+        () => getDomain('https://example.com') === 'example.com',
+    'https://www.example.com':
+        () => getDomain('https://www.example.com') === 'www.example.com',
+    'https://www.example.com/test.html':
+        () => getDomain('https://www.example.com/test.html') === 'www.example.com',
+    'Not a url':
+        () => getDomain('Not a url') === '',
+  });
 
   /**
    * Return true when code is running in dev mode (in a local file).
@@ -459,10 +470,10 @@ var util = (function utilityModule() {
       htmlElement instanceof HTMLDocument
     );
   }
-  test.group('isHTMLElement', () => {
-    test.ok(isHTMLElement({}) === false, 'An object is not');
-    test.ok(isHTMLElement(document) === true, 'The document');
-    test.ok(isHTMLElement(document.body) === true, 'Document body');
+  atest.group('isHTMLElement', {
+    'An object: false': () => isHTMLElement({}) === false,
+    'The document: true': () => isHTMLElement(document) === true,
+    'Document body: true': () => isHTMLElement(document.body) === true,
   });
 
   /**
@@ -486,13 +497,13 @@ var util = (function utilityModule() {
         : Object.entries(arrOrObj).map(entry => entry.join(': '));
     return arr.map(el => '\n' + ' '.repeat(spaces) + '* ' + el).join('');
   }
-  test.group('mapToBulletedList', () => {
-    const arrayList = mapToBulletedList([1,2,3]);
-    const arrayListCompact = mapToBulletedList([1,2,3], 0);
-    const objectList = mapToBulletedList({a: 0, b: 1});
-    test.ok(arrayList === '\n    * 1\n    * 2\n    * 3', 'Array list');
-    test.ok(arrayListCompact === '\n* 1\n* 2\n* 3', 'Compact Array list');
-    test.ok(objectList === '\n    * a: 0\n    * b: 1', 'Object list');
+  atest.group('mapToBulletedList', {
+    'Array, default spaces': () => mapToBulletedList([1,2,3])
+        === '\n    * 1\n    * 2\n    * 3',
+    'Array, 0 spaces': () => mapToBulletedList([1,2,3], 0)
+        === '\n* 1\n* 2\n* 3',
+    'Object, default spaces': () => mapToBulletedList({a: 0, b: 1})
+        === '\n    * a: 0\n    * b: 1',
   });
 
   /**
@@ -518,6 +529,22 @@ var util = (function utilityModule() {
       throw new Error('Did not succeed after ' + retries + ' retries');
     }
   }
+  atest.group('retry', {
+    'Test 1': async () => {
+      let count = 0;
+      let willFailInitially = () => count++ > 10;
+      willFailInitially = retry(willFailInitially, 12, 0);
+      return willFailInitially();
+    },
+    'Test 2': async () => {
+      let count = 0;
+      let willFailInitially = () => count++ > 10;
+      willFailInitially = retry(willFailInitially, 5, 0);
+      let error;
+      await willFailInitially().catch((e) => error = e);
+      return !!error;
+    },
+  })
 
   /**
    * The inverse of calling toString on a RegExp.
@@ -530,6 +557,11 @@ var util = (function utilityModule() {
     const [,regex,flags] = string.match(/\/(.+)\/([gimuy]*)/);
     return RegExp(regex, flags);
   }
+  atest.group('toRegex', {
+    'Simple': () => toRegex('/abc/gi').toString() === '/abc/gi',
+    'Complex': () => toRegex('/^\d?[a-c]+/g').toString() === '/^d?[a-c]+/g',
+    'Malformed string': () => atest.throws(() => toRegex('abc/gi'), TypeError),
+  })
 
   /**
    * Wraps typeof but returns 'array' for Array input, and undefined
@@ -545,6 +577,13 @@ var util = (function utilityModule() {
     const type = typeof input
     return (type === 'undefined') ? undefined : type;
   }
+  atest.group('typeOf', {
+    'undefined': () => typeOf(undefined) === undefined,
+    'number': () => typeOf(5) === 'number',
+    'array': () => typeOf([]) === 'array',
+    'object': () => typeOf({}) === 'object',
+    'function': () => typeOf(() => {}) === 'function',
+  })
 
   /**
    * Returns a promise that will resolve after a delay.
@@ -555,10 +594,17 @@ var util = (function utilityModule() {
   function wait(ms = DEFAULT_DELAY) {
     return new Promise((resolve) => setTimeout(() => resolve(), ms));
   }
-  test.group('wait', () => {
-    const promise = wait();
-    test.ok(wait().then !== undefined, 'Wait returns a Promise');
-    test.ok(DEFAULT_DELAY !== undefined, 'Default delay is set');
+  atest.group('wait', {
+    'Wait': async () => {
+      let count = 0;
+      let ms = 10;
+      setTimeout(() => count++, ms);
+      const unaffectedCount = count;
+      await wait(2 * ms);
+      const affectedCount = count;
+      return unaffectedCount === 0 && affectedCount === 1;
+    },
+    'DEFAULT': () => DEFAULT_DELAY !== undefined,
   });
 
   return {
@@ -657,6 +703,9 @@ var user = (function userDataModule() {
         );
       }
     };
+    atest.group('local', {
+      'getStore': () => local.getStore(CONFIG_STORE_NAME),
+    });
 
     /**
      * Simply wraps around localStore to add cache in memory.
@@ -951,21 +1000,18 @@ var user = (function userDataModule() {
     const shortForm = `${hrs}:${min}`;
     return (isTodaysDate) ? shortForm : longForm;
   }
-  test.group('timestamp', () => {
-    const today = new Date();
-    const earlier = new Date('01-01-2019 12:34:56');
-    test.ok(
-      timestamp(today).length === 5,
-      'Without a parameter',
-    );
-    test.ok(
-      timestamp(today).length === 5,
-      'Short length: ' + timestamp(today),
-    );
-    test.ok(
-      timestamp(new Date(earlier)).length === 14,
-      'Long length: ' + timestamp(new Date(earlier)),
-    );
+  atest.group('timestamp', {
+    'Without a parameter': () => {
+      return timestamp().length === 5;
+    },
+    'Short length': () => {
+      const today = new Date();
+      return timestamp(today).length === 5;
+    },
+    'Long length': () => {
+      const earlier = new Date('01-01-2019 12:34:56');
+      return timestamp(earlier).length === 14;
+    },
   });
 
   /**
@@ -1661,7 +1707,7 @@ var eventReactions = (function eventListenersModule() {
   function runAll(...functions) {
     for (let func of functions) {
       if (typeof func === 'function') {
-        func();
+        util.wait().then(func);
       } else {
         throw new Error('Not a function.');
       }
@@ -1938,7 +1984,7 @@ var {ー, ref} = (function domAccessModule() {
   async function touch(htmlElement) {
     await util.wait();
     // Blur signals a change to GWT
-    util.dispatch('blur, input, keydown', {target: htmlElement});
+    util.dispatch('blur, input, keydown', false, htmlElement);
   }
 
   /**
@@ -2296,6 +2342,7 @@ var {ー, ref} = (function domAccessModule() {
   const BASE_ID = 'tto';
   const BOOM_RADIUS = 60;
   const TOAST_MAX_LENGTH = 30;
+  const GUI_TEXT_MAX_LENGTH = 150;
 
   const guiState = Object.seal({
     stage: 'Loading...',
@@ -2418,7 +2465,8 @@ var {ー, ref} = (function domAccessModule() {
   function update() {
     let html = [];
     const p = (type, text, title = '') => {
-      html.push(`<p class="${type}"><em>${title}</em> ${text}</p>`);
+      const slicedText = text.slice(0, GUI_TEXT_MAX_LENGTH);
+      html.push(`<p class="${type}"><em>${title}</em> ${slicedText}</p>`);
     };
     const x = [];
     for (let counter in guiState.counters) {
