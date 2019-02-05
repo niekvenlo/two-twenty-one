@@ -351,7 +351,7 @@ var shared = (function workflowMethodsModule() {
    * @return {Promise}
    */
   async function awaitNewPage() {
-    await util.wait(500);
+    await util.wait(1500);
   }
 
   /**
@@ -924,7 +924,8 @@ var flows = (function workflowModule() {
         }
         const submitted = await shared.submit();
         if (!submitted) {
-          toStage('start');
+//           toStage('start');
+          shared.guiUpdate('Submitting');
           return false;
         }
         shared.awaitNewPage().then(main);
@@ -948,7 +949,7 @@ var flows = (function workflowModule() {
         'insufficient':  [1, 2, 1],
         'pageError':     [1, 2, 2],
         'dynamic':       [1, 2, 4],
-        'geo':           [1, 3, 2],
+        'geo':           [1, 2, 3],
         'nonLocale':     [1, 2, 5],
         'supernatural':  [1, 2, 10],
         'pII':           [1, 2, 12],
@@ -961,12 +962,11 @@ var flows = (function workflowModule() {
       if (!ref.statusDropdown) {
         throw new Error('No status dropdown menus selected.');
       }
-      function setTo() {
-        const values = keys[type];
+      async function setTo() {
+        const [b, c, d] = keys[type];
         const dropdowns = ref.statusDropdown;
-        for (let idx of ref.statusDropdown) {
-          dropdowns[idx].value = values[idx];
-        }
+        dropdowns[0].value = b;
+        dropdowns[c].value = d;
       }
       return setTo;
     }
@@ -1170,7 +1170,15 @@ var flows = (function workflowModule() {
           focusOnAddData,
         ],
         onKeydown_CtrlBackquote: main,
-        onKeydown_Digit1: setStatus('geo'),
+        onKeydown_CtrlAltDigit1: setStatus('insufficient'),
+        onKeydown_CtrlAltDigit2: setStatus('pageError'),
+        onKeydown_CtrlAltDigit3: setStatus('dynamic'),
+        onKeydown_CtrlAltDigit4: setStatus('nonLocale'),
+        onKeydown_CtrlAltDigit5: setStatus('other'),
+        onKeydown_CtrlAltDigit6: setStatus('pII'),
+        onKeydown_CtrlAltDigit7: setStatus('drugDomain'),
+        onKeydown_CtrlAltDigit8: setStatus('alcoholDomain'),
+        onKeydown_CtrlAltDigit9: setStatus('adultDomain'),
       });
     }
 
