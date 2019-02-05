@@ -44,6 +44,9 @@ var environment = (function environmentModule() {
       pick: [0],
     })[0];
     const headerText = header && header.textContent;
+    if (!headerText) {
+      return;
+    }
     return headerText.trim().split(/\s+/).pop();
   }
 
@@ -177,7 +180,7 @@ var shared = (function workflowMethodsModule() {
       }
       util.dispatch('issueUpdate', packet);
     };
-    return util.delay(flagThis, 200);
+    return util.delay(flagThis, 20);
   }
 
   /**
@@ -416,7 +419,7 @@ var shared = (function workflowMethodsModule() {
     const replacementStore = user.storeAccess({
       feature: 'CommonReplacements',
       locale: environment.locale(),
-    });
+    }) || [];
     let tmpValue = (/^http/.test(value))
         ? decodeURIComponent(
             value
@@ -452,7 +455,7 @@ var shared = (function workflowMethodsModule() {
   function brandCapitalisation(value) {
     const brands = user.storeAccess({
       feature: 'BrandCapitalisation',
-    });
+    }) || [];
     let tmpValue = value;
     for (let brand of brands) {
       tmpValue = tmpValue.replace(new RegExp(brand, 'gi'), brand);
@@ -1005,7 +1008,9 @@ var flows = (function workflowModule() {
         onLoad: [
           shared.redAlertExceed25Chars,
           shared.redAlertOnDuplicateValues,
+          shared.orangeAlertOnForbiddenPhrase,
         ],
+        css: {backgroundColor: 'PapayaWhip'},
       });
 
       ー({
@@ -1020,7 +1025,7 @@ var flows = (function workflowModule() {
           shared.requireUrl,
           shared.removeScreenshot,
         ],
-        css: {color: 'darkblue'},
+        css: {backgroundColor: 'Cornsilk'},
       });
 
       ー({
@@ -1037,6 +1042,7 @@ var flows = (function workflowModule() {
         ],
         css: {color: 'purple'},
         ref: 'screenshots',
+        css: {backgroundColor: 'AliceBlue'},
       });
 
       ー({
@@ -1050,6 +1056,8 @@ var flows = (function workflowModule() {
           shared.keepAlive,
           shared.removeTabIndex,
         ],
+        ref: 'dashes',
+        css: {backgroundColor: 'LightCyan'},
       });
 
       ー({
@@ -1234,6 +1242,7 @@ var flows = (function workflowModule() {
           shared.redAlertOnDuplicateValues,
           shared.orangeAlertOnForbiddenPhrase,
         ],
+        css: {backgroundColor: 'PapayaWhip'},
       });
 
       ー({
@@ -1248,19 +1257,20 @@ var flows = (function workflowModule() {
           shared.requireUrl,
           shared.requireScreenshot,
         ],
-        css: {color: 'purple'},
+        css: {backgroundColor: 'AliceBlue'},
       });
 
       ー({
         name: 'Dashes',
         select: 'textarea',
-        pick: [5, 9, 13, 17, 21],
+        pick: [5, 8, 11, 14, 17],
         onFocusin: shared.removeDashes,
         onFocusout: shared.addDashes,
         onLoad: [
           shared.addDashes,
           shared.keepAlive,
         ],
+        css: {backgroundColor: 'LightCyan'},
       });
 
       ー({
@@ -1274,7 +1284,7 @@ var flows = (function workflowModule() {
         name: 'Comment Box',
         select: 'textarea',
         pick: [(util.isDev()) ? 0 : 52],
-        onFocusout: backToStart,
+        onFocusout: () => toStage('start'),
         ref: 'finalCommentBox',
       });
 
