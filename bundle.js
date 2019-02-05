@@ -1984,7 +1984,11 @@ var {ー, ref} = (function domAccessModule() {
   async function touch(htmlElement) {
     await util.wait();
     // Blur signals a change to GWT
-    util.dispatch('blur, input, keydown', false, htmlElement);
+    util.dispatch(
+      'blur, change, input, keydown',
+      {touch: true},
+      htmlElement,
+    );
   }
 
   /**
