@@ -1,21 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
-//   _______         _______                 _          ____             
-//  |__   __|       |__   __|               | |        / __ \            
-//     | |_      _____ | |_      _____ _ __ | |_ _   _| |  | |_ __   ___ 
-//     | \ \ /\ / / _ \| \ \ /\ / / _ \ '_ \| __| | | | |  | | '_ \ / _ \
-//     | |\ V  V / (_) | |\ V  V /  __/ | | | |_| |_| | |__| | | | |  __/
-//     |_| \_/\_/ \___/|_| \_/\_/ \___|_| |_|\__|\__, |\____/|_| |_|\___|
-//                                                __/ |                  
-//                                               |___/                   
-////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
-
-////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
 // TEST module
 
 var test = (function testModule() {
@@ -46,6 +31,7 @@ var test = (function testModule() {
     fail: 'color: red',
     todo: 'color: purple',
   }
+
   const testingLogBook = [];
   let failuresRecorded = false;
   let enclosedInGroup = false;
@@ -72,16 +58,8 @@ var test = (function testModule() {
       throw new Error('Test requires a function as its second parameter');
     }
     log('header', '===== ' + groupDesc);
-    enclosedInGroup = true;
     func();
-    enclosedInGroup = false;
   };
-
-  const confirmEnclosure = () => {
-    if (!enclosedInGroup) {
-      throw new Error('Please enclose the test within a group');
-    }
-  }
 
   /**
    * Test a statement for truth.
@@ -90,7 +68,6 @@ var test = (function testModule() {
    * @param {?string} itemDesc - Description of test item.
    */
   const ok = (statement, itemDesc) => {
-    confirmEnclosure();
     if (statement === true) {
       log('ok', ' OK: ' + itemDesc);
     } else {
@@ -107,7 +84,6 @@ var test = (function testModule() {
    * @param {?string} itemDesc - Description of test item.
    */
   const fizzle = (fizzleFunc, itemDesc) => {
-    confirmEnclosure();
     try {
       fizzleFunc();
       log('fail', ' FAIL: ' + itemDesc + ' did not fizzle');
@@ -125,7 +101,6 @@ var test = (function testModule() {
    * @param {?string} itemDesc - Description of test item.
    */
   const solid = (throwingFunc, itemDesc) => {
-    confirmEnclosure();
     try {
       throwingFunc();
       log('ok', ' OK: ' + itemDesc + ' is solid');
@@ -146,7 +121,93 @@ var test = (function testModule() {
     }
   }, AUTO_PRINT_DELAY);
 
- return {fizzle, group, ok, print, solid, todo};
+ return {
+   fizzle,
+   group,
+   ok,
+   print,
+   solid,
+   todo,
+ };
+})();
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+// ASYNC TEST module
+
+var atest = (function testModule() {
+  const RUN_UNSAFE_TESTS = false;
+  const promises = [];
+  let ts;
+
+  function group(groupName, functions, unsafe) {
+    if (unsafe && !RUN_UNSAFE_TESTS) {
+      return;
+    }
+    for (let func in functions) {
+      if (typeof functions[func] !== 'function') {
+        throw new Error('Atest requires an object with function values.')
+      }
+    }
+    clearTimeout(ts);
+    ts = setTimeout(run, 100);
+    for (let unitName in functions) {
+      if (unitName === 'before' || unitName === 'after') {
+        continue;
+      }
+      const promise = (async () => {
+        functions.before && await functions.before();
+        const success = await functions[unitName]();
+        functions.after && await functions.after();
+        return {groupName, unitName, success};
+      })();
+      promises.push(promise);
+    }
+  }
+
+
+  function throws(func, type = Error) {
+    try {
+      func();
+    } catch (e) {
+      return (e instanceof type);
+    }
+    return false;
+  }
+
+  function todo() {
+  }
+
+  async function run() {
+    let testcount = 0;
+    const results = await Promise.all(promises);
+    const failGroups = results.filter(r => !r.success).map(r => r.groupName);
+    for (let result of results) {
+      testcount++;
+      if (!failGroups.includes(result.groupName)) {
+        continue;
+      }
+      console.log(
+        `%c${result.groupName}/${result.unitName} ${result.success ? 'OK' : 'FAIL'}`,
+        `color: ${result.success ? 'darkgreen' : 'darkred'}`
+      )
+    }
+    const failures = failGroups.length;
+    const successes = testcount - failures;
+    console.log(
+      `%c${testcount} tests, ${successes} successes, ${failures} failures.`,
+      'color: darkblue',
+    );
+  }
+  return {
+    group,
+    throws,
+    todo,
+  };
 })();
 
 
@@ -157,15 +218,44 @@ var test = (function testModule() {
 ////////////////////////////////////////////////////////////////////////////////
 // UTILITY module
 
-var util =
-    (function utilityModule() {
+var util = (function utilityModule() {
   'use strict';
 
   /**
    * @fileoverview Exports utility functions.
    */
 
-  const DEFAULT_DELAY = 10; //milliseconds
+  const DEFAULT_DELAY = 15; //milliseconds
+  const DEFAULT_RETRIES = 20;
+
+  /**
+   * Compares two arrays shallowly. Two arrays match if the i-th element in
+   * each is exactly equal to the i-th element in the other.
+   *
+   * @param {*[]} a - First array
+   * @param {*[]} b - Second array
+   * @return {boolean} Does every element in both arrays match?
+   */
+  function arraysMatch(a, b) {
+    if (a.length !== b.length) {
+      return false;
+    }
+    for (let i = 0; i < a.length; i++) {
+      if (a[i] !== b[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
+  atest.group('arraysMatch', {
+    'Empty arrays': () => arraysMatch([], []) === true,
+    'Simple arrays': () => arraysMatch([2], [2]) === true,
+    'First empty': () => arraysMatch([], [2]) === false,
+    'Second empty': () => arraysMatch([2], []) === false,
+    'Multiple elements': () => arraysMatch([3, 4, 5], [3, 4, 5]) === true,
+    'One mismatch': () => arraysMatch([5, 4, 5], [3, 4, 5]) === false,
+    'Different order': () => arraysMatch([3, 4, 5], [4, 3, 5]) === false,
+  });
 
   /**
    * Call several functions with a single function call.
@@ -175,21 +265,52 @@ var util =
    * @return {function} Calling this function calls all bundled function.
    */
   function bundle(...functions) {
+    for (let func of functions) {
+      if (typeof func !== 'function') {
+        throw new TypeError('Not a function');
+      }
+    }
     /**
-     * @param {...params} 
+     * @param {...params}
      */
     function bundled(...params) {
-      functions.forEach(func => func(...params));
+      for (let func of functions) {
+        func(...params);
+      }
     }
     return bundled;
   }
-  test.group('bundle', () => {
-    let count = 0;
-    const func1 = () => count++;
-    const func2 = () => count++;
-    const func3 = () => count++;
-    bundle(func1, func2, func3)();
-    test.ok(count === 3, 'Ran three bundled functions')
+  atest.group('bundle', {
+    'Three bundled functions': () => {
+      let count = 0;
+      const func1 = () => count++;
+      const func2 = () => count++;
+      const func3 = () => count++;
+      bundle(func1, func2, func3)();
+      return count === 3;
+    },
+    'Requires functions': () => atest.throws(() => bundle(4,3)()),
+  });
+
+  /**
+   * Add capitalisation to a string.
+   */
+  function capitalize(mode, string) {
+    if (mode === 'first letter') {
+      return string.replace(/^./, c => c.toUpperCase());
+    }
+    if (mode === 'each word') {
+      return string.split(' ')
+          .map((word) => capitalize('first letter', word))
+          .join(' ');
+    }
+    return string;
+  }
+  atest.group('capitalize', {
+    'First letter': () => capitalize('first letter', 'abc abc') === 'Abc abc',
+    'Each word': () => capitalize('each word', 'abc abc') === 'Abc Abc',
+    '1 number': () => capitalize('first letter', '1 number') === '1 number',
+    'Japanese': () => capitalize('each word', 'お問い合わせ') === 'お問い合わせ',
   });
 
   /**
@@ -203,8 +324,8 @@ var util =
     /**
      * @param {...*} params - Params passed to the debounced function are
      * passed to the wrapped function when it is called.
-     * @return {*} The debounced function returns whatever the wrapped function
-     * returns.
+     * @return {*} The debounced function returns whatever the wrapped
+     * function returns.
      */
     function debounced(...params) {
       if (!timer) {
@@ -215,108 +336,254 @@ var util =
     }
     return debounced;
   }
-  test.group('debounce', () => {
-    let count = 0;
-    const func1 = () => count++;
-    const funct1deb = debounce(func1, 1000);
-    funct1deb();
-    funct1deb();
-    test.ok(count === 1, 'Ran debounced functions');
-    test.ok(DEFAULT_DELAY !== undefined, 'Default delay is set');
+  atest.group('debounce', {
+    'Runs only once if called twice quickly': async () => {
+      let count = 0;
+      const func = () => count++;
+      const funcDebounced = debounce(func, 10);
+      funcDebounced();
+      funcDebounced();
+      return count === 1;
+    },
+    'Runs twice if called with delay': async () => {
+      let count = 0;
+      const func = () => count++;
+      const funcDebounced = debounce(func, 10);
+      funcDebounced();
+      await wait(20);
+      funcDebounced();
+      return count === 2;
+    },
+    'Delay is set': () => DEFAULT_DELAY !== undefined,
   });
 
+  /**
+   * Returns a function that will run the input function with a delay.
+   *
+   * @param {function} func - The function to be decorated.
+   * @param {number} ms - The delay in milliseconds.
+   */
   function delay(func, ms = DEFAULT_DELAY) {
     function delayed(...params) {
       wait(ms).then(() => func(...params));
     }
     return delayed;
   }
-  test.group('delay', () => {
-    let val = 0;
-    const increment = () => val++;
-    const delayedIncrement = delay(increment);
-    delayedIncrement();
-    test.ok(val === 0, 'Value is not immediately affected');
-    increment();
-    test.ok(val === 1, 'Incrementing does work');
+  atest.group('delay', {
+    'Effect delayed': async () => {
+      let count = 0;
+      let increment = () => count++;
+      increment = delay(increment);
+      increment();
+      const unaffectedCount = count;
+      await wait();
+      const affectedCount = count;
+      return unaffectedCount === 0 && affectedCount === 1;
+    },
   });
 
   /**
-   * Compares two arrays shallowly. Two arrays match if the i-th element in
-   * each is exactly equal to the i-th element in the other.
+   * Dispatch events.
    *
-   * @param {*[]} a - First array
-   * @param {*[]} b - Second array
-   * @return {boolean} Does every element in both arrays match?
+   * @param {string} types - Comma separated string of event types.
+   * E.g. 'keydown', 'guiUpdate' or 'blur, change, input'.
+   * @param {Object} o
+   * @param {Object=} o.detail - Optional payload.
+   * @param {(HTMLElement|HTMLDocument)=} o.target - The element emitting
+   * the event.
    */
-  function doArraysMatch(a, b) {
-    if (a.length !== b.length) {
-      return false;
-    }
-    for (let i = 0; i < a.length; i++) {
-      if (a[i] !== b[i]) {
-        return false;
-      }
-    }
-    return true;
+  function dispatch(types, detail, target = document) {
+    types.split(/, ?/).forEach(type => {
+      const event = (detail)
+          ? new CustomEvent(type, {detail}, {bubbles: true})
+          : new Event(type, {bubbles: true});
+      target.dispatchEvent(event);
+    });
   }
-  test.group('doArraysMatch', () => {
-    test.ok(doArraysMatch([], []) === true, 'Empty arrays');
-    test.ok(doArraysMatch([3], [3]) === true, 'Simple arrays');
-    test.ok(doArraysMatch([], [3]) === false, 'First array empty');
-    test.ok(doArraysMatch([3], []) === false, 'Second array empty');
-    test.ok(doArraysMatch([3,4,5], [3,4,5]) === true, 'Multiple elements');
-    test.ok(doArraysMatch([3,4,7], [3,4,5]) === false, 'Mismatch one element');
-    test.ok(doArraysMatch([5,3,4], [3,4,5]) === false, 'Different order');
+  atest.todo();
+
+  /**
+   * Return any input in the form of an array.
+   *
+   * @param {*|*[]} input
+   * @return {*[]}
+   */
+  function ensureIsArray(input) {
+    if (Array.isArray(input)) {
+      return input;
+    }
+    return [input];
+  }
+  atest.group('ensureIsArray', {
+    '5 becomes an array': () => Array.isArray(ensureIsArray(5)),
+    '5 becomes [5]': () => ensureIsArray(5)[0] === 5,
+    '[5] remains an array': () => Array.isArray(ensureIsArray([5])),
+    '[5] remains [5]': () => ensureIsArray([5])[0] === 5,
   });
 
   /**
-   * Test whether an object exposes the same properties as a template object.
+   * Map a url to its domain.
    *
-   * @param {object} template - Object that exposes all required properties.
-   * @param {object} toTest - Object to test.
-   * @return {boolean} Does the toTest object expose all the properties exposed
-   * by the template?
+   * @param {string} url
+   * @return {string}
    */
-  function doesObjectMatchTemplate(template, toTest = {}) {
-    for (let property in
-     template) {
-      if (toTest[property] === undefined) {
-        return false;
-      }
+  function getDomain(url) {
+    if (url === '') {
+      return '';
     }
-    return true;
+    if (!/^https?:\//.test(url)) {
+      return '';
+    }
+    const domain = url.match(/\/\/([^\/]*)/);
+    return domain[1];
   }
-  test.group('doesObjectMatchTemplate', () => {
-    const a = {};
-    const b = {};
-    const c = {test: 1};
-    const d = {test: 2};
-    test.ok(doesObjectMatchTemplate(a, b) === true, 'Empty objects match');
-    test.ok(doesObjectMatchTemplate(a, d) === true, 'Empty template');
-    test.ok(doesObjectMatchTemplate(d, a) === false, 'Non-empty template');
-    test.ok(doesObjectMatchTemplate(c, d) === true, 'Different values match');
+  atest.group('getDomain', {
+    'https://example.com':
+        () => getDomain('https://example.com') === 'example.com',
+    'https://www.example.com':
+        () => getDomain('https://www.example.com') === 'www.example.com',
+    'https://www.example.com/test.html':
+        () => getDomain('https://www.example.com/test.html') === 'www.example.com',
+    'Not a url':
+        () => getDomain('Not a url') === '',
+  });
+
+  /**
+   * Return true when code is running in dev mode (in a local file).
+   *
+   * @return {boolean} Is the code running locally?
+   */
+  function isDev() {
+    return /^file/.test(window.location.href);
+  }
+
+  /**
+   * Test whether an object is an HTMLElement or HTMLDocument.
+   *
+   * @param {Object=} HTMLElement - Object to be tested
+   * @return {boolean} Returns true if an HTMLElement or HTMLDocument is
+   * passed in.
+   */
+  function isHTMLElement(htmlElement) {
+    return (
+      htmlElement instanceof HTMLElement ||
+      htmlElement instanceof HTMLDocument
+    );
+  }
+  atest.group('isHTMLElement', {
+    'An object: false': () => isHTMLElement({}) === false,
+    'The document: true': () => isHTMLElement(document) === true,
+    'Document body: true': () => isHTMLElement(document.body) === true,
+  });
+
+  /**
+   * Map an Object's keys, or an Array's values to a string, with a new line
+   * for each element, and an asterisk in front of each item.
+   *
+   * @param {Array|Object} arrOrObj - Array or Object
+   * @param {number=} spaces - The number of spaces to precede each item.
+   * @return {string}
+   * @example:
+   * mapToBulletedList(['One', 'Two']) // =>
+   *     * One
+   *     * Two
+   */
+  function mapToBulletedList(arrOrObj, spaces = 4) {
+    if (typeof arrOrObj !== 'object') {
+      throw new TypeError('Requires an Object or Array');
+    }
+    const arr = (Array.isArray(arrOrObj))
+        ? arrOrObj
+        : Object.entries(arrOrObj).map(entry => entry.join(': '));
+    return arr.map(el => '\n' + ' '.repeat(spaces) + '* ' + el).join('');
+  }
+  atest.group('mapToBulletedList', {
+    'Array, default spaces': () => mapToBulletedList([1,2,3])
+        === '\n    * 1\n    * 2\n    * 3',
+    'Array, 0 spaces': () => mapToBulletedList([1,2,3], 0)
+        === '\n* 1\n* 2\n* 3',
+    'Object, default spaces': () => mapToBulletedList({a: 0, b: 1})
+        === '\n    * a: 0\n    * b: 1',
+  });
+
+  /**
+   * Returns an async function that will run the input function
+   * repeatedly, until it returns a truthy value.
+   *
+   * @param {function} func - The function to be decorated.
+   * @param {number} retries - The number of times to run the function.
+   * @param {number} ms - The delay between iterations in milliseconds.
+   * @return {Promise} A Promise which will return the result of the function
+   * if it ran succesfully, or throw an Error otherwise.
+   */
+  function retry(func, retries = DEFAULT_RETRIES, delay = DEFAULT_DELAY) {
+    let attempts = 0;
+    return async function retrying(...params) {
+      while (attempts++ < retries) {
+        const ret = func(...params);
+        if (ret) {
+          return ret;
+        }
+        await wait(delay);
+      }
+      throw new Error('Did not succeed after ' + retries + ' retries');
+    }
+  }
+  atest.group('retry', {
+    'Test 1': async () => {
+      let count = 0;
+      let willFailInitially = () => count++ > 10;
+      willFailInitially = retry(willFailInitially, 12, 0);
+      return willFailInitially();
+    },
+    'Test 2': async () => {
+      let count = 0;
+      let willFailInitially = () => count++ > 10;
+      willFailInitially = retry(willFailInitially, 5, 0);
+      let error;
+      await willFailInitially().catch((e) => error = e);
+      return !!error;
+    },
   })
 
   /**
-   * Test whether an object is a DOM element. Uses simple duck typing.
+   * The inverse of calling toString on a RegExp.
+   * Transforms a string of the format '/abc/i' to a RegExp.
    *
-   * @param {Object=} domElement - Object to be tested
-   * @return {boolean} Returns true if a dom element is passed in.
+   * @param {string}
+   * @return {RegExp}
    */
-  function isDomElement(domElement) {
-    return doesObjectMatchTemplate({parentNode: 5}, domElement);
+  const toRegex = (string)=>{
+    const [,regex,flags] = string.match(/\/(.+)\/([gimuy]*)/);
+    return RegExp(regex, flags);
   }
-  test.group('isDomElement', () => {
-    test.ok(!isDomElement({}), 'An object is not');
-    test.ok(isDomElement(document), 'The document');
-    test.ok(isDomElement(document.body), 'Document body');
-  });
+  atest.group('toRegex', {
+    'Simple': () => toRegex('/abc/gi').toString() === '/abc/gi',
+    'Complex': () => toRegex('/^\d?[a-c]+/g').toString() === '/^d?[a-c]+/g',
+    'Malformed string': () => atest.throws(() => toRegex('abc/gi'), TypeError),
+  })
 
-  function mapToBulletedList(arrOrObj, spaces = 4) {
-    const arr = (Array.isArray(arrOrObj)) ? arrOrObj : Object.keys(arrOrObj);
-    return arr.map(el => '\n' + ' '.repeat(spaces) + '* ' + el).join('');
+  /**
+   * Wraps typeof but returns 'array' for Array input, and undefined
+   * for undefined input.
+   *
+   * @param {*} input
+   * @return {string}
+   */
+  function typeOf(input) {
+    if (Array.isArray(input)) {
+      return 'array';
+    }
+    const type = typeof input
+    return (type === 'undefined') ? undefined : type;
   }
+  atest.group('typeOf', {
+    'undefined': () => typeOf(undefined) === undefined,
+    'number': () => typeOf(5) === 'number',
+    'array': () => typeOf([]) === 'array',
+    'object': () => typeOf({}) === 'object',
+    'function': () => typeOf(() => {}) === 'function',
+  })
 
   /**
    * Returns a promise that will resolve after a delay.
@@ -327,22 +594,36 @@ var util =
   function wait(ms = DEFAULT_DELAY) {
     return new Promise((resolve) => setTimeout(() => resolve(), ms));
   }
-  test.group('wait', () => {
-    const promise = wait();
-    test.ok(wait().then !== undefined, 'Wait returns a Promise');
-    test.ok(DEFAULT_DELAY !== undefined, 'Default delay is set');
+  atest.group('wait', {
+    'Wait': async () => {
+      let count = 0;
+      let ms = 10;
+      setTimeout(() => count++, ms);
+      const unaffectedCount = count;
+      await wait(2 * ms);
+      const affectedCount = count;
+      return unaffectedCount === 0 && affectedCount === 1;
+    },
+    'DEFAULT': () => DEFAULT_DELAY !== undefined,
   });
 
   return {
+    arraysMatch,
     bundle,
+    capitalize,
     debounce,
     delay,
-    doArraysMatch,
-    doesObjectMatchTemplate,
-    isDomElement,
+    dispatch,
+    ensureIsArray,
+    getDomain,
+    isDev,
+    isHTMLElement,
     mapToBulletedList,
+    retry,
+    toRegex,
+    typeOf,
     wait,
-    };
+  };
 })();
 
 
@@ -351,22 +632,371 @@ var util =
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
-// REPORTING module
+// USER DATA module
 
-var {config, counter, flag, log} = (function reportingModule() {
+var user = (function userDataModule() {
   'use strict';
 
   /**
-   * @fileoverview Exposes objects to keep track of things.
+   * @fileoverview Exposes stateful objects to keep track of things.
    * * config - manage configuration settings.
    * * counter - count things.
-   * * flag - flag issues.
    * * log - log things.
+   * * storeAccess - access to data storage. 
    */
 
-  const LOCALSTORE_BASENAME = 'twoTwenty';
+  const LOCALSTORE_BASENAME = 'twoTwentyOne';
+
   const CONFIG_STORE_NAME = 'Configuration';
+  const DEFAULT_SETTINGS = {};
+
   const COUNTER_STORE_NAME = 'Counter';
+
+  const LOGBOOK_STORE_NAME = 'LogBook';
+  const LOG_MAX_LENGTH = 5000; // entries
+  const LOG_ENTRY_MAX_LENGTH = 500; // characters per log entry
+  const LOG_PAGE_SIZE = 25; // entries per page
+  const NO_COLOR_FOUND = 'yellow'; // 
+  const TIMESTAMP_STYLE = 'color: grey';
+  const LOG_TYPES = {
+    log: 'black',
+    notice: 'DodgerBlue',
+    warn: 'OrangeRed',
+    ok: 'LimeGreen',
+    low: 'Gainsboro',
+    changeValue: 'LightPink',
+    config: 'MediumOrchid',
+    counter: 'DarkCyan',
+  };
+
+  /**
+   * Manage dynamic data stores. Data is stored as JSON in LocalStorage so
+   * data must be serialisable. E.g. function and RegExp cannot be stored
+   * directly, and need to be converted to string, and deserialised on
+   * retrieval.
+   */
+  const storeAccess = (function storesMiniModule() {
+
+    /**
+     * Wraps around localStorage to parse JSON to object.
+     */
+    const local = {
+      /**
+       * @param {string} storeName - Name of the store in localStorage.
+       * @return {(Object|Array|string|number|undefined)} Data restored from
+       * string in storage, or undefined. Serialisable primitives are
+       * supported, functions and RegExp are not.
+       */
+      getStore(storeName) {
+        const string = localStorage.getItem(LOCALSTORE_BASENAME + storeName);
+        return (string) ? JSON.parse(string) : undefined;
+      },
+
+      /**
+       * @param {string} storeName - Name of the item in localStorage
+       * @param {object} data - Object, string or number to be stored.
+       * Will silently overwrite previously stored values.
+       */
+      setStore(storeName, data) {
+        localStorage.setItem(
+          LOCALSTORE_BASENAME + storeName,
+          JSON.stringify(data),
+        );
+      }
+    };
+    atest.group('local', {
+      'getStore': () => local.getStore(CONFIG_STORE_NAME),
+      'setStore': () => {
+        const preserve = local.getStore(CONFIG_STORE_NAME);
+        local.setStore(CONFIG_STORE_NAME, {test: true});
+        const successfullySet = local.getStore(CONFIG_STORE_NAME).test;
+        local.setStore(CONFIG_STORE_NAME, preserve);
+        return successfullySet;
+      },
+    });
+
+    /**
+     * Simply wraps around localStore to add cache in memory.
+     */
+    const storeCache = {};
+
+    const cached = {
+      /**
+       * @param {string} storeName
+       * @returns {(Object|Array|string|number)} Stored data.
+       */
+      getStore(storeName) {
+        if (storeCache.hasOwnProperty(storeName)) {
+          return storeCache[storeName];
+        }
+        const fromStore = local.getStore(storeName);
+        storeCache[storeName] = fromStore;
+        return fromStore;
+      },
+      /**
+       * @param {string} storeName
+       * @returns {(Object|Array|string|number)} Stored data.
+       */
+      setStore(storeName, data) {
+        if (!storeName) {
+          throw new TypeError('Cannot create nameless store');
+        }
+        storeCache[storeName] = data;
+        local.setStore(storeName, data);
+      },
+    };
+    atest.group('cached', {
+      'getStore': () => local.getStore(CONFIG_STORE_NAME),
+      'setStore': () => {
+        const preserve = local.getStore(CONFIG_STORE_NAME);
+        local.setStore(CONFIG_STORE_NAME, {test: true});
+        const successfullySet = local.getStore(CONFIG_STORE_NAME).test;
+        local.setStore(CONFIG_STORE_NAME, preserve);
+        return successfullySet;
+      },
+      'cached': async () => {
+        await util.wait();
+        return Object.entries(storeCache).length !== 0;
+      },
+    });
+
+    /**
+     * Add a data element to an Array data store.
+     * If no locale is specified, element is added to a store that
+     * is shared accross locales.
+     *
+     * @param {Object} o
+     * @param {string} o.feature
+     * @param {string=} o.locale
+     * @param {(Object|Array|string|number)} o.add The element to add.
+     */
+    function addElement({feature, locale = '', add}) {
+      if (!feature) {
+        throw new TypeError('Cannot add element to nameless store.');
+      }
+      const data = cached.getStore(`${feature}${locale}`) || [];
+      if (!Array.isArray(data)) {
+        throw new TypeError('Cannot add element to Array store. Use set/value.');
+      }
+      data.push(add);
+      cached.setStore(`${feature}${locale}`, data);
+    }
+    
+    /**
+     * Set or replace all data for a specific feature, and optionally a
+     * specific locale. If no locale is specified, data will be added
+     * to a feature specific shared data store.
+     *
+     * @param {Object} o
+     * @param {string} o.feature
+     * @param {string=} o.locale
+     * @param {*} o.data
+     */
+    function createStore({feature, locale, data}) {
+      if (!feature) {
+        throw new Error('Cannot set data to nameless store.');
+      }
+      if (locale) {
+        const sharedType = util.typeOf(cached.getStore(`${feature}`));
+        const dataType = util.typeOf(data);
+        if (sharedType && sharedType !== dataType) {
+          throw new TypeError('Cannot create store. Array/Object mismatch.');
+        }
+      }
+      cached.setStore(`${feature}${locale}`, data);
+    }
+
+    /**
+     * Get a data store for a specific feature.
+     * If no locale is specified, a shared store is returned. If a 
+     * locale is specified, a merged store containing shared and locale
+     * specific data is returned.
+     *
+     * @param {Object} o
+     * @param {string} o.feature
+     * @param {string=} o.locale - Not all stores are locale specific
+     * @return {Object} The store for non-locale specific stores, or
+     * an object containing a store for the specified locale and a shared
+     * store.
+     */
+    function dumpStore({feature, locale}) {
+      const sharedStore = cached.getStore(`${feature}`);
+      const localeStore = cached.getStore(`${feature}${locale}`);
+
+      if (!locale) {
+        return sharedStore;
+      }
+      const sharedType = util.typeOf(sharedStore);
+      const localeType = util.typeOf(localeStore);
+      if (sharedType && localeType && sharedType !== localeType) {
+        throw new TypeError('Mismatch Object/Array.');
+      }
+
+      if (localeType === 'array') {
+        return [...(sharedStore || []), ...localeStore];
+      } else if (localeType === 'object') {
+        return {...(sharedStore || {}), ...localeStore};
+      }
+      return sharedStore;
+    }
+    
+    /**
+     * Get an entry from a specific data store.
+     * If a locale is specified, entries from the matching locale specific
+     * store are prioritized. If no locale specific entry is found, the
+     * shared store is checked.
+     *
+     * @param {Object} o
+     * @param {string} o.feature
+     * @param {string=} o.locale
+     * @param {string} o.get
+     * @return {(Object|Array|string|number|undefined)}
+     */
+    function getValue({feature, locale = '', get}) {
+      const oneLocale = cached.getStore(`${feature}${locale}`);
+      if (oneLocale && oneLocale.hasOwnProperty(get)) {
+        return oneLocale[get];
+      }
+      const allLocales = cached.getStore(`${feature}`);
+      if (allLocales && allLocales.hasOwnProperty(get)) {
+        return allLocales[get];
+      }
+    }
+
+    /**
+     * Set an entry in a specific data store.
+     * If a locale is specified, the entries is added to the locale
+     * specific store. If no locale is specified, the entry is added
+     * to a store that is shared accross locales.
+     *
+     * @param {Object} o
+     * @param {string} o.feature
+     * @param {string=} o.locale
+     * @param {Object} o.set - Object to be merged into the store.
+     */
+    function setValue({feature, locale = '', set}) {
+      if (!feature) {
+        throw new Error('Cannot set data to nameless store.');
+      }
+      if (typeof set !== 'object') {
+        throw new Error('Set requires an object.');
+      }
+      const data = cached.getStore(`${feature}${locale}`) || {};
+      const newData = {...data, ...set};
+      cached.setStore(`${feature}${locale}`, newData);
+    }
+
+    /**
+     * Get or set data entries, or dump or create data stores,
+     * depending on the input parameters.
+     *
+     * @param {Object} o
+     * @param {string} o.feature
+     * @param {string=} o.locale
+     * @param {string=} o.get
+     * @param {string=} o.set
+     * @param {*=} o.value
+     * @param {*=} o.data
+     * @return {*}
+     */
+    function storeAccess({feature, locale = '', add, get, set, value, data}) {
+      if (typeof feature !== 'string') {
+        throw new Error('Feature must be a text string');
+      }
+      if (typeof locale !== 'string') {
+        throw new Error('Locale must be a text string');
+      }
+      if (add !== undefined) {
+        return addElement({feature, locale, add});
+      } else if (get !== undefined) {
+        return getValue({feature, locale, get});
+      } else if (set !== undefined) {
+        return setValue({feature, locale, set, value});
+      } else if (data !== undefined) {
+        return createStore({feature, locale, data});
+      } else {
+        return dumpStore({feature, locale});
+      }
+    }
+    test.group('storeAccess', () => {
+      const testObjectStoreName = 'TestingObject';
+      const testArrayStoreName = 'TestingArray';
+      const language = 'English';
+      const tokyo = 'Tokyo';
+      const lauren = 'Lauren Ipsum';
+      const yanny = 'Yanny Ipsum';
+
+      let blank = storeAccess({
+        feature: testObjectStoreName,
+        data: {city: tokyo},
+      });
+      test.ok(blank === undefined, 'Return undefined for undefined stores.');
+      storeAccess({
+        feature: testObjectStoreName,
+        data: {city: tokyo},
+      });
+      let city = storeAccess({
+        feature: testObjectStoreName,
+        locale: language,
+        get: 'city',
+      });
+      test.ok(city === tokyo, 'Create an object store and get shared value');
+      storeAccess({
+        feature: testObjectStoreName,
+        locale: language,
+        data: {name: lauren},
+      });
+      let name = storeAccess({
+        feature: testObjectStoreName,
+        locale: language,
+        get: 'name',
+      });
+      test.ok(name === lauren, 'Set and get a locale specific value');
+      storeAccess({
+        feature: testObjectStoreName,
+        locale: language,
+        set: {name: yanny},
+      });
+      name = storeAccess({
+        feature: testObjectStoreName,
+        locale: language,
+        get: 'name',
+      });
+      test.ok(name === yanny, 'Update object value');
+      storeAccess({
+        feature: testArrayStoreName,
+        data: [2,3,4],
+      });
+      test.fizzle(() => {
+        storeAccess({
+          feature: testArrayObjectName,
+          data: [2,3,4],
+        });
+      }, 'When object Store receives Array');
+      let array = storeAccess({
+        feature: testArrayStoreName,
+        locale: language,
+      });
+      test.ok(util.arraysMatch(array, [2,3,4]),'Set and get array');
+      storeAccess({
+        feature: testArrayStoreName,
+        add: 5,
+      });
+      array = storeAccess({
+        feature: testArrayStoreName,
+        locale: language,
+      });
+      test.ok(
+        util.arraysMatch(array, [2,3,4,5]),
+        'Add to array',
+      );
+      delete localStorage[LOCALSTORE_BASENAME + testObjectStoreName];
+      delete localStorage[LOCALSTORE_BASENAME + testObjectStoreName + language];
+      delete localStorage[LOCALSTORE_BASENAME + testArrayStoreName];
+      delete localStorage[LOCALSTORE_BASENAME + testArrayStoreName + language];
+    });
+    return storeAccess;
+  })();
 
   /**
    * Create a human readable string timestamp.
@@ -379,7 +1009,10 @@ var {config, counter, flag, log} = (function reportingModule() {
   function timestamp (d = new Date()) {
     /** Cast numbers into a zero prefixed two digit string format */
     const cast = (/** number */n) /** string */ => ('0' + n).slice(-2);
-    const isTodaysDate = (new Date().getDate() - d.getDate() === 0);
+    const sameDate = (new Date().getDate() - d.getDate() === 0);
+    const sameMonth = (new Date().getMonth() - d.getMonth() === 0);
+    const sameYear = (new Date().getFullYear() - d.getFullYear() === 0);
+    const isTodaysDate = sameDate && sameMonth && sameYear;
     const month = cast(d.getMonth() + 1);
     const date = cast(d.getDate());
     const hrs = cast(d.getHours());
@@ -389,105 +1022,111 @@ var {config, counter, flag, log} = (function reportingModule() {
     const shortForm = `${hrs}:${min}`;
     return (isTodaysDate) ? shortForm : longForm;
   }
-  test.group('timestamp', () => {
-    const today = new Date();
-    const earlier = new Date('01-01-2019 12:34:56');
-    test.ok(
-      timestamp(today).length === 5,
-      'Without a parameter',
-    );
-    test.ok(
-      timestamp(today).length === 5,
-      'Short length: ' + timestamp(today),
-    );
-    test.ok(
-      timestamp(new Date(earlier)).length === 14,
-      'Long length: ' + timestamp(new Date(earlier)),
-    );
+  atest.group('timestamp', {
+    'Without a parameter': () => {
+      return timestamp().length === 5;
+    },
+    'Short length': () => {
+      const today = new Date();
+      return timestamp(today).length === 5;
+    },
+    'Long length': () => {
+      const earlier = new Date('01-01-2019 12:34:56');
+      return timestamp(earlier).length === 14;
+    },
   });
 
   /**
-   * Dispatch GUI update packets. The GUI module  is reponsible for integrating
-   * packets into a consistent state.
+   * Dispatch GUI update packets. The GUI module  is reponsible for
+   * integrating packets into a consistent state.
    *
    * @param {Object} packet - A packet containing a state update to the GUI.
    * @example - updateGui({counters: {one: 21}});
    */
   function updateGui(packet) {
-    document.dispatchEvent(
-        new CustomEvent('guiUpdate', {detail: packet})
-    );
+    util.dispatch('guiUpdate', packet);
   }
-  test.group('updateGui', () => {
-    let received;
-    let testPacket = {packet: {stage: 0}};
-    document.addEventListener('guiUpdate', ({detail}) => received = detail);
-    updateGui(testPacket);
-    test.ok(received === testPacket, 'Packet succesfully sent');
-  }, true);
-
-  /** Handle communication with localStorage */
-  const localStore = {
-    /**
-     * @param {string} itemName - Name of the item in localStorage
-     * @return {(Object|string|number)} Data restored from string in storage,
-     * or empty object. Strings and numbers are supported.
-     */
-    get(itemName) {
-      const item = localStorage.getItem(LOCALSTORE_BASENAME + itemName);
-      return (item) ? JSON.parse(item) : {};
-    },
-    /**
-     * @param {string} itemName - Name of the item in localStorage
-     * @param {object} obj - Object, string or number to be stored.
-     * Will overwrite previously stored values.
-     */
-    set(itemName, obj = {}) {
-      localStorage.setItem(LOCALSTORE_BASENAME + itemName, JSON.stringify(obj))
-    }
-  };
 
   /**
    * Track configuration settings. Settings are loaded from localStorage on
-   * load, but changes are not persisted by default.
+   * load, but changes are not saved by default.
    * #get(name) returns a value if a config setting is loaded, or undefined.
-   * #set(name, newValue, save) adds a value to the config object in memory
+   * #set(name, newValue, save) adds a value to the config options in memory
    * and optionally updates the config options stored in localStorage.
-   * #raw() returns the config object in memory and exists mostly for debugging.
+   * #save(name, newValue) adds a value to the config object and saves to
+   * localStorage.
+   * #raw() returns the config object in memory and exists mostly for
+   * debugging.
    */
   const config = (function configMiniModule() {
-    const defaults = {};
-    const stored = localStore.get(CONFIG_STORE_NAME);
-    const config = {...defaults, ...stored};
+    const tempSettings = {};
     /**
      * @param {string} name - The name of the configuration option to find.
      * @return {(Object|string|number)} The associated value, or undefined if
      * none is found.
      */
     function get(name) {
-      return config[name];
+      if (tempSettings.hasOwnProperty(name)) {
+        return tempSettings[name]
+      }
+      const storedSetting = storeAccess({
+        feature: CONFIG_STORE_NAME,
+        get: name,
+      });
+      if (storedSetting) {
+        return storedSetting;
+      }
+      if (DEFAULT_SETTINGS.hasOwnProperty(name)) {
+        return DEFAULT_SETTINGS[name]
+      }
     }
+
     /**
      * @param {string} name - The name of the configuration option to set.
      * @param {(Object|string|number)} newValue
-     * @param {boolean} save - Should the value be persisted to localstorage?
+     * @param {boolean} save - Should the value be saved to localstorage?
      */
-    function set(name, newValue, save) {
-      log.changeConfig(`${name} changed to '${newValue}'`)
-      config[name] = newValue;
+    function set(name, newValue, save = false) {
+      const term = (save) ? 'permanently' : 'temporarily';
+      user.log.config(
+        `${name} ${term} changed to '${newValue}'`,
+      );
+      tempSettings[name] = newValue;
       if (save) {
-        localStore.set(CONFIG_STORE_NAME, config);
+        storeAccess({
+          feature: CONFIG_STORE_NAME,
+          set: {[name]: newValue},
+        });
       }
     }
+
+    /**
+     * Convenience function. As #set but automatically saves.
+     *
+     * @param {string} name - The name of the configuration option to set.
+     * @param {(Object|string|number)} newValue
+     */
+    function save(name, newValue) {
+      set(name, newValue, true);
+    }
+
     /**
      * Return the raw config object. Exists mainly for debugging purposes.
      *
-     * @return {Object} - The raw config object as it exists in memory.
+     * @return {Object} All settings.
      */
     function raw() {
-      return config;
+      const stored = storeAccess({
+        feature: CONFIG_STORE_NAME,
+      });
+      return {...DEFAULT_SETTINGS, ...stored};
     }
-    return {get, set, raw};
+    return {
+      get,
+      set,
+      save,
+      raw,
+    };
   })();
 
   /**
@@ -499,9 +1138,13 @@ var {config, counter, flag, log} = (function reportingModule() {
    * provided).
    */
   const counter = (function counterMiniModule() {
-
-    function getStored() {
-      return localStore.get(COUNTER_STORE_NAME);
+    /**
+     * @return {Object<string: number>} - Maps names to counts.
+     */
+    function getStore() {
+      return storeAccess({
+        feature: COUNTER_STORE_NAME,
+      }) || {};
     }
 
     /**
@@ -514,59 +1157,70 @@ var {config, counter, flag, log} = (function reportingModule() {
       if (typeof name !== 'string') {
         throw new Error('Counter add expects a name string');
       }
-      const /** object */ allCounts = getStored();
+      const /** object */ allCounts = getStore();
       const /** number */ newCount = (allCounts[name] + 1) || 1;
       allCounts[name] = newCount;
-      localStore.set(COUNTER_STORE_NAME, allCounts);
+      storeAccess({
+        feature: COUNTER_STORE_NAME,
+        data: allCounts,
+      });
       updateGui({counters: allCounts});
       return newCount;
     }
 
     /**
-     * @param {string} name - Name of the counter to find.
-     * @return {number} The count of the counter, or -1 if the counter
-     * does not exist.
+     * @param {string=} name - Name of the counter to find.
+     * @return {Object|number} If no name is provided, returns an object
+     * containing all the counts. Otherwise, returns the count of the
+     * counter, or -1 if the counter does not exist.
      */
     function get(name) {
-      if (typeof name !== 'string') {
-        throw new Error('Counter get expects a name string');
+      const allCounts = getStore();
+      if (!name) {
+        return {...allCounts};
       }
-      const allCounts = getStored();
       return allCounts[name] || -1;
     }
 
     /**
-     * @param {string=} name - Name of the counter to reset.
+     * @param {string=} name - Name of the counter to reset. If no name
+     * is provided, all counters are reset.
      */
     function reset(name) {
       if (typeof name !== 'string' && name !== undefined) {
         throw new Error('Counter reset expects a name string or nothing');
       }
-      const allCounts = getStored();
+      const allCounts = getStore();
       if (name) {
         const currentCount = allCounts[name];
-        util.wait().then(() => { // @todo Fix wait hack. Used for testing only.
-          log.notice(
+        util.wait().then(() => { // @todo Fix wait hack. Used for testing.
+          user.log.counter(
             `Resetting counter ${name} from ${currentCount}`,
-            true,
-          ), 0
+          );
         });
         delete allCounts[name];
       } else {
-        log.notice(
-          `Resetting all counters: ${JSON.stringify(allCounts)}`,
-          true,
+        user.log.counter(
+          'Resetting all counters:' +
+          util.mapToBulletedList(allCounts),
         );
         for (let i in allCounts) {
           delete allCounts[i];
         }
       }
-      localStore.set(COUNTER_STORE_NAME, allCounts);
+      storeAccess({
+        feature: COUNTER_STORE_NAME,
+        data: allCounts,
+      });
       updateGui({counters: allCounts});
       return 0;
     }
-    util.wait().then(() => updateGui({counters: getStored()}));
-    return {add, get, reset};
+    util.wait().then(() => updateGui({counters: getStore()}));
+    return {
+      add,
+      get,
+      reset,
+    };
   })();
   test.group('counter', () => {
     const complex = 'aG9yc2ViYXR0ZXJ5c3RhYmxl';
@@ -578,6 +1232,7 @@ var {config, counter, flag, log} = (function reportingModule() {
     test.ok(counter.get(complex) === -1, 'Counter is gone');
   }, true);
 
+  /** Object[] */
   let flaggedIssues = [];
 
   /**
@@ -586,28 +1241,32 @@ var {config, counter, flag, log} = (function reportingModule() {
    * 
    * @param {Object} issueUpdate - Incoming message. This may refer to a new
    * issue, or update the status of a previous issue.
-   * @param {Object} issueUpdate.wrapper - DOM element wrapper.
+   * @param {Object} issueUpdate.proxy - HTMLElement proxy.
    * @param {string} issueUpdate.issueType - The type of issue.
    * @param {string} issueUpdate.issueLevel - How critical is this issue?
    * @param {string} issueUpdate.message - Describes the details of the issue.
    * @example
-   * {wrapper, issueType: 'Typo', issueLevel: 'red', message: 'Wrod misspelled'}
+   * {proxy, issueType: 'Typo', issueLevel: 'red', message: 'Wrod misspelled'}
    */
   function flag(issueUpdate) {
-    const template = {wrapper: true, issueType: true};
-    if (!util.doesObjectMatchTemplate(template, issueUpdate)) {
+    if (issueUpdate && issueUpdate.issueType === 'reset') {
+      flaggedIssues.length = 0;
+      updateGui({issues: flaggedIssues});
+      return;
+    }
+    if (!issueUpdate || !issueUpdate.proxy || !issueUpdate.issueType) {
       throw new Error('Not a valid issue.');
     }
     /**
-     * Filter function to remove issues that match the incoming issue. Compares wrapper
-     * type properties.
+     * Filter function to remove issues that match the incoming issue.
+     * Compares proxy type properties.
      *
      * @param {Object} issue
      */
     const removeMatching = (issue) => {
-      const sameWrapper = (issue.wrapper === issueUpdate.wrapper);
+      const sameproxy = (issue.proxy === issueUpdate.proxy);
       const sameType = (issue.issueType === issueUpdate.issueType);
-      return !(sameWrapper && sameType);
+      return !(sameproxy && sameType);
     };
     /**
      * Filter out issues that without a issueLevel.
@@ -630,38 +1289,27 @@ var {config, counter, flag, log} = (function reportingModule() {
    */
   function addissueUpdateListener() {
     document.addEventListener('issueUpdate', ({detail}) => {
-      const issueUpdate = detail;
-      flag(issueUpdate);
+      flag(detail);
     }, {passive: true});
   }
   addissueUpdateListener();
 
   /**
-  * Object with methods to log events. The following is true for most methods:
+  * Object with methods to log events. The following is true for most
+  * methods:
   * * @param {Object|string} payload
-  * * @param {Boolean} persist Should the event be persisted to localstorage?
+  * * @param {Object} o
+  * * @param {boolean} o.save Should the event be saved to localstorage?
+  * * @param {boolean} o.print Should the event be printed to the console?
   */
   const log = (function loggingModule() {
-    const STORE_NAME = 'LogBook';
-    const MAX_LOG_LENGTH = 5000;
-    const LOG_PAGE_SIZE = 25;
-    const NO_COLOR_FOUND = 'yellow';
-    const TIMESTAMP_COLOR = 'color: grey';
-    const LOG_TYPES = {
-      log: {color:'black', print: true},
-      notice: {color:'DodgerBlue', print: true},
-      warn: {color:'OrangeRed', print: true},
-      ok: {color:'LimeGreen', print: true},
-      lowLevel: {color:'Gainsboro', print: true},
-      changeValue: {color:'LightPink', print: false},
-      changeConfig: {color:'MediumOrchid', print: true},
-    };
 
     /**
      * Generate a string from a log entry, in order to print to the console.
      *
      * @param {Object | string} payload Data associated with the log entry.
-     * @param {number} space Number of spaces to include in front of new lines.
+     * @param {number} space Number of spaces to include in front of new
+     * lines.
      */
     function payloadToString(payload, space) {
       const spacer = " ".repeat(space + 1);
@@ -685,59 +1333,78 @@ var {config, counter, flag, log} = (function reportingModule() {
      *
      * @param {string} type
      * @param {Object|string} payload
-     * @time {=Date} Optionally, provide a Date for the timestamp.
+     * @time {Date=} Optionally, provide a Date for the timestamp.
      */
-    function toConsole({type, payload, time = new Date()}) {
-      const color = LOG_TYPES[type].color || NO_COLOR_FOUND;
+    function printToConsole({type, payload, time = new Date(), save = true}) {
+      const color = LOG_TYPES[type] || NO_COLOR_FOUND;
       const ts = timestamp(time);
       const string = payloadToString(payload, ts.length);
-      console.log(`%c${ts} %c${string}`, TIMESTAMP_COLOR, `color: ${color}`);
+      const aster = (save) ? ' ' : '-';
+      console.log(`%c${ts}%c${aster}${string}`, TIMESTAMP_STYLE, `color: ${color}`);
     }
 
     /**
      * Retrieve an array of all log entries. Timestamps are recast into Date
      * objects.
      *
-     * @return {Object[]} Array of entries. 
+     * @return {Object[]} Array of entries.
      */
-    function getPersistent() {
-      const logBook = localStore.get(STORE_NAME);
-      return (logBook.entries || []).map(entry => {
-        entry.time = new Date(entry.time);
-        return entry;
+    function getStore() {
+      const logBook = storeAccess({
+        feature: LOGBOOK_STORE_NAME,
+      });
+      if (!Array.isArray(logBook)) {
+        return [];
+      }
+      return logBook.map(entry => {
+        return {
+          time: new Date(entry[0]),
+          type: entry[1],
+          payload: entry[2],
+        };
       });
     }
-    test.group('getPersistent', () => {
-      test.ok(Array.isArray(getPersistent()), 'Returns an array');
+    test.group('getStore', () => {
+      test.ok(Array.isArray(getStore()), 'Returns an array');
     });
 
     /**
-     * Persistently save an array of log entries.
+     * Save an array of log entries.
      *
      * @param {Object} entries - An object containing an array of log entries. 
      */
-    function setPersistent(entries) {
-      entries = entries.slice(-MAX_LOG_LENGTH);
-      localStore.set(STORE_NAME, {entries});
+    function setStore(entries) {
+      entries = entries.slice(-LOG_MAX_LENGTH).map(o => {
+        return [o.time, o.type, o.payload];
+      });
+      storeAccess({
+        feature: LOGBOOK_STORE_NAME,
+        data: entries,
+      });
     }
 
     /**
-     * Add a single log entry to the persistent log.
+     * Add a single log entry to the saved log.
      *
      * @param {Object} entry - Log entry object.
      * @param {string} entry.type - Type of log entry.
-     * @param {Object|string} entry.payload - Data associated with the log entry.
+     * @param {Object|string} entry.payload - Data associated with the
+     * log entry.
      */
     function addPersistent({type, payload}) {
-      const entries = getPersistent();
-      const newEntry = {time: new Date(), type, payload};
-      const newEntries = [...entries, newEntry];
-      setPersistent(newEntries);
+      const entries = getStore();
+      const newEntry = {
+        time: new Date(), 
+        type, 
+        payload
+      };
+      const allEntries = [...entries, newEntry];
+      setStore(allEntries);
     }
     test.group('addPersistent', () => {
-      const length = getPersistent().length;
+      const length = getStore().length;
       addPersistent({type: 'testing', payload: '1,2,3'});
-      test.ok((length + 1) === getPersistent().length), 'Added one entry';
+      test.ok((length + 1) === getStore().length), 'Added one entry';
     }, true);
 
     /**
@@ -747,48 +1414,48 @@ var {config, counter, flag, log} = (function reportingModule() {
      * @return {Object[]}
      * @example - printPersistent({before: new Date('2019-01-17')});
      */
-    function getFilteredPersistent(filterBy = {}) {
+    function getEntries(filterBy = {}) {
       const filters = {
-        after: entry => entry.time > filterBy.after,
-        before: entry => entry.time < filterBy.before,
+        after: entry => entry.time > new Date(filterBy.after),
+        before: entry => entry.time < new Date(filterBy.before),
         contains: entry => new RegExp(filterBy.contains).test(entry.payload),
+        items: entry => true,
+        page: entry => true,
         regex: entry => filterBy.regex.test(entry.payload),
         type: entry => entry.type === filterBy.type,
         typeExclude: entry => entry.type !== filterBy.typeExclude,
-      }
-      let entries = getPersistent();
+      };
+      let entries = getStore();
       for (let filterType in filterBy) {
-        if (filterType === 'page') {
-          continue;
-        }
         try {
           entries = entries.filter(filters[filterType]);
         } catch (e) {
           if (e instanceof TypeError) {
-            log.warn(
+            user.log.warn(
               `'${filterType}' is not a valid log filter. Please use:` +
               util.mapToBulletedList(filters),
-              true,
+              {save: false},
             );
             return [];
           }
         }
       }
+      const pageSize = filterBy.items || LOG_PAGE_SIZE;
       const page = (filterBy.page > 0) ? filterBy.page : 0;
-      const start = LOG_PAGE_SIZE * (page);
-      const end = LOG_PAGE_SIZE * (page + 1);
+      const start = pageSize * (page);
+      const end = pageSize * (page + 1);
       entries = entries.slice(-end, -start || undefined);
       return entries;
     }
-    test.group('getFilteredPersistent', () => {
-      const entries = getFilteredPersistent();
+    test.group('getEntries', () => {
+      const entries = getEntries();
       test.ok(
         (entries.length === LOG_PAGE_SIZE) ||
-        (getPersistent().length < LOG_PAGE_SIZE),
+        (getStore().length < LOG_PAGE_SIZE),
         'Get a full page from the log, if possible',
       );
       const randomString = Math.random().toString();
-      const filtered = getFilteredPersistent({contains: randomString});
+      const filtered = getEntries({contains: randomString});
       test.ok(
         filtered.length === 0,
         'Succesfully filter out all entries',
@@ -800,12 +1467,12 @@ var {config, counter, flag, log} = (function reportingModule() {
      *
      * @param {Object=} filterBy Filter parameters.
      * @return {Object[]}
-     * @example printPersistent({before: new Date()});
+     * @example print({before: new Date()});
      */
-    function printPersistent(filterBy = {}) {
-      getFilteredPersistent(filterBy).forEach(entry => toConsole(entry));
+    function print(filterBy = {}) {
+      getEntries(filterBy).forEach(entry => printToConsole(entry));
     }
-    test.group('printPersistent', () => {
+    test.group('print', () => {
       test.todo('XXXXX');
     });
 
@@ -815,33 +1482,867 @@ var {config, counter, flag, log} = (function reportingModule() {
      * @param {string} type Title of the log.
      */
     function genericLog(type) {
-      /**
-       * Write to the console, and optionally to persistent log.
-       *
-       * @param {(Object|string|number)=} payload - Data associated with the
-       * log entry.
-       * @param {persist} boolean - Should the log entry be persisted to
-       * localstorage.
-       */
-      function log(payload = '', persist) {
-        if (LOG_TYPES[type].print) {
-          toConsole({type, payload});        
+      function add(payload, {print = true, save = true, toast = true} = {}) {
+        if (typeof payload === 'string' &&
+            payload.length > LOG_ENTRY_MAX_LENGTH) {
+          payload = payload.slice(0, LOG_ENTRY_MAX_LENGTH - 3) + '...';
         }
-        if (persist) {
+        if (print) {
+          printToConsole({type, payload, save});
+ 
+        }
+        if (save) {
           addPersistent({type, payload});
         }
+        if (toast) {
+          updateGui({toast: payload});
+        }
       }
-      return log;
+      return add;
     }
-
-    const toExport = {print: printPersistent};
+    const log = {
+      print,
+      raw: getEntries,
+    }
     for (let type in LOG_TYPES) {
-      toExport[type] = genericLog(type);
+      log[type] = genericLog(type);
     }
-    return toExport;
+    return log;
   })();
 
-  return {config, counter, flag, log};
+  return {
+    config,
+    counter,
+    storeAccess,
+    log,
+  };
+})();
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+// EVENT LISTENER module
+
+var eventReactions = (function eventListenersModule() {
+  'use strict';
+
+  /**
+   * @fileoverview Sets global event listeners, and exports
+   * functions through which functions can be registered.
+   * Reaction functions are registered to an HTMLElement and
+   * a browser event, and are called when a matching browser
+   * event is issued by the matching HTMLElement.
+   * This basically emulates setting several event listeners
+   * on each HTMLElement.
+   */
+
+  /**
+   * string[] - The events that can be set on an HTMLElement.
+   */
+  const SUPPORTED_EVENTS = Object.freeze({
+    'onChange': 'change',
+    'onClick': 'click',
+    'onFocusin': 'focusin',
+    'onFocusout': 'focusout',
+    'onKeydown': 'keydown',
+    'onInput': 'input',
+    'onPaste': 'paste',
+    /** load is handled separately */
+    /** interact is handled separately */
+  });
+
+  /**
+   * string[] - The events that are triggered by the special
+   * 'interact' event.
+   */
+  const INTERACT_EVENTS = Object.freeze([
+    'onClick',
+    'onInput',
+    'onKeydown',
+    'onPaste',
+  ]);
+
+  const PREVENT_DEFAULT_ON = Object.freeze([
+    'Backquote',
+    'Backslash',
+    'BracketRight',
+    'BracketLeft',
+    'NumpadAdd',
+    'NumpadSubtract',
+    'NumpadMultiply',
+    'NumpadAdd',
+    'CtrlEnter',
+    'CtrlNumpadEnter',
+    'CtrlR',
+  ]);
+
+  /**
+   * reactionStore maps HTMLElements to sets of events. Each event maps to
+   * an array of reactions. When a browser event is fired by the
+   * HTMLElement all matching reactions are returned and called.
+   * For example:
+   * document.body => {
+   *   click: [reaction, reaction],
+   *   focusout: [reaction],
+   * }
+   */
+  const reactionStore = (function () {
+    const map = new Map();
+
+    /**
+     * Get all reaction functions for a given HTML element and an eventType
+     * string.
+     *
+     * @param {Object} o
+     * @param {HTMLElement} htmlElement
+     * @param {string[]} eventTypes
+     * @return {function[]}
+     */
+    function get({htmlElement, eventTypes}) {
+      if (!map.has(htmlElement)) {
+        return [];
+      }
+      if (!Array.isArray(eventTypes)) {
+        throw new Error('Please provide an array of eventTypes');
+      }
+      const found = [];
+      const reactions = map.get(htmlElement);
+      for (let eventType of eventTypes) {
+        if (reactions[eventType] !== undefined) {
+          found.push(...reactions[eventType]);
+        }          
+      }
+      return found;
+    }
+
+    /**
+     * Get all reaction functions for a given HTML element and an eventType
+     * string.
+     *
+     * @param {Object} o
+     * @param {HTMLElement} htmlElement
+     * @param {string} eventType
+     * @param {function[]}
+     * @return {number} The new number of reaction functions now accociated
+     * with this HTML element and eventType.
+     */
+    function set({htmlElement, eventType, functions}) {
+      if (!util.isHTMLElement(htmlElement)) {
+        throw new Error(htmlElement + ' is not an htmlElement');
+      }
+      if (!Array.isArray(functions)) {
+        throw new Error('Please provide an array of functions');
+      }
+      const reactions = map.get(htmlElement) || {};
+      const current = get({htmlElement, eventTypes: [eventType]});
+      const funcs = [...current, ...functions];
+      reactions[eventType] = funcs;
+      map.set(htmlElement, reactions);
+      return funcs.length;
+    }
+
+    function clear() {
+      map.clear();
+    }
+
+    return {
+      get,
+      set,
+      clear,
+    }
+  })();
+
+  /**
+   * Maps a browser event to a descriptive string, if possible.
+   * @param {Event} event - Browser event
+   * @return {string}
+   * @example A keydown event could map to 'ctrl-c' or 'shift'.
+   * 'ctrl-Control' or similar.
+   */
+  function eventToString(event) {
+    if (!event) {
+      return '';
+    }
+    switch (event.type) {
+      case 'keydown':
+        if (!event.code) { // i.e. synthetic event
+          return '';
+        }
+        let string = '';
+        if (event.ctrlKey || event.metaKey) {
+          string += 'Ctrl';
+        }
+        if (event.shiftKey) {
+          string += 'Shift';
+        }
+        if (event.altKey) {
+          string += 'Alt';
+        }
+        if (![
+          'ControlLeft', 'ControlRight',
+          'ShiftLeft', 'ShiftRight',
+          'AltLeft', 'AltRight',
+          'MetaLeft', 'MetaRight',
+        ].includes(event.code)) {
+          string += event.code.replace('Key', '');
+        }
+        return string;
+      default:
+        return '';
+    }
+  }
+  test.group('eventToString', () => {
+    const events = {
+      ctrlP: {type: 'keydown', ctrlKey: true, shiftKey: false, code: 'KeyP'},
+      p: {type: 'keydown', ctrlKey: false, shiftKey: false, code: 'KeyP'},
+      ctrlEnter: {type: 'keydown', ctrlKey: true, code: 'Enter'},
+      click: {type: 'click'},
+    };
+    test.ok(eventToString(events.ctrlP) === 'CtrlP', 'CtrlP');
+    test.ok(eventToString(events.p) === 'P', 'P');
+    test.ok(eventToString(events.ctrlEnter) === 'CtrlEnter', 'CtrlEnter');
+    test.ok(eventToString(events.click) === '', 'Click');
+  });
+
+  /**
+   * Maps a browser event to two descriptive strings, if possible.
+   * @param {Event} event - Browser event
+   * @return {string[]}
+   * @example:
+   * A click event may be converted to ['click', 'click_'].
+   * @example:
+   * A keydown event may be converted to ['keydown', 'keydown_CtrlA'].
+   */
+  function eventToEventTypes(event) {
+    const eventString = eventToString(event);
+    const type = 'on' + event.type.replace(/./,(d) => d.toUpperCase());
+    const type_k = `${type}_${eventString}`;
+    return [type, type_k];
+  }
+  test.group('eventToEventTypes', () => {
+    const ret = eventToEventTypes({type: 'click'});
+    test.ok(ret[0] === 'onClick', 'onClick');
+    test.ok(ret[1] === 'onClick_', 'onClick_');
+  });
+
+  /**
+   * Run an array of functions without blocking.
+   * @param {function[]} functions.
+   */
+  function runAll(...functions) {
+    for (let func of functions) {
+      if (typeof func === 'function') {
+        util.wait().then(func);
+      } else {
+        throw new Error('Not a function.');
+      }
+    }
+  }
+  test.group('runAll', () => {
+    let sum = 0;
+    const func = () => sum++;
+    test.todo('Async');
+  });
+
+  /**
+   * Wrap reaction functions so that the reaction function is receive
+   * important context.
+   *
+   * @param {function[]} functions - Reaction functions
+   * @param {Object} o
+   * @param {Object} o.proxy - Which proxy triggered the event.
+   * @param {number} o.idx - The index of the proxy
+   * @param {Object[]} o.group - All proxies in this group.
+   */
+  function addContext(functions, {proxy, idx, group}) {
+    return util.ensureIsArray(functions).map(func => {
+      const run = util.debounce(func);
+      return () => run(proxy, idx, group);
+    });
+  }
+
+  /**
+   * Process raw reactions objects:
+   * * Handle the onLoad event (by running these reactions).
+   * * Handle the onInteract event (by assigning these reactions to several
+   *   other event).
+   * * Wrap all reactions in the relevant context (proxy, idx, group).
+   */
+  function unpackAndAddContext(reactions, context) {
+    if (!reactions || !context) {
+      throw new Error('Reactions object and context are required.');
+    }
+    const cloneReaction = {...reactions};
+    for (let eventType in cloneReaction) {
+      cloneReaction[eventType] =
+          addContext(
+            cloneReaction[eventType],
+            context,
+          );
+    }
+    if (cloneReaction.onInteract) {
+      for (let eventType of INTERACT_EVENTS) {
+        const current = cloneReaction[eventType] || [];
+        const onInteract = cloneReaction.onInteract;
+        cloneReaction[eventType] = [...current, ...onInteract];
+      }
+      delete cloneReaction.onInteract;
+    }
+    if (cloneReaction.onLoad) {
+      runAll(...cloneReaction.onLoad);
+      delete cloneReaction.onLoad;
+    }
+    const filteredClone = {};
+    for (let eventType in cloneReaction) {
+      if (/^on/.test(eventType)) {
+        filteredClone[eventType] = cloneReaction[eventType];
+      }
+    }
+    return filteredClone;
+  }
+  test.group('unpackAndAddContext', () => {
+    const reactions = {
+      onLoad: () => {},
+      onClick: () => {},
+      onInteract: () => {},
+      name: 'Name',
+    }
+    const ret = unpackAndAddContext(reactions, {});
+    test.ok(ret.onLoad === undefined, 'onLoad removed');
+    test.ok(ret.onClick.length === 2, 'onClick added');
+    test.ok(ret.name === undefined, 'name removed');
+  });
+
+  /**
+   * For an HTMLElement, attach additional reaction functions.
+   *
+   * @param {htmlElement} htmlElement - The element to which
+   * the reactions should be attached.
+   * @param {Object<string: function[]>} reactions - A
+   * map of event types to arrays of functions.
+   * @param {Object} - Context about the way in which the
+   + functions should be invoked, i.e. what group of proxies
+   * these reactions were attached to and which one triggered
+   * the functions.
+   */
+  function set(htmlElement, reactions, context) {
+    if (!util.isHTMLElement(htmlElement)) {
+      throw new Error('Not an HTMLElement');
+    }
+    const formattedReactions = unpackAndAddContext(reactions, context);
+    for (let reaction in formattedReactions) {
+      reactionStore.set({
+        htmlElement: htmlElement,
+        eventType: reaction,
+        functions: formattedReactions[reaction],
+      });
+    }
+  }
+
+  /**
+   * Attach additional reaction functions to the document.
+   *
+   * @param {Object<string: function[]>} reactions - A
+   * map of event types to arrays of functions.
+   */
+  function setGlobal(reactions) {
+    eventReactions.set(document, reactions, {proxy: {}, idx: 0, group: []});
+  }
+
+  /**
+   * For a given browser event, find all relevant reaction functions.
+   *
+   * @param {Event} event - Browser event.
+   * @return {function[]} Reaction functions.
+   */
+  function getMatchingReactions(event) {
+    const elementReactions = reactionStore.get({
+      htmlElement: event.target,
+      eventTypes: eventToEventTypes(event),
+    });
+    const globalReactions = reactionStore.get({
+      htmlElement: document,
+      eventTypes: eventToEventTypes(event),
+    });
+    return [...elementReactions, ...globalReactions];
+  }
+
+  function maybePreventDefault(event) {
+    if (PREVENT_DEFAULT_ON.includes(eventToString(event))) {
+      event.preventDefault();
+    }
+  }
+
+  /**
+   * Respond to document level browser events.
+   * Request matching reactions to events and run them.
+   *
+   * @param {Event} - Browser event.
+   */
+  function genericEventHandler(event) {
+    maybePreventDefault(event);
+    const targetReactions = getMatchingReactions(event);
+    runAll(...targetReactions);
+  }
+
+  /**
+   * Initialise document level event handlers.
+   */
+  function initGenericEventHandlers() {
+    for (let type in SUPPORTED_EVENTS) {
+      const eventType = SUPPORTED_EVENTS[type];
+      document.addEventListener(
+        eventType,
+        genericEventHandler,
+      );
+    }
+  }
+
+  (function addCheatCode() {
+    const CODE = [
+      'ArrowUp',
+      'ArrowUp',
+      'ArrowDown',
+      'ArrowDown',
+      'ArrowLeft',
+      'ArrowRight',
+      'ArrowLeft',
+      'ArrowRight',
+      'KeyB',
+      'KeyA',
+      'Backquote',
+    ];
+    let idx = 0;
+    function cheatCodeHandler(e) {
+      (e.code === CODE[idx]) ? idx++ : idx = 0;
+      if (idx === CODE.length) {
+        user.log.low('cheat mode');
+      }
+    }
+    document.addEventListener('keydown', cheatCodeHandler, {passive: true});
+  })();
+
+  initGenericEventHandlers();
+  return {
+    reset: reactionStore.clear,
+    set,
+    setGlobal,
+  }
+})();
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+// DOM ACCESS module
+
+var {ー, ref} = (function domAccessModule() {
+  'use strict';
+
+  /**
+   * @fileoverview Exports the ー function, which enables and regulates
+   * DOM access. Proxy objects for HTMLElements are returned, which
+   * expose a limited number of methods, and which log
+   * changes.
+   */
+
+  const EDITABLE_ELEMENT_TYPES =
+      Object.freeze(['textarea', 'select-one', 'text']);
+
+  const htmlElementWeakMap = new WeakMap();
+
+  /**
+   * Test whether an HTMLElement is hidden through CSS or Javascript.
+   *
+   * @param {HTMLElement} htmlElement
+   * @return {boolean} Is the HTMLElement being displayed on the page?
+   */
+  function isHidden(htmlElement) {
+    return (htmlElement.offsetParent === null);
+  }
+
+  /**
+   * Get a numbered name.
+   *
+   * @param {string=} name
+   * @param {number} idx
+   * @return {string}
+   * @example - namePlusIdx('Example', 3) => 'Example-3'
+   */
+  function namePlusIdx(name = 'Unnamed', idx) {
+    return `${name}[${idx}]`;
+  }
+
+  /**
+   * Get coordinates of an HTMLElement, taking scroll position into account.
+   *
+   * @param {HTMLElement} htmlElement
+   * @return {Object} o
+   * @return {number} o.top
+   * @return {number} o.left
+   * @return {number} o.width
+   * @return {number} o.height
+   */
+  function getCoords(htmlElement) {
+    const rect = htmlElement.getBoundingClientRect();
+    return {
+      top: parseInt(scrollY + rect.top),
+      left: parseInt(scrollX + rect.left),
+      width: parseInt(rect.width),
+      height: parseInt(rect.height),
+    }
+  }
+
+  /**
+   * Touch an HTMLElement, so that GWT registers it.
+   *
+   * @param {HTMLElement} htmlElement
+   */
+  async function touch(htmlElement) {
+    await util.wait();
+    // Blur signals a change to GWT
+    util.dispatch(
+      'blur, change, input, keydown',
+      {touch: true},
+      htmlElement,
+    );
+  }
+
+  /**
+   * All changes to HTMLElement values should be routed through this function.
+   * Changes can be logged and checked.
+   *
+   * @param {HTMLElement} htmlElement
+   * @param {string} name
+   * @param {string} newValue - The new value that should conditionally be set.
+   */
+  function safeSetter(htmlElement, name, newValue) {
+    const currentValue = htmlElement.value;
+    if (currentValue === newValue) {
+      user.log.low(`No change to ${name}'.`, {print: false});
+      return;
+    }
+    if(!EDITABLE_ELEMENT_TYPES.includes(htmlElement.type)) {
+      throw new Error(`Cannot set value on ${htmlElement.type} elements`);
+    }
+    htmlElement.value = newValue;
+    touch(htmlElement);
+    user.log.changeValue(
+      `${name} '${currentValue}' => '${newValue}'.`,
+      {print: false, toast: false},
+    );
+  }
+
+  /**
+   * Get a fresh proxy matching the select and pick parameters.
+   * If the DOM updates, this may return a proxy to a different HTMLElement
+   * than the original proxy.
+   * 
+   * @param {Object} freshSelector
+   * @param {string} freshSelector.select
+   * @param {number[]} freshSelector.pick
+   * @param {string} name
+   * @return {Object} proxy
+   */
+  function getFreshElement(freshSelector, name) {
+    return ー({...freshSelector, name, mode: 'static'});
+  }
+
+  /**
+   * Make a basic proxy for an HTMLElement, to serve as the basis for more
+   * specific versions.
+   *
+   * @param {Object} o
+   * @param {HTMLElement} o.htmlElement
+   * @param {string} o.name
+   * @param {Object} o.freshSelector
+   * @return {Object} proxy
+   */
+  function makeBasicProxy({htmlElement, name, freshSelector}) {
+    const proxy = {
+      name,
+      value: htmlElement.value,
+      get checked() {
+        return htmlElement.checked;
+      },
+      get disabled() {
+        return htmlElement.disabled;
+      },
+      get textContent() {
+        return htmlElement.textContent;
+      },
+      set textContent(newValue) {
+        htmlElement.textContent = newValue;
+      },
+      get tabIndex() {
+        return htmlElement.tabIndex;
+      },
+      set tabIndex(value) {
+        htmlElement.tabIndex = value;
+      },
+      set css(styles) {
+        for (let rule in styles) {
+          htmlElement.style[rule] = styles[rule];
+        }
+      },
+      click() {
+        htmlElement.click();
+      },
+      blur() {
+        htmlElement.blur();
+      },
+      focus() {
+        htmlElement.focus();
+      },
+      scrollIntoView() {
+        htmlElement.scrollIntoView();
+      },
+      touch() {
+        touch(htmlElement);
+      },
+      toString() {
+        return `${name}: ${htmlElement.value}`;
+      },
+      fresh() {
+        return ー({...freshSelector, name, mode: 'user-editable'});
+      },
+      getCoords() {
+        return getCoords(htmlElement);
+      },
+      unsafe() {
+        return htmlElement;
+      },
+    }
+    return proxy;
+  }
+
+  /**
+   * Make a specific type of HTMLElement proxy, based on the passed in mode.
+   *
+   * @param {Object} o
+   * @param {HTMLElement} o.htmlElement
+   * @param {string} o.name
+   * @param {string} o.mode
+   * @param {Object} o.freshSelector
+   * @return {Object} proxy
+   */
+  function makeProxy({htmlElement, name, mode, freshSelector}) {
+    const proxy = makeBasicProxy({
+      htmlElement,
+      name,
+      freshSelector
+    });
+    proxy.name = name;
+    proxy.mode = mode;
+
+    function goodSetter(value) {
+      safeSetter(htmlElement, name, value)
+    }
+    function brokenSetter(newValue) {
+      throw new Error(
+          `Cannot set value of ${name} to '${newValue}'. ` + 
+          `Element is not programmatically editable.`
+      );
+    }
+    if (proxy.mode === 'static') {
+      return Object.freeze({...proxy});
+    }
+    if (proxy.mode === 'programmable') {
+      Object.defineProperty(
+        proxy, 'value', {get: () => htmlElement.value, set: goodSetter,}
+      );
+      return Object.seal(proxy);
+    }
+    if (proxy.mode === 'user-editable') {
+      Object.defineProperty(
+        proxy, 'value', {get: () => htmlElement.value, set: brokenSetter,}
+      );
+      return Object.seal(proxy);
+    }
+    throw new Error('No valid mode set');
+  }
+
+  /**
+   * Attempt to append another name to the name property of an HTMLElement
+   * proxy.
+   *
+   * @param {Object} proxy
+   * @param {string} name
+   * @param {number} idx
+   * @return {Object} proxy
+   */
+  function appendToNameOfCachedProxy(proxy, name, idx) {
+    if (!proxy) {
+      return;
+    }
+    if (proxy.name.includes(name)) {
+      return proxy;
+    }
+    try {
+      proxy.name += ' | ' + namePlusIdx(name, idx);
+    } catch (e) {
+      if (e instanceof TypeError) {
+        user.log.warn(
+          `Cannot append ${name} to name of static proxy ${proxy.name}`,
+        );
+      } else {
+        throw e;
+      }
+    }
+    return proxy;
+  }
+
+  /**
+   * Create an object that can be used to find a fresh HTMLElement on the
+   * page. This is based on the original values passed into the ー function.
+   *
+   * @param {Object} options
+   * @param {number} idx
+   */
+  function makeFreshSelector(options, idx) {
+    const {select, pick} = options;
+    return {
+      select,
+      pick: [pick[idx]],
+    };
+  }
+
+  /**
+   * Find or create a proxy matching an HTMLElement.
+   *
+   * @param {HTMLElement} htmlElement
+   * @param {number} idx
+   * @param {Object} options
+   */
+  function toProxy(htmlElement, idx, options) {
+    options.mode = 'programmable';
+    if (!util.isHTMLElement(htmlElement)) {
+      throw new Error('Not an HTMLElement');
+    }
+    const cached = htmlElementWeakMap.get(htmlElement);
+    if (cached && options.mode === 'fresh') {
+      options.mode = cached.mode;
+    } else if (cached) {
+      if (cached.mode !== options.mode && false) { // @todo Fix warning
+        user.log.warn(
+          `Didn't change ${options.name} element mode from ${cached.mode}` +
+          ` to ${options.mode}`,
+          true,
+        )
+      }
+      return appendToNameOfCachedProxy(cached, options.name, idx);
+    } else if (options.mode === 'fresh') {
+      mode = 'static';
+    }
+    const proxy = makeProxy({
+      htmlElement,
+      name: namePlusIdx(options.name, idx),
+      mode: options.mode,
+      freshSelector: makeFreshSelector(options, idx),
+    });
+    if (options.mode !== 'fresh') {
+      htmlElementWeakMap.set(htmlElement, proxy);
+    }
+    return proxy;
+  }
+
+  /**
+   * Access the DOM and find HTMLElements matching the parameters.
+   * Select and pick can be used to find elements in the entire page, while
+   * rootSelect and rootNumber can be used to narrow the search down to a
+   * specific node of the page.
+   * For example, {select: 'button', pick: [2,0,1]} will return the 2nd,
+   * 0th and 1st buttons on the page, in that order.
+   * {rootSelect: 'div', rootNumber: 4, select: 'button', pick: [2]} will
+   * return the 2nd button from the 4th div.
+   *
+   * @param {Object} o
+   * @param {string} o.rootSelect
+   * @param {number} o.rootNumber
+   * @param {string} o.select
+   * @param {number[]} o.pick
+   */
+  function getHtmlElements({rootSelect, rootNumber, select, pick}) {
+    if (!pick) {
+      throw new Error(
+        'Required paramers missing: ' +
+        util.mapToBulletedList([rootSelect, rootNumber, select, pick]),
+      )
+    }
+    const simpleSelect = () => {
+      return [...document.querySelectorAll(select)];
+    }
+    const complexSelect = () => {
+      return [...document.querySelectorAll(rootSelect)][rootNumber]
+          .querySelectorAll(select || '*');
+    }
+    const allElements = (rootSelect) ? complexSelect() : simpleSelect();
+    const pickedElements = [];
+    for (let number of pick) {
+      const picked = allElements[number];
+      if (picked) {
+      pickedElements.push(picked);
+      }
+    }
+    return pickedElements;
+  }
+
+  /**
+   * Set event reactions on an HTMLElement.
+   *
+   * @param {Object[]} htmlElements
+   * @param {Object[]} proxies
+   * @param {Object} options - All properties in the options object for
+   * which the name begins with 'on' will be processed.
+   */
+  function setAllReactions(htmlElements, proxies, options) {
+    const reactions = {};
+    for (let prop in options) {
+      if (/^on/.test(prop)) {
+        reactions[prop] = options[prop];
+      }
+    }
+    proxies.forEach((proxy, idx, group) => {
+      const htmlElement = htmlElements[idx];
+      const context = {proxy, idx, group};
+      eventReactions.set(htmlElement, reactions, context);
+    });
+  }
+
+  const ref = {
+    fresh(name) {
+      const cached = ref[name] || [];
+      return cached[0].fresh()[0];
+    }
+  };
+
+  /**
+   * Find and process HTMLElements to produce proxies and attach event
+   * reactions.
+   *
+   * @param {Object} options
+   */
+  function ー(options) {
+    const htmlElements = getHtmlElements(options);
+    const proxies = htmlElements.map((element,idx) => {
+      return toProxy(element, idx, options);
+    });
+    proxies.forEach(proxy => options.css && (proxy.css = options.css));
+    if (options.mode !== 'fresh') {
+      setAllReactions(htmlElements, proxies, options);
+    }
+    if (options.ref) {
+      ref[options.ref] = proxies;
+    }
+    return proxies;
+  }
+
+  return {ー, ref};
 })();
 
 
@@ -865,9 +2366,12 @@ var {config, counter, flag, log} = (function reportingModule() {
    */
 
   const BASE_ID = 'tto';
+  const BOOM_RADIUS = 60;
+  const TOAST_MAX_LENGTH = 30;
+  const GUI_TEXT_MAX_LENGTH = 150;
 
   const guiState = Object.seal({
-    stage: 0,
+    stage: 'Loading...',
     counters: {},
     issues: [],
   });
@@ -877,1041 +2381,131 @@ var {config, counter, flag, log} = (function reportingModule() {
       const incoming = packet[prop];
       const state = guiState[prop];
       if (state === undefined) {
-        throw new Error(`Unknown gui state property: ${prop}`);
-      }
-      if (
-        Array.isArray(incoming) &&
-        util.doArraysMatch(state, incoming)
-      ) {
-        return false;
+        continue;
       }
       guiState[prop] = incoming;
     }
     return true;
   }
 
-  function makeUl({title, elements, valueProp, titleProp}) {
-    if (elements.length < 1) {
-      return '';
-    }
-    const mappedToLi = elements.map(el => {
-      return `<li>${el[valueProp]}: <em>${el[titleProp]}</em></li>`
-    });
-    return (
-        `<h4 style="padding: 0 0 0 10px">${title}</h4>` +
-        `<ul id=${BASE_ID}_${title}>${mappedToLi}</ul>`
-    );
-  }
-
-  const mainGui = (function mainGuiModule() {
-    const frame = document.createElement('div');
-    frame.id = BASE_ID + 'mainGui'
-    frame.style.cssText = `
-      background: rgba(240,240,200,0.8);
-      bottom: 0px;
-      height: auto;
-      left: 0px;
-      pointer-events: none;
-      position: fixed;
-      width: 100%;
-      z-index: 2000;
-    `;
-    document.body.append(frame);
-    function update() {
-      const issues = guiState.issues;
-      const counters = Object.entries(guiState.counters);
-      frame.innerHTML =
-          makeUl({
-            title: 'Issues',
-            elements: issues,
-            valueProp: 'issueType',
-            titleProp: 'message',
-          }) + 
-          makeUl({
-            title: 'Counters',
-            elements: counters,
-            valueProp: 1,
-            titleProp: 0,
-          });
-    }
-    update = util.debounce(util.delay(update));
-    return {update};
-  })();
-
-  /**
-   * Merges new data into the local gui state, and triggers and update of
-   * the gui.
-   *
-   * @param {Object} packet - Data to be merged into the gui's state.
-   */
-  function update(packet) {
-    if (setState(packet)) {
-      mainGui.update();
-    }
-  }
-
   /**
    * Sets a listener on the document for gui updates.
    */
-  function addGuiUpdateListener() {
+  (function addGuiUpdateListener() {
     document.addEventListener('guiUpdate', ({detail}) => {
-      const packet = detail;
-      update(packet);
+      detail.toast && toast(detail.toast);
+      setState(detail);
+      update();
     }, {passive: true});
-  }
-  addGuiUpdateListener();
-})();
-
-
-
-
-////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
-// EVENT LISTENER module
-
-var {setReactions, setGlobalReactions} = (function eventListenersModule() {
-  'use strict';
-
-  /**
-   * @fileoverview Sets global event listeners, and exports
-   * functions through which functions can be registered.
-   * Reaction functions are registered to a DOM element and
-   * a browser event, and are called when a matching browser
-   * event is issued by the matching DOM element.
-   * This basically emulates setting several event listeners
-   * on each DOM element.
-   */
-
-  /**
-   * string[] - The events that can be set on a DOM element.
-   */
-  const SUPPORTED_EVENTS = Object.freeze([
-    'change',
-    'click',
-    'focusin',
-    'focusout',
-    'keydown',
-    'paste',
-    /** load is handled separately */
-    /** interact is handled separately */
-  ]);
-
-  /**
-   * string[] - The events that are triggered by the special
-   * 'interact' event.
-   */
-  const INTERACT_EVENTS = Object.freeze([
-    'click',
-    'focusout',
-    'keydown',
-    'paste',
-  ]);
-
-  /**
-   * WeakMap - Maps DOM elements to reaction objects.
-   */
-  const reactionMap = new WeakMap();
-
-  /**
-   * Maps a browser event to a descriptive string, if possible.
-   * @param {Event} event - Browser event
-   * @return {string}
-   * @example A keydown event could map to 'ctrl-c' or 'shift'.
-   * 'ctrl-Control' or similar.
-   */
-  function eventToString(event) {
-    if (!event) {
-      return '';
-    }
-    switch (event.type) {
-      case 'keydown':
-        let string = '';
-        if (event.ctrlKey || event.metaKey) {
-          string += 'Ctrl';
-        }
-        if (event.shiftKey) {
-          string += 'Shift';
-        }
-        if (event.altKey) {
-          string += 'Alt';
-        }
-        if (![
-          'ControlLeft', 'ControlRight',
-          'ShiftLeft', 'ShiftRight',
-          'AltLeft', 'AltRight',
-          'MetaLeft', 'MetaRight',
-        ].includes(event.code)) {
-          string += event.code.replace('Key', '');
-        }
-        return string.replace('Digit', 'NumberRow');
-      default:
-        return '';
-    }
-  }
-  test.group('eventToString', () => {
-    const events = {
-      ctrlP: {type: 'keydown', ctrlKey: true, shiftKey: false, code: 'KeyP'},
-      p: {type: 'keydown', ctrlKey: false, shiftKey: false, code: 'KeyP'},
-      ctrlEnter: {type: 'keydown', ctrlKey: true, code: 'Enter'},
-      click: {type: 'click'},
-    };
-    test.ok(eventToString(events.ctrlP) === 'CtrlP', 'CtrlP');
-    test.ok(eventToString(events.p) === 'P', 'P');
-    test.ok(eventToString(events.ctrlEnter) === 'CtrlEnter', 'CtrlEnter');
-    test.ok(eventToString(events.click) === '', 'Click');
-  });
-
-  /**
-   * Maps a browser event to two descriptive strings, if possible.
-   * @param {Event} event - Browser event
-   * @return {string[]}
-   * @example. A click event may be converted to ['click', 'click_'].
-   * @example. A keydown event may be converted to ['keydown', 'keydown_CtrlA'].
-   */
-  function eventToStrings(event) {
-    const eventString = eventToString(event);
-    const type = `${event.type}`;
-    const type_k = `${event.type}_${eventString}`;
-    return [type, type_k];
-  }
-
-  /**
-   * Run an array of functions.
-   * @param {function[]} functions.
-   */
-  function runAll(functions) {
-    if (!functions) {
-      return;
-    }
-    functions.forEach(func => {
-      if (typeof func === 'function') {
-        func();
-      } else {
-        throw new Error('Not a function.');
-      }
-    });
-  }
-  test.group('runAll', () => {
-    let sum = 0;
-    const func = () => sum++;
-    runAll([func, func, func]);
-    test.ok(
-      sum === 3,
-      'run three functions'
-    );
-    test.fizzle(
-      () => runAll([3, 5]),
-      'run an array of numbers'
-    );
-    test.fizzle(
-      () => runAll(5),
-      'run a number'
-    );
-  });
-  
-  /**
-   * Integrate two sets of reactions.
-   */
-  function mergeReactions(one, two) {
-    if (!one || !two) {
-      throw new Error('Need two reactions to merge');
-    }
-    const oneClone = {...one};
-    const twoClone = {...two};
-    for (let type in oneClone) {
-      if (twoClone[type]) {
-        oneClone[type] = [...oneClone[type], ...twoClone[type]];
-      }
-    }
-    return {...twoClone, ...oneClone};
-  }
-  test.group('mergeReactions', () => {
-    test.solid(() => mergeReactions({},{}), 'it runs');
-    const one = {click: [1, 2], paste: [5]};
-    const two = {click: [3, 4], change: [6]};
-    const merged = mergeReactions(one, two);
-    test.ok(merged.click.length === 4, 'merge click, test 1');
-    const uniqueValues = new Set([...merged.click]).size;
-    test.ok(uniqueValues === 4, 'merge click, test 2');
-    test.ok(merged.paste.length === 1, 'merge paste');
-    test.ok(merged.change.length === 1, 'merge change');
-    test.fizzle(() => mergeReactions({}), 'requires two objects');
-  });
-
-  /**
-   * @param {Object<string: Object>} reactions - Map of event
-   * types to arrays of functions.
-   * Event types can be, for example, 'click' or 'onClick'
-   * but will be changed to 'click'.
-   * @param {Object<string: Object>} context - Context for
-   * the reaction functions.
-   */
-  function wrapReactions(reactions, context) {
-    /**
-     * @param {function[]} reactions
-     * return {function[]}
-     */
-    function wrapReaction(reaction) {
-      /**
-       * @param {function} func - Function to be wrapped
-       * with context.
-       * @return {function}
-       */
-      function wrapFunction(func) {
-        /**
-         * wrapper, idx and group come from scope.
-         * @return {function}
-         */
-        function wrappedWithContext() {
-          return func(wrapper, idx, group);
-        }
-        return wrappedWithContext;
-      }
-      if (!Array.isArray(reaction)) {
-        // Reaction is a single function.
-        return [wrapFunction(reaction)];
-      }
-      return reaction.map(wrapFunction);
-    }
-    const wrapped = {};
-    const {wrapper, idx, group} = context;
-    for (let type in reactions) {
-      if (!/^on/.test(type)) {
-        continue;
-      }
-      const simpleType = // @todo Rewrite
-          type.replace(/^on([^_]+)/, (a,b) => b.toLowerCase());
-      wrapped[simpleType] = wrapReaction(reactions[type]);
-    }
-    return wrapped;
-  }
-  test.group('wrapReactions', () => {
-    const func1 = (wrapper, idx, group) => idx + 1;
-    function func2(wrapper, idx, group) {
-      return idx + 1;
-    }
-    const mockReaction =
-        {onClick: [func1, func2], onPaste: [func1]};
-    const mockContext = {wrapper: {}, idx: 4, group: []};
-    const wrapped = wrapReactions(mockReaction, mockContext);
-    let tmp;
-    test.solid(() => (tmp = wrapped.click[0]()), 'test 1');
-    test.ok(tmp === 5, 'test 2');
-    test.fizzle(() => wrapped.click[2](), 'test 3');
-    tmp = wrapped.click[1]();
-    test.ok(tmp === 5, 'test 5');
-  });
-
-  /**
-   * We permit two special events:
-   * - interact (or onInteract)
-   * - load (or onLoad)
-   * Setting a reaction on the interact event assigns the
-   * reaction to several other events, such as change & click.
-   * onInteract is shorthand for onClick, onFocusin, etc.
-   * Setting a reaction on the load event immediately calls it.
-   * @param {Object} reactions
-   * @return {Object}
-   */
-  function unpackInteractAndLoadReaction(reactions) {
-    const reactionsClone = {...reactions};
-    if (reactionsClone.load) {
-      runAll(reactionsClone.load);
-    }
-    if (!reactionsClone.interact) {
-      return reactionsClone;
-    }
-    const unpacked = {};
-    const interactions =
-        reactionsClone.interact.map(func => util.debounce(func, 500));
-    for (let type of INTERACT_EVENTS) {
-      unpacked[type] = interactions;
-    }
-    delete reactionsClone.interact;
-    delete reactionsClone.load;
-    return mergeReactions(reactionsClone, unpacked);
-  }
-
-  test.group('unpackInteractAndLoadReaction', () => {
-    let mock = {};
-    let length = (obj) => Object.keys(obj).length;
-    const func = unpackInteractAndLoadReaction;
-    test.ok(length(func(mock)) === 0, 'null');
-    mock = {interact: [() => 5]};
-    test.ok(length(func(mock)) === 4, 'test 1');
-    test.ok(func(mock).click[0]() === 5, 'test 2');
-    test.ok(func(mock).interact === undefined, 'test 3');
-    mock = {interact: [() => 5], click: [() => 7]};
-    test.ok(length(func(mock)) === 4, 'test 4');
-    test.ok(length(func(mock).click) === 2, 'test 5');
-    let tmp = 0;
-    const increment = () => tmp++;
-    mock = {load: [increment]};
-    test.solid(() => func(mock), 'test 6');
-    test.ok(tmp === 1, 'test 7');
-  });
-
-  /**
-   * For a DOM element, attach additional reaction functions.
-   * @param {DomElement} domElement - The element to which
-   * the reactions should be attached.
-   * @param {Object<string: function[]>} reactions - A
-   * map of event types to arrays of functions.
-   * @param {Object} - Context about the way in which the
-   + functions should be invoked, i.e. what group of wrappers
-   * these reactions were attached to and which one triggered
-   * the functions.
-   */
-  function setReactions(domElement, reactions, context) {
-    if (!util.isDomElement(domElement)) {
-      throw new Error('Not a DOM element');
-    }
-    const prior = reactionMap.get(domElement) || {};
-    const additional =
-        unpackInteractAndLoadReaction(
-            wrapReactions(reactions, context)
-        );
-    const allReactions = mergeReactions(prior, additional);
-    reactionMap.set(domElement, allReactions);
-  }
-
-  function setGlobalReactions(reactions) {
-    const allReactions =
-        unpackInteractAndLoadReaction(
-            wrapReactions(reactions, {})
-        );
-    reactionMap.set(document, allReactions);
-  }
-
-  function getTargetReactions(event) {
-    const target = event.target;
-    const targetReactions = reactionMap.get(target);
-    const globalReactions = reactionMap.get(document);
-
-    const [type, type_k] = eventToStrings(event);
-
-    const collection = [];
-    if (targetReactions) {
-      if (targetReactions[type_k]) {
-        collection.push(...targetReactions[type_k] || [])
-      }
-      if (targetReactions[type]) {
-        collection.push(...targetReactions[type] || [])
-      }
-    }
-    if (globalReactions) {
-      if (globalReactions[type_k]) {
-        collection.push(...globalReactions[type_k] || [])
-      }
-      if (globalReactions[type]) {
-        collection.push(...globalReactions[type] || [])
-      }
-    }
-    return collection;
-  }
-
-  /**
-   * Respond to document level browser events.
-   * Find matching reactions to events and run them.
-   * @param {Event} - Browser event.
-   */
-  function genericEventHandler(event) {
-    const targetReactions = getTargetReactions(event);
-    util.wait().then(() => runAll(targetReactions));
-  }
-
-  /**
-   * Initialise document level event handlers.
-   */
-  function initGenericEventHandlers() {
-    for (let type of SUPPORTED_EVENTS) {
-      document.addEventListener(type, genericEventHandler, {passive: true});
-    }
-  }
-
-  (function addCheatCode() {
-    const CODE = [
-      'ArrowUp',
-      'ArrowUp',
-      'ArrowDown',
-      'ArrowDown',
-      'ArrowLeft',
-      'ArrowRight',
-      'ArrowLeft',
-      'ArrowRight',
-      'KeyB',
-      'KeyA',
-      'Backquote',
-    ];
-    let idx = 0;
-    function cheatCodeHandler(e) {
-      (e.code === CODE[idx]) ? idx++ : idx = 0;
-      if (idx === CODE.length) {
-        log.log('cheat mode');
-      }
-    }
-    document.addEventListener('keydown', cheatCodeHandler, {passive: true});
   })();
 
-  initGenericEventHandlers();
-  return {setReactions, setGlobalReactions}
-})();
+  (function addStylesheet () {
+    const style = document.createElement('style');
+    document.head.append(style);
+    const addRule = (p) => style.sheet.insertRule(`.${BASE_ID}${p}`, 0);
+    const rules = [
+      `container { background-color: #f4f4f4 }`,
+      `container { font-size: 1.5em }`,
+      `container { opacity: 0.8 }`,
+      `container { overflow: hidden }`,
+      `container { position: fixed }`,
+      `container { pointer-events: none }`,
+      `container { padding: 10px }`,
+      `container { right: 3px }`,
+      `container { top: 30px }`,
+      `container { width: 300px }`,
+      `container { z-index: 2000 }`,
+      `container p { margin: 4px }`,
+      `container em { font-weight: bold }`,
+      `container em { font-style: normal }`,
+      `container .red { color: #dd4b39 }`,
+      `container .orange { color: #872b20 }`,
+      `container .yellow { color: #3d130e }`,
+      `boom { background-color: black }`,
+      `boom { border-radius: 50% }`,
+      `boom { opacity: 0.02 }`,
+      `boom { padding: ${BOOM_RADIUS}px }`,
+      `boom { position: absolute }`,
+      `boom { z-index: 1999 }`,
+    ];
+    rules.forEach(addRule);
+  })();
 
-
-
-
-////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
-// DOM ACCESS module
-
-var {wrap} = (function domAccessModule() {
-  'use strict';
-
-  /**
-   * Exports the wrap function, which enables and regulates
-   * DOM access. Wrapper objects for DOM elements are returned
-   * which expose a limited number of methods, and which log
-   * changes.
-   */
-
-  const domElementWeakMap = new WeakMap(); // Should use const
-
-  const EDITABLE_ELEMENT_TYPES =
-      Object.freeze(['textarea', 'select-one', 'text']);
-
-  /**
-   * @param {Object}
-   * @return {DomElement[]}
-   */
-  function findInDom(querySelector, pickElements) {
-    let greedy = (() => {
-      if (Array.isArray(querySelector)) {
-        const [rootType, pickOne] = querySelector;
-        return [...document.querySelectorAll(rootType)][pickOne]
-            .querySelectorAll();
-      } else {
-        return [...document.querySelectorAll(querySelector)];
-      }
-    })();
-    const picky = [];
-    for (let one of pickElements) {
-      const picked = greedy[one];
-      if (picked) {
-      picky.push(greedy[one]);
-      }
+  var toast = (function toastMiniModule() {
+    const toast = document.createElement('div');
+    toast.classList = 'toast';
+    toast.style.position = 'fixed';
+    toast.style.bottom = '60px';
+    toast.style.right = '60px';
+    toast.style.backgroundColor = 'black';
+    toast.style.color = 'white';
+    toast.style.padding = '0.8em 1.2em';
+    toast.style.pointerEvents = 'none';
+    toast.style.boxShadow = '0 0.2em 0.5em #aaa';
+    document.body.append(toast);
+    toast.hidden = true;
+    let timer;
+    const hide = () => {
+      toast.innerText = '';
+      toast.hidden = true;
     }
-    return picky;
+    return (message) => {
+      clearTimeout(timer);
+      timer = setTimeout(hide , 1000);
+      toast.hidden = false;
+      toast.innerText = message
+          .toString()
+          .slice(0, TOAST_MAX_LENGTH)
+          .split('\n')[0]
+          .replace(/[:*.,]$/, '');
+    }
+  })();
+
+  const container = (function createContainer() {
+    const div = document.createElement('div');
+    div.classList = BASE_ID + 'container';
+    div.innerHTML = 'Loading ...';
+    document.body.append(div);
+    async function setContent(html) {
+      await util.wait();
+      div.innerHTML = html;
+    }
+    return {div, setContent};
+  })();
+
+  async function boom({proxy}) {
+    const coords = proxy.getCoords();
+    const top =
+        (coords.top || 100) + (coords.height / 2) - BOOM_RADIUS;
+    const left =
+        (coords.left || 100) + (coords.width / 2) - BOOM_RADIUS;
+    const div = document.createElement('div');
+    div.classList = BASE_ID + 'boom';
+    div.style.top = top + 'px';
+    div.style.left = left + 'px';
+    document.body.append(div);
+    await util.wait(50);
+    div.style.backgroundColor = '#dd4b39';
+    await util.wait(300);
+    document.body.removeChild(div);
   }
 
-  function getFreshElement(elementSelector, name) {
-    const {domSelector, pickElements} = elementSelector;
-    return findAndProcessDomElements(
-        domSelector, pickElements, 'fresh', 'Fresh ' + name
-    )[0];
-  }
-
-  function isHidden(domElement) {
-    return (domElement.offsetParent === null);
-  }
-
-  function namePlusLetter(name = 'Unnamed', idx) {
-    const letter = String.fromCharCode(65 + idx);
-    return `${name} ${letter}`;
-  }
-
-  function safeSetter(domElement, name, newValue) {
-    const currentValue = domElement.value;
-    if (currentValue === newValue) {
-      log.lowLevel(`No change to ${name}'.`);
-      return;
-    }
-    if(!EDITABLE_ELEMENT_TYPES.includes(domElement.type)) {
-      throw new Error(`Cannot set value on ${domElement.type} elements`);
-    }
-    domElement.value = newValue;
-    eventDispatcher(domElement, 'blur');
-    log.changeValue(
-      `Changing '${name}' from '${currentValue}' to '${newValue}'.`,
-      true,
-    );
-  }
-
-  function getWrapper(domElement, mode, name, elementSelector) {
-    const cached = domElementWeakMap.get(domElement);
-    if (cached && mode === 'fresh') {
-      mode = cached.mode;
-    } else if (cached) {
-      if (cached.mode !== mode) {
-        log.warn(
-          `Didn't change ${name} element mode from ${cached.mode}.`,
-          true,
-        )
-      }
-      return cached;
-    } else if (mode === 'fresh') {
-      mode = 'static';
-    }
-
-    const wrapper = {
-      value: domElement.value,
-      name: name,
-      get checked() {
-        return domElement.checked;
-      },
-      get disabled() {
-        return domElement.disabled;
-      },
-      get textContent() {
-        return domElement.textContent;
-      },
-      set cssText(string) {
-        domElement.style.cssText = string;
-      },
-      click() {
-        domElement.click();
-      },
-      blur() {
-        domElement.blur();
-      },
-      focus() {
-        domElement.focus();
-      },
-      scrollIntoView() {
-        domElement.scrollIntoView();
-      },
-      toString() {
-        return `${name}: ${domElement.value}`;
-      },
-      fresh() {
-        return getFreshElement(elementSelector, name);
-      },
-      unsafe() {
-        return domElement;
-      },
-    }
-    function goodSetter(value) {
-      safeSetter(domElement, name, value)
-    }
-    function brokenSetter(newValue) {
-      throw new Error(
-          `Cannot set value of ${this.name} to '${newValue}'. ` + 
-          `Element is not programmatically editable.`
-      );
-    }
-
-    wrapper.mode = mode;
-    if (mode === 'static') {
-      return Object.freeze({...wrapper});
-    }
-    if (mode === 'programmable') {
-      Object.defineProperty(
-        wrapper, 'value', {get: () => domElement.value, set: goodSetter,}
-      );
-      return Object.seal(wrapper);
-    }
-    if (mode === 'user-editable') {
-      Object.defineProperty(
-        wrapper, 'value', {get: () => domElement.value, set: brokenSetter,}
-      );
-      return Object.seal(wrapper);
-    }
-  }
-
-  function wrapElement(domElement, idx, options) {
-    if (!util.isDomElement(domElement)) {
-      throw new Error('Not a DOM element');
-    }
-    const {domSelector, pickElements, mode, name} = options;
-    const elementSelector = {domSelector, pickElements: [pickElements[idx]]};
-    const nameA = namePlusLetter(name, idx);
-    const wrapper = getWrapper(domElement, mode, nameA, elementSelector);
-    if (mode !== 'fresh') {
-      domElementWeakMap.set(domElement, wrapper);
-    }
-    return wrapper;
-  }
-
-  function setAllReactions(domElements, wrappers, reactions) {
-    wrappers.forEach((wrapper, idx, group) => {
-      const domElement = domElements[idx];
-      const context = {wrapper, idx, group};
-      setReactions(domElement, reactions, context);
-    });
-  }
-
-  function findAndProcessDomElements(domSelector, pickElements, mode, name, reactions) {
-    if (!domSelector || !pickElements) {
-      throw new Error('Missing selector parameters.');
-    }
-    const domElements = findInDom(domSelector, pickElements);
-    const options = {domSelector, pickElements, mode, name};
-    const wrappers = domElements.map((element,idx) => {
-      return wrapElement(element, idx, options);
-    });
-    if (mode !== 'fresh') {
-      setAllReactions(domElements, wrappers, reactions);
-    }
-    return wrappers;
-  }
-
-  /**
-   * Dispatch simple events to DOM elements.
-   */
-  function eventDispatcher(domElement, type) {
-    util.wait(20).then(() => domElement.dispatchEvent(new Event(type)));
-  }
-
-  return {wrap: findAndProcessDomElements};
-})();
-
-
-
-
-////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
-// WORKFLOW METHODS module
-
-var shared = (function workflowMethodsModule() {
-  'use strict';
- 
-  /**
-   * @fileoverview Exports an object packed with methods
-   * designed to add reactions to wrappers.
-   */
-
-  const ALERT_LEVELS = ['red', 'orange', 'yellow'];
-
-  /**
-   * Conditionally set a new value to a wrapper.
-   *
-   * @param {Object} o
-   * @param {string} o.to - The new value.
-   * @param {function} o.when - A function that returns an object containing
-   * a hit property, a wrapper property and optionally a message property.
-   * If the hit property is true, the wrapper value is changed.
-   * The message property is ignored. 
-   */
-  function changeValue({to, when}) {
-    if (typeof to !== 'string') {
-      throw new Error('ChangeValue requires a new string value');
-    }
-    if (typeof when !== 'function') {
-      throw new Error('ChangeValue requires a function');
-    }
-    return function (...params) {
-      const {hit, wrapper} = when(...params);
-      if (hit) {
-        wrapper.value = to;
-      }
-    }
-  }
-  test.group('changeValue', () => {
-    const wrapper = {value: 'z'};
-    const tester = (wrapper) => ({hit: true, wrapper}); 
-    changeValue({to: 'x', when: tester})(wrapper);
-    test.ok(wrapper.value === 'x', 'Changed value');
-  });
-
-  /**
-   * Report a new issue or update the status of an issue.
-   *
-   * @param {Object} o
-   * @param {string} o.issueLevel - The potential issueLevel of the issue.
-   * @param {string} o.issueType - The type of the issue.
-   * @param {function} o.when - A function that returns an object containing
-   * a hit property, a wrapper property and optionally a message property.
-   * If the hit property is true, the issue is flagged according to the color
-   * parameter, else it is flagged as 'ok'.
-   * The message property is attached to the issue.
-   */
-  function flagIssue({issueLevel, issueType, when}) {
-    if (!ALERT_LEVELS.includes(issueLevel)) {
-      throw new Error(
-        issueLevel + ' is not a known issueLevel. Please use:' +
-        util.mapToBulletedList(ALERT_LEVELS),
-      );
-    }
-    if (typeof when !== 'function') {
-      throw new Error('ChangeValue requires a function');
-    }
-    if (typeof issueType !== 'string') {
-      throw new Error('ChangeValue requires a new string value');
-    }
-    function flagThis(...params) {
-      const {wrapper, hit, message} = when(...params);
-      if (hit) {
-        flag({wrapper, issueType, issueLevel, message});
-      } else {
-        flag({wrapper, issueType});
-      }
+  function update() {
+    let html = [];
+    const p = (type, text, title = '') => {
+      const slicedText = text.slice(0, GUI_TEXT_MAX_LENGTH);
+      html.push(`<p class="${type}"><em>${title}</em> ${slicedText}</p>`);
     };
-    return util.delay(flagThis, 20);
-  }
-
-  /**
-   * A function that returns an object containing a hit property, a wrapper
-   * property and optionally a message property.
-   *
-   * @param {RegExp} regex - Regular expression that will be matched with the
-   * wrapper value.
-   * @param {boolean} shouldMatch - Is a match between regex and wrapper
-   * value considered a successful hit?
-   * @return {Object} o
-   * @return {Object} o.wrapper - The matched wrapper
-   * @return {Object} o.hit - Was the match successful?
-   * @return {Object} o.message - 
-   * @example - Using testRegex(/x/, true) on a wrapper with a value of 'x'
-   * would return an object with hit = true, message = 'x did match /x/'
-   */
-  function testRegex(regex, shouldMatch) {
-    return (wrapper) => {
-      const hit = regex.test(wrapper.value) === shouldMatch;
-      const didOrShouldNot = shouldMatch ? 'did' : 'should not';
-      const message = `${wrapper.value} ${didOrShouldNot} match ${regex}`;
-      return {wrapper, hit, message};
+    const x = [];
+    for (let counter in guiState.counters) {
+      x.push(counter + ': ' + guiState.counters[counter]);
     }
-  };
-  test.group('textRegex', () => {
-    const wrapper = {value: 'x'};
-    const one = testRegex(/x/, true)(wrapper);
-    test.ok(one.hit === true, 'one: hit');
-    test.ok(one.message === 'x did match /x/', 'one message');
-    const two = testRegex(/x/, false)(wrapper);
-    test.ok(two.hit === false, 'two: no hit');
-    test.ok(two.message === 'x should not match /x/', 'two: message');
-    const three = testRegex(/c/, false)(wrapper);
-    test.ok(three.hit === true, 'three: hit');
-    test.ok(three.message === 'x should not match /c/', 'three: message');
-  });
-
-  function testLength ({min, max}) {
-    return (wrapper) => {
-      const length = wrapper.value.length;
-      let hit = false;
-      if (min && min > length) {
-        return {wrapper, hit: true, message: 'Value is too short'}
-      }
-      if (max && max < length) {
-        return {wrapper, hit: true, message: 'Value is too long'}
-      }
-      return {wrapper, hit: false};
+    p('stage', util.capitalize('first letter', guiState.stage), 'Stage');
+    p('counter', x.join(' | '));
+    for (let issue of guiState.issues) {
+      p(issue.issueLevel, issue.message, issue.issueType);
+      boom(issue);
     }
-  };
-  test.group('textLength', () => {
-    const one = testLength({min: 2})({value: 'x'});
-    test.ok(one.hit === true, 'one: hit');
-    test.ok(one.message === 'Value is too short', 'one: message');
-    const two = testLength({max: 3})({value: 'x'});
-    test.ok(two.hit === false, 'two: no hit');
-    test.ok(two.message === undefined, 'two: message');
-    const three = testLength({min: 2, max: 5})({value: 'x x x'});
-    test.ok(three.hit === false, 'one: no hit');
-    test.ok(three.message === undefined, 'two: message');
-  }, true);
-
-  /**
-   * Tests whether any wrappers in a group have the same value, and flags
-   * wrappers that repeat previous values.
-   *
-   * @param {Object} _ - Unused parameter. The triggering wrapper.
-   * @param {number} __ - Unused parameter. The index of the triggering wrapper.
-   * @param {Object[]} group - Array of wrappers to check for duplicate values.
-   */
-  function alertOnDuplicateValues (_, __, group) {
-      const values = [];
-      for (let i = 0; i < group.length; i++) {
-        const value = group[i].value;
-        if (values.includes(value)) {
-          const message = 'Duplicate values: ' + value;
-          flag({wrapper: group[i], issueType: 'Dupes', issueLevel: 'red', message});
-        } else {
-          flag({wrapper: group[i], issueType: 'Dupes'});
-        }
-        if (value) {
-          values.push(value);
-        }
-      }
-  };
-  alertOnDuplicateValues = util.delay(alertOnDuplicateValues, 1000);
-
-  /**
-   * @param {Object} _ - Unused parameter. The triggering wrapper.
-   * @param {number} idx - Index of the wrapper in the group.
-   * @param {Object[]} group - Array of two wrappers.
-   */
-  function fallThrough (_, idx, group) {
-    if (group.length !== 2) {
-      throw new Error('fallThrough requires two wrappers.')
-    }
-    if (idx > 0) {
-      return;
-    }
-    group[1].value = group[0].value;
-    group[0].value = 'Moved';
-    log.notice(
-      `Fallthrough: '${group[1].value}' became '${group[0].value}'`,
-      true,
-    );
-  };
-  test.group('fallThrough', () => {
-    const a = {value: 'a'};
-    const b = {value: 'b'};
-    fallThrough(1,0,[a,b]);
-    test.ok(a.value === 'Moved', 'a.value = Moved');
-    test.ok(b.value === 'a', 'b.value = a');
-  }, true);
-  fallThrough = util.delay(fallThrough, 0);
-
-  /**
-   * Cycle a select DOM element through a series of options.
-   *
-   * @param {string[]} options - Options to cycle through.
-   */
-  function cycleSelect(options) {
-    /**
-     * @param {Object} wrapper - Select DOM element wrapper.
-     */
-    function cycle(wrapper) {
-      if (!options.includes(wrapper.value)) {
-        throw new Error('Element does not have a matching value.');
-      }
-      const idx = options.findIndex((option) => option === wrapper.value);
-      const nextIdx = (idx + 1) % options.length;
-      wrapper.value = options[nextIdx];
-      wrapper.blur();
-    }
-    return cycle;
+    container.setContent(html.join('\n'));
   }
-  test.group('cycleSelect', () => {
-    const toggleSelectYesNo = cycleSelect(['yes', 'no']);
-    const wrapper = {value: 'no', blur: () => {}};
-    toggleSelectYesNo(wrapper);
-    test.ok(wrapper.value === 'yes', 'Changed to yes');
-    toggleSelectYesNo(wrapper);
-    test.ok(wrapper.value === 'no', 'Changed back');
-  });
-
-  return {
-    fallThrough,
-    redAlertOnDupe: alertOnDuplicateValues,
-
-    addDashes: changeValue({
-      to: '---',
-      when: testRegex(/^$/, true),
-    }),
-    redAlertExceed25Chars: flagIssue({
-      issueLevel: 'red',
-      issueType: 'More than 25 characters long',
-      when: testLength({max: 25}),
-    }),
-
-    removeDashes: changeValue({
-      to: '',
-      when: testRegex(/---/, true),
-    }),
-    removeUrl: changeValue({
-      to: '',
-      when: testRegex(/^http/, true),
-    }),
-    toggleSelectYesNo: cycleSelect(['yes', 'no']),
-  }
-}
-)();
-
-
-
-
-////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
-// WORKFLOW module
-
-var {detectWorkflow, flows} = (function workflowModule() {
-  // @todo Check the dom for signs (ideally using wrap).
-  function detectWorkflow() {
-    return 'ratingHome';
-  }
-
-  function ratingHome() {
-    const textboxBundle = util.bundle(
-        shared.redAlertExceed25Chars,
-        shared.redAlertOnDupe,
-    );
-    wrap('textarea', [0,1,2], 'programmable', 'Text', {
-      onInteract: textboxBundle,
-      onLoad: textboxBundle,
-    });
-
-    wrap('textarea', [3,4,5], 'programmable', 'NoUrl', {
-      onFocusOut: shared.removeUrl,
-      onPaste: shared.removeUrl,
-    });
-
-    wrap('textarea', [6,7,8], 'programmable', 'Dashes', {
-      onFocusIn: shared.removeDashes,
-      onFocusOut: shared.addDashes,
-      onLoad: shared.addDashes,
-    });
-    
-    [[0,3],[1,4],[2,5]].forEach(pair => {
-      wrap('textarea', pair, 'programmable', 'Fall', {
-        onPaste: shared.fallThrough,
-      });
-    });
-
-    wrap('select', [0,1], 'programmable', 'Select', {
-      onClick: shared.toggleSelectYesNo,
-    });
-
-    setGlobalReactions({
-      onKeydown_Backquote: () => log.ok('Start'),
-      onKeydown_Backslash: () => log.ok('Approve'),
-      onKeydown_BracketLeft: () => log.ok('CounterReset'),
-      onKeydown_BracketRight: () => log.ok('Skip'),
-    });
-  }
-
-  const flows = {ratingHome};
-  return {detectWorkflow, flows};
 })();
-
-
-
-
-////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
-// APP module
-
-function main() {
-  const name = detectWorkflow();
-  if (!name) {
-    return log.warn('No workflow identified');
-  }
-  const flowInit = flows[name];
-  flowInit();
-  log.notice(`${name} screen loaded`);
-};
-
-main();
-
-
-/**
- * @todo Build out functional GUI
- *
- * @todo Save function (get several elements)
- *
- * @todo Find prefill (check key elements for matching values,
- * write to other elements)
- *
- * @todo Skip function
- *
- * @todo CounterReset
- *
- * @todo Change wrap API to use a single Object as input
- *
- * @todo Wrappers should expose coordinates
- */
