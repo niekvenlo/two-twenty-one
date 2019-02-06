@@ -1318,7 +1318,7 @@ var user = (function userDataModule() {
       const ts = timestamp(time);
       const string = payloadToString(payload, ts.length);
       const aster = (save) ? ' ' : '-';
-      console.log(`%c${ts}%c${aster} ${string}`, TIMESTAMP_STYLE, `color: ${color}`);
+      console.log(`%c${ts}%c${aster}${string}`, TIMESTAMP_STYLE, `color: ${color}`);
     }
 
     /**
@@ -1548,7 +1548,13 @@ var eventReactions = (function eventListenersModule() {
     'Backslash',
     'BracketRight',
     'BracketLeft',
-    'CtrlEnter', // Special case.
+    'NumpadAdd',
+    'NumpadSubtract',
+    'NumpadMultiply',
+    'NumpadAdd',
+    'CtrlEnter',
+    'CtrlNumpadEnter',
+    'CtrlR',
   ]);
 
   /**
@@ -1843,15 +1849,9 @@ var eventReactions = (function eventListenersModule() {
   }
 
   function maybePreventDefault(event) {
-    if (PREVENT_DEFAULT_ON.includes(event.code)) {
+    if (PREVENT_DEFAULT_ON.includes(eventToString(event))) {
       event.preventDefault();
     }
-    if (PREVENT_DEFAULT_ON.includes('CtrlEnter')) {
-      if (event.ctrlKey === true && /Enter/.test(event.code)) {
-        event.preventDefault();
-      }
-    }
-    
   }
 
   /**
@@ -2383,7 +2383,7 @@ var {ー, ref} = (function domAccessModule() {
     const addRule = (p) => style.sheet.insertRule(`.${BASE_ID}${p}`, 0);
     const rules = [
       `container { background-color: #f4f4f4 }`,
-      `container { font-size: 1.2em }`,
+      `container { font-size: 1.5em }`,
       `container { opacity: 0.8 }`,
       `container { overflow: hidden }`,
       `container { position: fixed }`,
