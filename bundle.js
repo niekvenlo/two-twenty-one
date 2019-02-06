@@ -1577,6 +1577,8 @@ var eventReactions = (function eventListenersModule() {
     'CtrlEnter',
     'CtrlNumpadEnter',
     'CtrlR',
+    'AltArrowLeft',
+    'AltArrowRight',
   ]);
 
   /**
@@ -2168,36 +2170,6 @@ var {ー, ref} = (function domAccessModule() {
   }
 
   /**
-   * Attempt to append another name to the name property of an HTMLElement
-   * proxy.
-   *
-   * @param {Object} proxy
-   * @param {string} name
-   * @param {number} idx
-   * @return {Object} proxy
-   */
-  function appendToNameOfCachedProxy(proxy, name, idx) {
-    if (!proxy) {
-      return;
-    }
-    if (proxy.name.includes(name)) {
-      return proxy;
-    }
-    try {
-      proxy.name += ' | ' + namePlusIdx(name, idx);
-    } catch (e) {
-      if (e instanceof TypeError) {
-        user.log.warn(
-          `Cannot append ${name} to name of static proxy ${proxy.name}`,
-        );
-      } else {
-        throw e;
-      }
-    }
-    return proxy;
-  }
-
-  /**
    * Create an object that can be used to find a fresh HTMLElement on the
    * page. This is based on the original values passed into the ー function.
    *
@@ -2208,7 +2180,7 @@ var {ー, ref} = (function domAccessModule() {
     const {select, pick} = options;
     return {
       select,
-      pick: [pick[idx]],
+      pick: (pick ? [pick[idx]] : []),
     };
   }
 
@@ -2235,7 +2207,7 @@ var {ー, ref} = (function domAccessModule() {
           true,
         )
       }
-      return appendToNameOfCachedProxy(cached, options.name, idx);
+      return cached;
     } else if (options.mode === 'fresh') {
       mode = 'static';
     }
@@ -2268,12 +2240,6 @@ var {ー, ref} = (function domAccessModule() {
    * @param {number[]} o.pick
    */
   function getHtmlElements({rootSelect, rootNumber, select, pick}) {
-    if (!pick) {
-      throw new Error(
-        'Required paramers missing: ' +
-        util.mapToBulletedList([rootSelect, rootNumber, select, pick]),
-      )
-    }
     const simpleSelect = () => {
       return [...document.querySelectorAll(select)];
     }
@@ -2282,6 +2248,9 @@ var {ー, ref} = (function domAccessModule() {
           .querySelectorAll(select || '*');
     }
     const allElements = (rootSelect) ? complexSelect() : simpleSelect();
+    if (!pick) {
+      return allElements;
+    }
     const pickedElements = [];
     for (let number of pick) {
       const picked = allElements[number];
