@@ -507,8 +507,8 @@ var util = (function utilityModule() {
   });
 
   /**
-   * Returns a Promise that will run repeatedly, until
-   * it returns a truthy value.
+   * Returns an async function that will run the input function
+   * repeatedly, until it returns a truthy value.
    *
    * @param {function} func - The function to be decorated.
    * @param {number} retries - The number of times to run the function.
@@ -666,6 +666,7 @@ var user = (function userDataModule() {
     low: 'Gainsboro',
     changeValue: 'LightPink',
     config: 'MediumOrchid',
+    counter: 'DarkCyan',
   };
 
   /**
@@ -705,6 +706,13 @@ var user = (function userDataModule() {
     };
     atest.group('local', {
       'getStore': () => local.getStore(CONFIG_STORE_NAME),
+      'setStore': () => {
+        const preserve = local.getStore(CONFIG_STORE_NAME);
+        local.setStore(CONFIG_STORE_NAME, {test: true});
+        const successfullySet = local.getStore(CONFIG_STORE_NAME).test;
+        local.setStore(CONFIG_STORE_NAME, preserve);
+        return successfullySet;
+      },
     });
 
     /**
@@ -737,7 +745,21 @@ var user = (function userDataModule() {
         local.setStore(storeName, data);
       },
     };
-    
+    atest.group('cached', {
+      'getStore': () => local.getStore(CONFIG_STORE_NAME),
+      'setStore': () => {
+        const preserve = local.getStore(CONFIG_STORE_NAME);
+        local.setStore(CONFIG_STORE_NAME, {test: true});
+        const successfullySet = local.getStore(CONFIG_STORE_NAME).test;
+        local.setStore(CONFIG_STORE_NAME, preserve);
+        return successfullySet;
+      },
+      'cached': async () => {
+        await util.wait();
+        return Object.entries(storeCache).length !== 0;
+      },
+    });
+
     /**
      * Add a data element to an Array data store.
      * If no locale is specified, element is added to a store that
@@ -1172,13 +1194,13 @@ var user = (function userDataModule() {
       if (name) {
         const currentCount = allCounts[name];
         util.wait().then(() => { // @todo Fix wait hack. Used for testing.
-          user.log.notice(
+          user.log.counter(
             `Resetting counter ${name} from ${currentCount}`,
           );
         });
         delete allCounts[name];
       } else {
-        user.log.notice(
+        user.log.counter(
           'Resetting all counters:' +
           util.mapToBulletedList(allCounts),
         );
@@ -2453,8 +2475,10 @@ var {ー, ref} = (function domAccessModule() {
 
   async function boom({proxy}) {
     const coords = proxy.getCoords();
-    const top = coords.top + (coords.height / 2) - BOOM_RADIUS;
-    const left = coords.left + (coords.width / 2) - BOOM_RADIUS;
+    const top =
+        (coords.top || 100) + (coords.height / 2) - BOOM_RADIUS;
+    const left =
+        (coords.left || 100) + (coords.width / 2) - BOOM_RADIUS;
     const div = document.createElement('div');
     div.classList = BASE_ID + 'boom';
     div.style.top = top + 'px';
