@@ -178,7 +178,7 @@ var shared = (function workflowMethodsModule() {
         packet.issueLevel = issueLevel;
         packet.message = message;
         if (ref.editButton && ref.editButton[0]) {
-          ref.editButton.click();
+          ref.editButton[0].click();
         }
       }
       util.dispatch('issueUpdate', packet);
@@ -687,7 +687,7 @@ var shared = (function workflowMethodsModule() {
       const button = ー(confirmButtonSelector)[0];
       if (button) {
         button.click();
-        user.log.notice('Skipping task ' + environment.taskId().decoded);
+        user.log.notice('Skipping task\n' + environment.taskId().decoded);
         user.counter.add('Skipped');
         return true;
       }
@@ -717,7 +717,8 @@ var shared = (function workflowMethodsModule() {
       user.log.warn('Not ready to submit');
       return false;
     }
-    user.log.notice('Submitting ' + environment.taskId().decoded);
+    user.log.notice('Submitting\n' + environment.taskId().decoded);
+    guiUpdate('Submitting');
     await util.wait(100);
     button.click();
     util.dispatch('issueUpdate', {issueType: 'reset'});
@@ -730,8 +731,9 @@ var shared = (function workflowMethodsModule() {
     for (let idx in group) {
       group[idx].tabIndex = idx + 1;
     }
-    group[0].focus();
+    group[3].focus();
   }
+  setTabOrder = util.debounce(setTabOrder);
 
   function removeTabIndex(proxy) {
     proxy.tabIndex = -1;
@@ -833,6 +835,8 @@ var flows = (function workflowModule() {
           user.log.warn('Continue button did not appear.', {print: false});
         }
         main();
+        await util.wait(500);
+        shared.guiUpdate('Press Start');
       }
 
       /**
@@ -937,8 +941,7 @@ var flows = (function workflowModule() {
         }
         const submitted = await shared.submit();
         if (submitted) {
-          shared.guiUpdate('Submitting');
-          await util.wait(200);
+          await util.wait(1000);
           shared.guiUpdate('Press Start');
         }
       },
@@ -1022,6 +1025,52 @@ var flows = (function workflowModule() {
       }
     }
 
+    function swapLeft(_, idx) {
+      const text = ref.textAreas;
+      const link = ref.linkAreas;
+      const screenshot = ref.screenshots;
+      if (idx < 1) {
+        return;
+      }
+      [text[idx].value, text[idx - 1].value] =
+          [text[idx - 1].value, text[idx].value];
+      [link[idx].value, link[idx - 1].value] =
+          [link[idx - 1].value, link[idx].value];
+      [screenshot[idx].value, screenshot[idx - 1].value] =
+          [screenshot[idx - 1].value, screenshot[idx].value];
+      text[idx - 1].focus();
+      user.log.ok('Swapped items', {print: false, save: false});
+    }
+
+    function swapRight(_, idx) {
+      const text = ref.textAreas;
+      const link = ref.linkAreas;
+      const screenshot = ref.screenshots;
+      if (idx + 1 > text.length || text[idx + 1].disabled) {
+        return;
+      }
+      [text[idx].value, text[idx + 1].value] =
+          [text[idx + 1].value, text[idx].value];
+      [link[idx].value, link[idx + 1].value] =
+          [link[idx + 1].value, link[idx].value];
+      [screenshot[idx].value, screenshot[idx + 1].value] =
+          [screenshot[idx + 1].value, screenshot[idx].value];
+      text[idx + 1].focus();
+      user.log.ok('Swapped items', {print: false, save: false});
+    }
+
+    function deleteItem(_, idx) {
+      const text = ref.textAreas;
+      const link = ref.linkAreas;
+      const screenshot = ref.screenshots;
+
+      text[idx].value = '';
+      link[idx].value = '';
+      screenshot[idx].value = '';
+      text[idx].focus();
+      user.log.ok('Deleted item', {print: false, save: false});
+    }
+
     /**
      * Set up event handlers.
      */
@@ -1041,7 +1090,11 @@ var flows = (function workflowModule() {
           shared.noDuplicateValues,
           shared.forbiddenPhrase,
         ],
+        onKeydown_CtrlAltArrowLeft: swapLeft,
+        onKeydown_CtrlAltArrowRight: swapRight,
+        onKeydown_CtrlDelete: deleteItem,
         css: {backgroundColor: 'PapayaWhip'},
+        ref: 'textAreas',
       });
 
       ー({
@@ -1057,8 +1110,8 @@ var flows = (function workflowModule() {
           shared.removePorg,
           shared.removeScreenshot,
         ],
-        onKeydown_AltArrowLeft: () => console.log('dd'),
         css: {backgroundColor: 'Cornsilk'},
+        ref: 'linkAreas'
       });
 
       ー({
@@ -1111,7 +1164,7 @@ var flows = (function workflowModule() {
       ー({
         name: 'AllUrls',
         select: 'textarea',
-        pick: [3, 7, 11, 15, 19, 4, 8, 12, 16, 20, 65],
+        pick: [0, 3, 7, 11, 15, 19, 4, 8, 12, 16, 20, 65],
         ref: 'openInTabs',
       });
 
@@ -1205,9 +1258,15 @@ var flows = (function workflowModule() {
       });
 
       ー({
+        name: 'TabRemove',
+        select: 'label, button',
+        onLoad: shared.removeTabIndex,
+      });
+
+      ー({
         name: 'TabOrder',
-        select: 'textarea',
-        pick: [1, 2, 3, 6, 7, 10, 11, 14, 15, 18, 19, 4, 8, 12, 16, 20],
+        select: 'textarea, label',
+        pick: [0, 1, 2, 4, 5, 7, 8, 9, 12, 13, 18, 19, 24, 25, 30, 31, 10, 14, 20, 26, 32],
         onLoad: shared.setTabOrder,
       });
 
