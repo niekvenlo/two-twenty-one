@@ -177,6 +177,9 @@ var shared = (function workflowMethodsModule() {
       if (hit === is) {
         packet.issueLevel = issueLevel;
         packet.message = message;
+        if (ref.editButton && ref.editButton[0]) {
+          ref.editButton.click();
+        }
       }
       util.dispatch('issueUpdate', packet);
     };
@@ -289,7 +292,7 @@ var shared = (function workflowMethodsModule() {
     }
   }
 
-  function orangeAlertOnForbiddenPhrase(proxy) {
+  function forbiddenPhrase(proxy) {
     const phrases = user.storeAccess({
       feature: 'ForbiddenPhrases',
       locale: environment.locale(),
@@ -301,8 +304,9 @@ var shared = (function workflowMethodsModule() {
         const clearValue = proxy.value.replace(/\s/, '░');
         const clearPhrase = phrase.replace(/\s/, '░');
         packet.issueLevel = 'orange';
-        packet.message =
-            (message) ? message : `'${clearValue}' matches '${clearPhrase}'`;
+        packet.message = (message)
+            ? `${message} (${clearValue})`
+            : `'${clearValue}' matches '${clearPhrase}'`;
         break;
       }
     }
@@ -573,7 +577,7 @@ var shared = (function workflowMethodsModule() {
    * @param {number} __ - Unused parameter. The index of the triggering proxy.
    * @param {Object[]} group - Array of proxies to check for duplicate values.
    */
-  function redAlertOnDuplicateValues(_, __, group, testing) {
+  function noDuplicateValues(_, __, group, testing) {
     const values = [];
     const dupes = [];
     const packets = [];
@@ -605,9 +609,9 @@ var shared = (function workflowMethodsModule() {
     }
     return packets;
   };
-  test.group('redAlertOnDuplicateValues', () => {
+  test.group('noDuplicateValues', () => {
     const run = (group) => {
-      return redAlertOnDuplicateValues(0, 0, group, true)
+      return noDuplicateValues(0, 0, group, true)
           .filter(issue => issue.message);
     }
     const a = {};
@@ -622,7 +626,7 @@ var shared = (function workflowMethodsModule() {
     test.ok(run([a, b, c, d, e]).length === 2, 'Five proxies, two issues');
     test.todo('Async test');
   });
-  redAlertOnDuplicateValues = util.delay(redAlertOnDuplicateValues, 100);
+  noDuplicateValues = util.delay(noDuplicateValues, 100);
 
   /**
    * Pops up a confirmation dialog. On confirmation, will reset all counters.
@@ -631,7 +635,7 @@ var shared = (function workflowMethodsModule() {
     const question =
         'Please confirm.\nAre you sure you want to reset all counters?' +
         util.mapToBulletedList(user.counter.get());
-    user.log.notice(question, {toast: true});
+    user.log.counter(question, {toast: true});
     await util.wait();
     if (confirm(question)) {
       user.counter.reset();      
@@ -697,6 +701,7 @@ var shared = (function workflowMethodsModule() {
     }
     skipButton.click();
     await util.retry(clickConfirm, RETRIES, DELAY)();
+    util.dispatch('issueUpdate', {issueType: 'reset'});
     shared.tabs.close();
   }
 
@@ -715,12 +720,18 @@ var shared = (function workflowMethodsModule() {
     user.log.notice('Submitting ' + environment.taskId().decoded);
     await util.wait(100);
     button.click();
+    util.dispatch('issueUpdate', {issueType: 'reset'});
     user.counter.add('Submitted');
     return true;
   }
   submit = util.debounce(submit, 100);
 
-
+  function setTabOrder(_, __, group) {
+    for (let idx in group) {
+      group[idx].tabIndex = idx + 1;
+    }
+    group[0].focus();
+  }
 
   function removeTabIndex(proxy) {
     proxy.tabIndex = -1;
@@ -732,12 +743,13 @@ var shared = (function workflowMethodsModule() {
     fallThrough,
     guiUpdate,
     keepAlive,
-    orangeAlertOnForbiddenPhrase,
+    forbiddenPhrase,
     prefill,
-    redAlertOnDuplicateValues,
+    noDuplicateValues,
     removeTabIndex,
     resetCounter,
     saveExtraction,
+    setTabOrder,
     skipTask,
     submit,
 
@@ -769,6 +781,12 @@ var shared = (function workflowMethodsModule() {
       to: '',
       when: testRegex(/gleplex/),
       is: false,
+    }),
+
+    removePorg: changeValue({
+      to: '',
+      when: testRegex(/le.com\/eva/),
+      is: true,
     }),
 
     removeScreenshot: changeValue({
@@ -990,8 +1008,12 @@ var flows = (function workflowModule() {
     }
 
     function focusOnAddDataOrEdit() {
-      ref.addDataButton && ref.addDataButton[0] && ref.addDataButton[0].focus();
-      ref.editButton && ref.editButton[0] && ref.editButton[0].focus();
+      if (ref.addDataButton && ref.addDataButton[0]) {
+        ref.addDataButton[0].focus();
+      }
+      if (ref.editButton && ref.editButton[0]) {
+        ref.editButton[0].focus();
+      }
     }
     
     function clickAddItem() {
@@ -1011,13 +1033,13 @@ var flows = (function workflowModule() {
         pick: [2, 6, 10, 14, 18],
         onInteract: [
           shared.redAlertExceed25Chars,
-          shared.redAlertOnDuplicateValues,
-          shared.orangeAlertOnForbiddenPhrase,
+          shared.noDuplicateValues,
+          shared.forbiddenPhrase,
         ],
         onLoad: [
           shared.redAlertExceed25Chars,
-          shared.redAlertOnDuplicateValues,
-          shared.orangeAlertOnForbiddenPhrase,
+          shared.noDuplicateValues,
+          shared.forbiddenPhrase,
         ],
         css: {backgroundColor: 'PapayaWhip'},
       });
@@ -1032,8 +1054,10 @@ var flows = (function workflowModule() {
         ],
         onPaste: [
           shared.requireUrl,
+          shared.removePorg,
           shared.removeScreenshot,
         ],
+        onKeydown_AltArrowLeft: () => console.log('dd'),
         css: {backgroundColor: 'Cornsilk'},
       });
 
@@ -1079,8 +1103,8 @@ var flows = (function workflowModule() {
         name: 'LinksAndLP',
         select: 'textarea',
         pick: [1, 3, 7, 11, 15, 19],
-        onInteract: shared.redAlertOnDuplicateValues,
-        onPaste: shared.redAlertOnDuplicateValues,
+        onInteract: shared.noDuplicateValues,
+        onPaste: shared.noDuplicateValues,
       });
 
 
@@ -1180,6 +1204,13 @@ var flows = (function workflowModule() {
         ref: 'saveExtraction',
       });
 
+      ー({
+        name: 'TabOrder',
+        select: 'textarea',
+        pick: [1, 2, 3, 6, 7, 10, 11, 14, 15, 18, 19, 4, 8, 12, 16, 20],
+        onLoad: shared.setTabOrder,
+      });
+
       eventReactions.setGlobal({
         onKeydown_CtrlEnter: submit,
         onKeydown_CtrlNumpadEnter: submit,
@@ -1268,12 +1299,12 @@ var flows = (function workflowModule() {
         select: 'textarea',
         pick: [3, 6, 9, 12, 15],
         onInteract: [
-          shared.redAlertOnDuplicateValues,
-          shared.orangeAlertOnForbiddenPhrase,
+          shared.noDuplicateValues,
+          shared.forbiddenPhrase,
         ],
         onLoad: [
-          shared.redAlertOnDuplicateValues,
-          shared.orangeAlertOnForbiddenPhrase,
+          shared.noDuplicateValues,
+          shared.forbiddenPhrase,
         ],
         css: {backgroundColor: 'PapayaWhip'},
       });
