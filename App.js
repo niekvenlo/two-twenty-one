@@ -308,7 +308,6 @@ var shared = (function workflowMethodsModule() {
     }
     util.dispatch('issueUpdate', packet);
   }
-  orangeAlertOnForbiddenPhrase = util.debounce(orangeAlertOnForbiddenPhrase, 50);
 
   /**
    * Cycle a select HTMLElement through a series of options.
@@ -343,16 +342,6 @@ var shared = (function workflowMethodsModule() {
 
 ////////////////////////////////////////////////////////////////////////////////
   // Exported functions
-  /**
-   * Returns a promise that repeatedly checks whether the taskId changes.
-   * Promise resolves successfully if the taskId changes, or throws an error
-   * if it doesn't change.
-   *
-   * @return {Promise}
-   */
-  async function awaitNewPage() {
-    await util.wait(1500);
-  }
 
   /**
    * Simplifies common changes to the comment box.
@@ -380,40 +369,45 @@ var shared = (function workflowMethodsModule() {
     }
   }
 
-  /** Window[] - Stores open tabs */
-  const tabs = [];
-
   /**
-   * Opens/closes tabs based on urls on the page. Always closes all currently
-   * open tabs before continuing. Optionally opens new tabs, based on unique
-   * link values in ref.openInTabs. Order of tabs is determined by
-   * ref.openInTabs.
+   * Opens/closes tabs based on urls on the page. Opens new tabs based on unique
+   * link values in ref.openInTabs. Order of tabs is determined by ref.openInTabs.
    *
-   * @param {Object} o
-   * @param {boolean} o.closeOnly - Should the tabs only be closed?
+   * #close Close all currently opened tabs.
+   * #open Opens all unique links.
+   * #refresh Closes all currently opened tabs, then opens all unique links.
    * @ref {ref.openInTabs}
    */
-  async function handleTabs({closeOnly = false} = {}) {
-    const currentTabs = tabs.slice();
-    tabs.length = 0;
-    await util.wait(100);
-    currentTabs.forEach(tab => tab.close());
-    if (closeOnly) {
-      return;
+  const tabs = (function tabsMiniModule() {
+    /** Window[] - Stores open tabs */
+    const openTabs = [];
+    async function close() {
+      const currentTabs = openTabs.slice();
+      openTabs.length = 0;
+      await util.wait(100);
+      currentTabs.forEach(tab => tab.close());
     }
-    const urls = ref.openInTabs
-        .map(el => el.value)
-        .filter(val => /^http/.test(val));
-    const uniqueLinks = [...new Set(urls)];
-    for (let link of uniqueLinks) {
-      tabs.push(window.open(link, link));
-    };
-    if (tabs.length !== uniqueLinks.length) {
-      user.log.warn(
-        `Could not open all tabs. Check the Chrome popup blocker.`,
-      );
+    async function open() {
+      await util.wait(100);
+      const urls = ref.openInTabs
+          .map(el => el.value)
+          .filter(val => /^http/.test(val));
+      const uniqueLinks = [...new Set(urls)];
+      for (let link of uniqueLinks) {
+        openTabs.push(window.open(link, link));
+      };
+      if (openTabs.length !== uniqueLinks.length) {
+        user.log.warn(
+          `Could not open all tabs. Check the Chrome popup blocker.`,
+        );
+      }
     }
-  }
+    return {
+      open,
+      close,
+      refresh: () => { close(); open(); },
+    }
+  })();
 
   function commonReplacements(value) {
     const replacementStore = user.storeAccess({
@@ -428,16 +422,14 @@ var shared = (function workflowMethodsModule() {
                 .replace(/(\.\w+)$/i, ''),
           )
         : value;
-    tmpValue = tmpValue.trim().toLowerCase()
+    tmpValue = tmpValue.replace(/[\s+/_-]+/g, ' ')
+          .replace(/[#?­*]/g, '')
+          .replace(/’/, `'`)
+          .trim().toLowerCase();
     for (let rule of replacementStore) {
       const [regex, replaceWith] = rule;
       tmpValue = tmpValue.replace(util.toRegex(regex), replaceWith);
     }
-
-    tmpValue = tmpValue.replace(/[\s++-/]+/g, ' ')
-          .replace(/[#?­*]/g, '')
-          .replace(/’/, `'`)
-          .trim();
     return util.capitalize('first letter', tmpValue);
   }
   switch (environment.locale()) {
@@ -705,9 +697,7 @@ var shared = (function workflowMethodsModule() {
     }
     skipButton.click();
     await util.retry(clickConfirm, RETRIES, DELAY)();
-    shared.handleTabs({closeOnly: true});
-    await awaitNewPage();
-    main();
+    shared.tabs.close();
   }
 
   /**
@@ -737,9 +727,8 @@ var shared = (function workflowMethodsModule() {
   }
 
   return {
-    awaitNewPage,
     editComment,
-    handleTabs,
+    tabs,
     fallThrough,
     guiUpdate,
     keepAlive,
@@ -823,7 +812,7 @@ var flows = (function workflowModule() {
         try {
           await util.retry(clickContinue, 20, 100)();
         } catch (e) {
-          user.log.warn('Continue button did not appear.', {print: true});
+          user.log.warn('Continue button did not appear.', {print: false});
         }
         main();
       }
@@ -888,8 +877,14 @@ var flows = (function workflowModule() {
 
     /** string - Describes the current stage */
     let stage;
+    let taskId;
 
     function init() {
+      if (taskId === environment.taskId()) {
+        return;
+      } else {
+        taskId = environment.taskId();
+      }
       setupReactions();
       toStage('start');
     }
@@ -911,7 +906,7 @@ var flows = (function workflowModule() {
       async approve() {
         clickApproveYesOrNo('yes');
         completeScreenshots();
-        shared.handleTabs({closeOnly: true});
+        shared.tabs.close();
         shared.editComment('addInitials');
         shared.guiUpdate('Approved');
       },
@@ -923,12 +918,11 @@ var flows = (function workflowModule() {
           return;
         }
         const submitted = await shared.submit();
-        if (!submitted) {
-//           toStage('start');
+        if (submitted) {
           shared.guiUpdate('Submitting');
-          return false;
+          await util.wait(200);
+          shared.guiUpdate('Press Start');
         }
-        shared.awaitNewPage().then(main);
       },
     };
 
@@ -941,7 +935,7 @@ var flows = (function workflowModule() {
 
     const approve = () => stageIs('start') && toStage('approve');
     const submit = () => stageIs('approve') && toStage('submit');
-    const start = () => stageIs('approve', 'submit') && toStage('start');
+    const start = () => stageIs('approve') && toStage('start');
 
     function setStatus(type) {
       const keys = {
@@ -962,11 +956,22 @@ var flows = (function workflowModule() {
       if (!ref.statusDropdown) {
         throw new Error('No status dropdown menus selected.');
       }
+      function canExtract(type) {
+        if (!ref.canOrCannotExtractButtons) {
+          user.log.warn('canOrCannotExtractButtons not found');
+          return;
+        }
+        const n = (type === 'canExtract') ? 0 : 1;
+        const button = ref.canOrCannotExtractButtons[n];
+        button.click();
+        button.focus();
+      }
       async function setTo() {
         const [b, c, d] = keys[type];
         const dropdowns = ref.statusDropdown;
         dropdowns[0].value = b;
         dropdowns[c].value = d;
+        canExtract(type);
       }
       return setTo;
     }
@@ -974,15 +979,19 @@ var flows = (function workflowModule() {
     function completeScreenshots() {
       const screenshots = ref.screenshots;
       const link = screenshots[0].value || screenshots[1].value;
-      if (link) {
-        for (let screenshot of screenshots) {
-          screenshot.value || (screenshot.value = link);
+      if (!link) {
+        return;
+      }
+      for (let screenshot of screenshots) {
+        if (!screenshot.value && !screenshot.disabled) {
+          screenshot.value = link;
         }
       }
     }
 
-    function focusOnAddData() {
-      ref.addData[0].focus();
+    function focusOnAddDataOrEdit() {
+      ref.addDataButton && ref.addDataButton[0] && ref.addDataButton[0].focus();
+      ref.editButton && ref.editButton[0] && ref.editButton[0].focus();
     }
     
     function clickAddItem() {
@@ -1040,7 +1049,6 @@ var flows = (function workflowModule() {
           shared.requireUrl,
           shared.requireScreenshot,
         ],
-        css: {color: 'purple'},
         ref: 'screenshots',
         css: {backgroundColor: 'AliceBlue'},
       });
@@ -1111,7 +1119,14 @@ var flows = (function workflowModule() {
         select: 'label',
         pick: [2],
         onKeydown: clickAddItem,
-        ref: 'addData',
+        ref: 'addDataButton',
+      });
+
+      ー({
+        name: 'Edit',
+        select: 'label',
+        pick: [3],
+        ref: 'editButton',
       });
 
       ー({
@@ -1119,6 +1134,13 @@ var flows = (function workflowModule() {
         select: 'label',
         pick: [5, 7, 9],
         ref: 'addItem',
+      });
+
+      ー({
+        name: 'ApprovalButtons',
+        select: 'label',
+        pick: [32, 33],
+        ref: 'approvalButtons',
       });
 
       ー({
@@ -1130,10 +1152,10 @@ var flows = (function workflowModule() {
       });
 
       ー({
-        name: 'ApprovalButtons',
+        name: 'CanOrCannotExtract',
         select: 'label',
-        pick: [32, 33],
-        ref: 'approvalButtons',
+        pick: [0, 1],
+        ref: 'canOrCannotExtractButtons',
       });
 
       ー({
@@ -1162,14 +1184,18 @@ var flows = (function workflowModule() {
         onKeydown_CtrlEnter: submit,
         onKeydown_CtrlNumpadEnter: submit,
         onKeydown_Backslash: approve,
+        onKeydown_NumpadAdd: approve,
         onKeydown_BracketLeft: shared.resetCounter,
         onKeydown_BracketRight: shared.skipTask,
+        onKeydown_NumpadSubtract: shared.skipTask,
         onKeydown_CtrlAltS: shared.saveExtraction,
+        onKeydown_NumpadDivide: shared.saveExtraction,
         onKeydown_Backquote: [
-          shared.handleTabs,
-          focusOnAddData,
+          shared.tabs.refresh,
+          focusOnAddDataOrEdit,
         ],
         onKeydown_CtrlBackquote: main,
+        onKeydown_CtrlAltDigit0: setStatus('canExtract'),
         onKeydown_CtrlAltDigit1: setStatus('insufficient'),
         onKeydown_CtrlAltDigit2: setStatus('pageError'),
         onKeydown_CtrlAltDigit3: setStatus('dynamic'),
@@ -1202,7 +1228,7 @@ var flows = (function workflowModule() {
 
       },
       'approve': () => {
-        shared.handleTabs({closeOnly: true});
+        shared.tabs.close();
         shared.editComment('addInitials');
         shared.guiUpdate('Approved');
 
@@ -1218,7 +1244,6 @@ var flows = (function workflowModule() {
           toStage('start');
           return false;
         }
-        shared.awaitNewPage().then(main);
       },
     };
 
@@ -1231,7 +1256,7 @@ var flows = (function workflowModule() {
 
     const approve = () => stageIs('start') && toStage('approve');
     const submit = () => stageIs('approve') && toStage('submit');
-    const start = () => stageIs('approve', 'submit') && toStage('start');
+    const start = () => stageIs('approve') && toStage('start');
 
     /**
      * Set up event handlers.
@@ -1292,7 +1317,7 @@ var flows = (function workflowModule() {
         name: 'Comment Box',
         select: 'textarea',
         pick: [(util.isDev()) ? 0 : 52],
-        onFocusout: () => toStage('start'),
+        onFocusout: () => start,
         ref: 'finalCommentBox',
       });
 
@@ -1318,7 +1343,7 @@ var flows = (function workflowModule() {
         onKeydown_BracketLeft: shared.resetCounter,
         onKeydown_BracketRight: shared.skipTask,
         onKeydown_CtrlAltS: shared.saveExtraction,
-        onKeydown_Backquote: shared.handleTabs,
+        onKeydown_Backquote: shared.tabs.refresh,
         onKeydown_CtrlBackquote: main,
       });
     }
@@ -1348,9 +1373,13 @@ function main() {
     shared.guiUpdate(warning)
     return user.log.warn(warning);
   }
+
   eventReactions.reset();
-  const flow = flows[detectedFlowName];
+  eventReactions.setGlobal({
+    onKeydown_Backquote: main,
+  });
   util.dispatch('issueUpdate', {issueType: 'reset'});
+  const flow = flows[detectedFlowName];
   flow.init();
 };
 
