@@ -705,8 +705,7 @@ var user = (function userDataModule() {
       }
     };
     atest.group('local', {
-      'getStore': () => local.getStore(CONFIG_STORE_NAME),
-      'setStore': () => {
+      'getStore and setStore': () => {
         const preserve = local.getStore(CONFIG_STORE_NAME);
         local.setStore(CONFIG_STORE_NAME, {test: true});
         const successfullySet = local.getStore(CONFIG_STORE_NAME).test;
@@ -745,20 +744,20 @@ var user = (function userDataModule() {
         local.setStore(storeName, data);
       },
     };
-    atest.group('cached', {
-      'getStore': () => local.getStore(CONFIG_STORE_NAME),
-      'setStore': () => {
-        const preserve = local.getStore(CONFIG_STORE_NAME);
-        local.setStore(CONFIG_STORE_NAME, {test: true});
-        const successfullySet = local.getStore(CONFIG_STORE_NAME).test;
-        local.setStore(CONFIG_STORE_NAME, preserve);
-        return successfullySet;
-      },
-      'cached': async () => {
-        await util.wait();
-        return Object.entries(storeCache).length !== 0;
-      },
-    });
+//     atest.group('cached', {
+//       'getStore': () => local.getStore(CONFIG_STORE_NAME),
+//       'setStore': () => {
+//         const preserve = local.getStore(CONFIG_STORE_NAME);
+//         local.setStore(CONFIG_STORE_NAME, {test: true});
+//         const successfullySet = local.getStore(CONFIG_STORE_NAME).test;
+//         local.setStore(CONFIG_STORE_NAME, preserve);
+//         return successfullySet;
+//       },
+//       'cached': async () => {
+//         await util.wait();
+//         return Object.entries(storeCache).length !== 0;
+//       },
+//     });
 
     /**
      * Add a data element to an Array data store.
@@ -2371,31 +2370,31 @@ var {ー, ref} = (function domAccessModule() {
   (function addStylesheet () {
     const style = document.createElement('style');
     document.head.append(style);
-    const addRule = (p) => style.sheet.insertRule(`.${BASE_ID}${p}`, 0);
+    const addRule = (p) => style.sheet.insertRule(p, 0);
     const rules = [
-      `container { background-color: #f4f4f4 }`,
-      `container { font-size: 1.5em }`,
-      `container { opacity: 0.8 }`,
-      `container { overflow: hidden }`,
-      `container { position: fixed }`,
-      `container { pointer-events: none }`,
-      `container { padding: 10px }`,
-      `container { right: 3px }`,
-      `container { top: 30px }`,
-      `container { width: 300px }`,
-      `container { z-index: 2000 }`,
-      `container p { margin: 4px }`,
-      `container em { font-weight: bold }`,
-      `container em { font-style: normal }`,
-      `container .red { color: #dd4b39 }`,
-      `container .orange { color: #872b20 }`,
-      `container .yellow { color: #3d130e }`,
-      `boom { background-color: black }`,
-      `boom { border-radius: 50% }`,
-      `boom { opacity: 0.02 }`,
-      `boom { padding: ${BOOM_RADIUS}px }`,
-      `boom { position: absolute }`,
-      `boom { z-index: 1999 }`,
+      `.${BASE_ID}container { background-color: #f4f4f4 }`,
+      `.${BASE_ID}container { font-size: 1.5em }`,
+      `.${BASE_ID}container { opacity: 0.8 }`,
+      `.${BASE_ID}container { overflow: hidden }`,
+      `.${BASE_ID}container { position: fixed }`,
+      `.${BASE_ID}container { pointer-events: none }`,
+      `.${BASE_ID}container { padding: 10px }`,
+      `.${BASE_ID}container { right: 3px }`,
+      `.${BASE_ID}container { top: 30px }`,
+      `.${BASE_ID}container { width: 300px }`,
+      `.${BASE_ID}container { z-index: 2000 }`,
+      `.${BASE_ID}container p { margin: 4px }`,
+      `.${BASE_ID}container em { font-weight: bold }`,
+      `.${BASE_ID}container em { font-style: normal }`,
+      `.${BASE_ID}container .red { color: #dd4b39 }`,
+      `.${BASE_ID}container .orange { color: #872b20 }`,
+      `.${BASE_ID}container .yellow { color: #3d130e }`,
+      `.${BASE_ID}boom { background-color: black }`,
+      `.${BASE_ID}boom { border-radius: 50% }`,
+      `.${BASE_ID}boom { opacity: 0.02 }`,
+      `.${BASE_ID}boom { padding: ${BOOM_RADIUS}px }`,
+      `.${BASE_ID}boom { position: absolute }`,
+      `.${BASE_ID}boom { z-index: 1999 }`,
     ];
     rules.forEach(addRule);
   })();
@@ -2445,9 +2444,9 @@ var {ー, ref} = (function domAccessModule() {
   async function boom({proxy}) {
     const coords = proxy.getCoords();
     const top =
-        (coords.top || 100) + (coords.height / 2) - BOOM_RADIUS;
+        (coords.top || 400) + (coords.height / 2) - BOOM_RADIUS;
     const left =
-        (coords.left || 100) + (coords.width / 2) - BOOM_RADIUS;
+        (coords.left || 500) + (coords.width / 2) - BOOM_RADIUS;
     const div = document.createElement('div');
     div.classList = BASE_ID + 'boom';
     div.style.top = top + 'px';
