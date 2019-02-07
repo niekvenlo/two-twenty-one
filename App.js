@@ -213,13 +213,13 @@ var shared = (function workflowMethodsModule() {
     const proxy = {value: 'x'};
     const one = testRegex(/x/, true)(proxy);
     test.ok(one.hit === true, 'one: hit');
-    test.ok(one.message === 'x did match /x/', 'one: message');
+    test.ok(one.message === `'x' did match /x/`, 'one: message');
     const two = testRegex(/x/, false)(proxy);
     test.ok(two.hit === false, 'two: no hit');
-    test.ok(two.message === 'x should not match /x/', 'two: message');
+    test.ok(two.message === `'x' should not match /x/`, 'two: message');
     const three = testRegex(/c/, false)(proxy);
     test.ok(three.hit === true, 'three: hit');
-    test.ok(three.message === 'x should not match /c/', 'three: message');
+    test.ok(three.message === `'x' should not match /c/`, 'three: message');
   });
 
   /**
@@ -301,8 +301,8 @@ var shared = (function workflowMethodsModule() {
     for (let rule of phrases) {
       const [phrase, message] = rule;
       if (util.toRegex(phrase).test(proxy.value)) {
-        const clearValue = proxy.value.replace(/\s/, '░');
-        const clearPhrase = phrase.replace(/\s/, '░');
+        const clearValue = proxy.value.replace(/\s/g, '░');
+        const clearPhrase = phrase.replace(/\s/g, '░');
         packet.issueLevel = 'orange';
         packet.message = (message)
             ? `${message} (${clearValue})`
@@ -1093,7 +1093,6 @@ var flows = (function workflowModule() {
         onKeydown_CtrlAltArrowLeft: swapLeft,
         onKeydown_CtrlAltArrowRight: swapRight,
         onKeydown_CtrlDelete: deleteItem,
-        css: {backgroundColor: 'PapayaWhip'},
         ref: 'textAreas',
       });
 
@@ -1110,7 +1109,6 @@ var flows = (function workflowModule() {
           shared.removePorg,
           shared.removeScreenshot,
         ],
-        css: {backgroundColor: 'Cornsilk'},
         ref: 'linkAreas'
       });
 
@@ -1127,7 +1125,6 @@ var flows = (function workflowModule() {
           shared.requireScreenshot,
         ],
         ref: 'screenshots',
-        css: {backgroundColor: 'AliceBlue'},
       });
 
       ー({
@@ -1142,7 +1139,6 @@ var flows = (function workflowModule() {
           shared.removeTabIndex,
         ],
         ref: 'dashes',
-        css: {backgroundColor: 'LightCyan'},
       });
 
       ー({
