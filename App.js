@@ -14,23 +14,34 @@ var environment = (function environmentModule() {
    * @return {string} Description of the current workflow.
    */
   function detectWorkflow() {
+    const firstButton = ー({
+      name: 'First Button',
+      select: 'button',
+      pick: [0],
+    })[0];
     const header = ー({
       name: 'Header',
       select: 'h1',
       pick: [0],
     })[0];
+    const buttonText = firstButton && firstButton.textContent;
     const headerText = header && header.textContent;
-
-    switch (true) {
-      case /telinks/.test(headerText):
-        return 'sl';
-      case /ppets/.test(headerText):
-        return 'ss';
-      case headerText === 'TwoTwentyOne Dutch':
-        return 'sl';
-      default:
-        return 'home';
+    if (/Acquire/.test(buttonText)) {
+      return 'home';
     }
+    if (/Continue/.test(buttonText)) {
+      return 'home';
+    }
+    if (/telinks/.test(headerText)) {
+      return 'sl'
+    }
+    if (/ppets/.test(headerText)) {
+      return 'ss'
+    }
+    if (/twentyone/.test(headerText)) {
+      return 'sl';
+    }
+    return '';
   }
 
   /**
@@ -677,7 +688,7 @@ var shared = (function workflowMethodsModule() {
     );
   }
 
-  function skipIfAnalystTask(proxy) {
+  async function skipIfAnalystTask(proxy) {
     if (!proxy || !proxy.textContent) {
       return;
     }
@@ -688,22 +699,32 @@ var shared = (function workflowMethodsModule() {
     }
     for (let initials of fishFor.split(/, ?/)) {
       if (!RegExp('^' + initials, 'i').test(comment)) {
-        skipTask();
-        util.wait(100).then(() => user.log.warn('Skipping Analyst task'));
+        await util.wait();
+        util.dispatch('issueUpdate', {
+          proxy: {},
+          issueType: 'Own Task',
+          issueLevel: 'red',
+          message: `Skip this task.`,
+        });
         return;
       }
     }
   }
 
-  function skipIfOwnTask(proxy) {
+  async function skipIfOwnTask(proxy) {
     if (!proxy || !proxy.textContent) {
       return;
     }
     const comment = proxy.textContent.trim();
     const initials = user.config.get('initials');
     if (RegExp('^' + initials, 'i').test(comment)) {
-      skipTask();
-      util.wait(100).then(() => user.log.warn('Skipping own task'));
+      await util.wait();
+      util.dispatch('issueUpdate', {
+        proxy: {},
+        issueType: 'Own Task',
+        issueLevel: 'red',
+        message: `Skip this task.`,
+      });
     }
   }
 
@@ -862,7 +883,8 @@ var flows = (function workflowModule() {
 
     function init() {
 
-      shared.guiUpdate('Ready');
+      shared.guiUpdate('Loaded');
+      user.log.ok('TwoTwentyOne loaded');
 
       /**
        * Click the 'Acquire next task' button.
@@ -876,7 +898,7 @@ var flows = (function workflowModule() {
           user.log.warn('Continue button did not appear.', {print: false});
         }
         main();
-        await util.wait(500);
+        await util.wait(400);
         shared.guiUpdate('Press Start');
       }
 
@@ -917,6 +939,7 @@ var flows = (function workflowModule() {
         name: 'First Button',
         select: 'button',
         pick: [0],
+        onClick: clickAcquire,
         ref: 'firstButton',
       });
 
@@ -1366,20 +1389,23 @@ function main() {
   const detectedFlowName = environment.flowName();
   if (!detectedFlowName) {
     const warning = 'No workflow identified';
-    shared.guiUpdate(warning)
+    shared.guiUpdate(warning);
     return user.log.warn(warning);
   }
 
+  util.dispatch('issueUpdate', {issueType: 'reset'});
   eventReactions.reset();
+  ー({
+    name: 'Links',
+    select: 'a',
+    onClick: util.delay(main, 1000),
+  });
   eventReactions.setGlobal({
     onKeydown_Backquote: main,
   });
-  util.dispatch('issueUpdate', {issueType: 'reset'});
-  const flow = flows[detectedFlowName];
-  flow.init();
+  flows[detectedFlowName].init();
 };
 
-util.wait(100).then(() => user.log.ok('TwoTwentyOne loaded'));
 main();
 
 
