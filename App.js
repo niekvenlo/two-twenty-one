@@ -213,13 +213,13 @@ var shared = (function workflowMethodsModule() {
     const proxy = {value: 'x'};
     const one = testRegex(/x/, true)(proxy);
     test.ok(one.hit === true, 'one: hit');
-    test.ok(one.message === 'x did match /x/', 'one: message');
+    test.ok(one.message === `'x' did match /x/`, 'one: message');
     const two = testRegex(/x/, false)(proxy);
     test.ok(two.hit === false, 'two: no hit');
-    test.ok(two.message === 'x should not match /x/', 'two: message');
+    test.ok(two.message === `'x' should not match /x/`, 'two: message');
     const three = testRegex(/c/, false)(proxy);
     test.ok(three.hit === true, 'three: hit');
-    test.ok(three.message === 'x should not match /c/', 'three: message');
+    test.ok(three.message === `'x' should not match /c/`, 'three: message');
   });
 
   /**
@@ -301,8 +301,8 @@ var shared = (function workflowMethodsModule() {
     for (let rule of phrases) {
       const [phrase, message] = rule;
       if (util.toRegex(phrase).test(proxy.value)) {
-        const clearValue = proxy.value.replace(/\s/, '░');
-        const clearPhrase = phrase.replace(/\s/, '░');
+        const clearValue = proxy.value.replace(/\s/g, '░');
+        const clearPhrase = phrase.replace(/\s/g, '░');
         packet.issueLevel = 'orange';
         packet.message = (message)
             ? `${message} (${clearValue})`
@@ -350,15 +350,19 @@ var shared = (function workflowMethodsModule() {
   /**
    * Simplifies common changes to the comment box.
    *
-   * @param {string} mode - Either 'addInitials' or 'removeInitials'.
-   * @ref {ref.finalCommentBox}
+   * #addInitials Adds initials and moves focus.
+   * #removeInitials Removes initials.
    */
-  function editComment(mode) {
-    const commentBox = ref.finalCommentBox && ref.finalCommentBox[0];
-    if (!commentBox || !commentBox.click) {
-      throw new Error('EditComment requires a valid textarea proxy');
-    }
-    if (mode === 'addInitials') {
+  const comment = (function commentMiniModule() {
+    const getCommentBox = () => {
+      const commentBox = ref.finalCommentBox && ref.finalCommentBox[0];
+      if (!commentBox || !commentBox.click) {
+        throw new Error('EditComment requires a valid textarea proxy');
+      }
+      return commentBox;
+    };
+    function addInitials() {
+      const commentBox = getCommentBox();
       commentBox.focus();
       commentBox.scrollIntoView();
       const initials = user.config.get('initials') || '';
@@ -366,12 +370,17 @@ var shared = (function workflowMethodsModule() {
         return;
       }
       commentBox.value = initials + '\n' + commentBox.value;
-    } else if (mode === 'removeInitials') {
+    }
+    function removeInitials() {
        const initials = user.config.get('initials') || '';
        commentBox.value =
            commentBox.value.replace(RegExp('^' + initials + '\n'), '');
     }
-  }
+    return {
+      addInitials,
+      removeInitials,
+    };
+  })();
 
   /**
    * Opens/closes tabs based on urls on the page. Opens new tabs based on unique
@@ -532,7 +541,7 @@ var shared = (function workflowMethodsModule() {
    * @param {Object[]} group - Array of proxies to touch.
    */
   async function keepAlive(_, __, group) {
-    const MINUTES = 6;
+    const MINUTES = 30;
     const INTERVAL = 10000; // ms
     const times = (MINUTES * 60000) / INTERVAL;
     for (let i = 0; i < times; i++) {
@@ -668,6 +677,36 @@ var shared = (function workflowMethodsModule() {
     );
   }
 
+  function skipIfAnalystTask(proxy) {
+    if (!proxy || !proxy.textContent) {
+      return;
+    }
+    const comment = proxy.textContent.trim();
+    const fishFor = user.config.get('fishFor');
+    if (!fishFor) {
+      return;
+    }
+    for (let initials of fishFor.split(/, ?/)) {
+      if (!RegExp('^' + initials, 'i').test(comment)) {
+        skipTask();
+        util.wait(100).then(() => user.log.warn('Skipping Analyst task'));
+        return;
+      }
+    }
+  }
+
+  function skipIfOwnTask(proxy) {
+    if (!proxy || !proxy.textContent) {
+      return;
+    }
+    const comment = proxy.textContent.trim();
+    const initials = user.config.get('initials');
+    if (RegExp('^' + initials, 'i').test(comment)) {
+      skipTask();
+      util.wait(100).then(() => user.log.warn('Skipping own task'));
+    }
+  }
+
   /**
    * Skip the current task.
    * Currently takes no parameters but could be rewritten to override the
@@ -740,20 +779,22 @@ var shared = (function workflowMethodsModule() {
   }
 
   return {
-    editComment,
-    tabs,
+    comment,
     fallThrough,
+    forbiddenPhrase,
     guiUpdate,
     keepAlive,
-    forbiddenPhrase,
-    prefill,
     noDuplicateValues,
+    prefill,
     removeTabIndex,
     resetCounter,
     saveExtraction,
     setTabOrder,
+    skipIfAnalystTask,
+    skipIfOwnTask,
     skipTask,
     submit,
+    tabs,
 
     addDashes: changeValue({
       to: '---',
@@ -912,7 +953,7 @@ var flows = (function workflowModule() {
     }
 
     const clickApproveYesOrNo = (which) => {
-      if (ref.approvalButtons.length) {
+      if (ref.approvalButtons && ref.approvalButtons.length) {
         const [yes, no] = ref.approvalButtons;
         (which === 'yes') ? yes.click() : no.click();
       }
@@ -921,7 +962,7 @@ var flows = (function workflowModule() {
     const stages = {
       async start() {
         clickApproveYesOrNo('no');
-        shared.editComment('removeInitials');
+        shared.comment.removeInitials;
         shared.guiUpdate('Ready to edit');
       },
 
@@ -929,14 +970,14 @@ var flows = (function workflowModule() {
         clickApproveYesOrNo('yes');
         completeScreenshots();
         shared.tabs.close();
-        shared.editComment('addInitials');
+        shared.comment.addInitials;
         shared.guiUpdate('Approved');
       },
 
       async submit() {
         if (ref.submitButton[0].disabled) {
-          user.log.warn('Task is not ready');
           toStage('approve');
+          user.log.warn('Task is not ready');
           return;
         }
         const submitted = await shared.submit();
@@ -1093,7 +1134,6 @@ var flows = (function workflowModule() {
         onKeydown_CtrlAltArrowLeft: swapLeft,
         onKeydown_CtrlAltArrowRight: swapRight,
         onKeydown_CtrlDelete: deleteItem,
-        css: {backgroundColor: 'PapayaWhip'},
         ref: 'textAreas',
       });
 
@@ -1110,7 +1150,7 @@ var flows = (function workflowModule() {
           shared.removePorg,
           shared.removeScreenshot,
         ],
-        css: {backgroundColor: 'Cornsilk'},
+        onLoad: shared.keepAlive,
         ref: 'linkAreas'
       });
 
@@ -1127,7 +1167,6 @@ var flows = (function workflowModule() {
           shared.requireScreenshot,
         ],
         ref: 'screenshots',
-        css: {backgroundColor: 'AliceBlue'},
       });
 
       ー({
@@ -1138,11 +1177,19 @@ var flows = (function workflowModule() {
         onFocusout: shared.addDashes,
         onLoad: [
           shared.addDashes,
-          shared.keepAlive,
           shared.removeTabIndex,
         ],
         ref: 'dashes',
-        css: {backgroundColor: 'LightCyan'},
+      });
+
+      ー({
+        name: 'Analyst Comment',
+        select: '.feedback-display-text',
+        pick: [0],
+        onLoad: [
+          shared.skipIfOwnTask,
+          shared.skipIfAnalystTask,
+        ],
       });
 
       ー({
@@ -1301,150 +1348,9 @@ var flows = (function workflowModule() {
     return {init};
   })();
 
-  const ss = (function ssModule() {
-
-    /** string - Describes the current stage */
-    let stage;
-
-    function init() {
-      setupReactions();
-      toStage('start');
-    }
-
-    const stages = {
-      'start': () => {
-        shared.editComment('removeInitials');
-        shared.guiUpdate('Ready to edit');
-
-      },
-      'approve': () => {
-        shared.tabs.close();
-        shared.editComment('addInitials');
-        shared.guiUpdate('Approved');
-
-      },
-      'submit': async () => {
-        if (ref.submitButton[0].disabled) {
-          user.log.warn('Task is not ready');
-          toStage('approve');
-          return;
-        }
-        const submitted = await shared.submit();
-        if (!submitted) {
-          toStage('start');
-          return false;
-        }
-      },
-    };
-
-    const stageIs = (...p) => p.includes(stage);
-
-    async function toStage(name) {
-      stage = name;
-      stages[name]();
-    }
-
-    const approve = () => stageIs('start') && toStage('approve');
-    const submit = () => stageIs('approve') && toStage('submit');
-    const start = () => stageIs('approve') && toStage('start');
-
-    /**
-     * Set up event handlers.
-     */
-    function setupReactions() {
-
-      ー({
-        name: 'Text',
-        select: 'textarea',
-        pick: [3, 6, 9, 12, 15],
-        onInteract: [
-          shared.noDuplicateValues,
-          shared.forbiddenPhrase,
-        ],
-        onLoad: [
-          shared.noDuplicateValues,
-          shared.forbiddenPhrase,
-        ],
-        css: {backgroundColor: 'PapayaWhip'},
-      });
-
-      ー({
-        name: 'Screenshot',
-        select: 'textarea',
-        pick: [4, 7, 10, 13, 16],
-        onFocusout: [
-          shared.requireUrl,
-          shared.requireScreenshot,
-        ],
-        onPaste: [
-          shared.requireUrl,
-          shared.requireScreenshot,
-        ],
-        css: {backgroundColor: 'AliceBlue'},
-      });
-
-      ー({
-        name: 'Dashes',
-        select: 'textarea',
-        pick: [5, 8, 11, 14, 17],
-        onFocusin: shared.removeDashes,
-        onFocusout: shared.addDashes,
-        onLoad: [
-          shared.addDashes,
-          shared.keepAlive,
-        ],
-        css: {backgroundColor: 'LightCyan'},
-      });
-
-      ー({
-        name: 'AllUrls',
-        select: 'textarea',
-        pick: [4, 7, 10, 13, 16],
-        ref: 'openInTabs',
-      });
-
-      ー({ // @todo Confirm position
-        name: 'Comment Box',
-        select: 'textarea',
-        pick: [(util.isDev()) ? 0 : 52],
-        onFocusout: () => start,
-        ref: 'finalCommentBox',
-      });
-
-      ー({
-        name: 'SubmitButton',
-        select: '.submitTaskButton',
-        pick: [0],
-        css: {opacity: 0.2},
-        ref: 'submitButton',
-      });
-
-      ー({
-        name: 'Skip Button',
-        select: '.taskIssueButton',
-        pick: [0],
-        ref: 'skipButton',
-      });
-
-      eventReactions.setGlobal({
-        onKeydown_CtrlEnter: submit,
-        onKeydown_CtrlNumpadEnter: submit,
-        onKeydown_Backslash: approve,
-        onKeydown_BracketLeft: shared.resetCounter,
-        onKeydown_BracketRight: shared.skipTask,
-        onKeydown_CtrlAltS: shared.saveExtraction,
-        onKeydown_Backquote: shared.tabs.refresh,
-        onKeydown_CtrlBackquote: main,
-      });
-    }
-
-    return {init};
-  })();
-
   return {
     home,
     sl,
-    ss,
   };
 })();
 
