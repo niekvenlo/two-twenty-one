@@ -303,6 +303,54 @@ var shared = (function workflowMethodsModule() {
     }
   }
 
+  function brandCapitalisation(value) {
+    const brands = user.storeAccess({
+      feature: 'BrandCapitalisation',
+    }) || [];
+    let tmpValue = value;
+    for (let brand of brands) {
+      tmpValue = tmpValue.replace(new RegExp(brand, 'gi'), brand);
+    }
+    return tmpValue;
+  }
+  atest.group('brandCapitalisation', {
+    'iPhone': () => brandCapitalisation('Iphone') === 'iPhone',
+  });
+
+  function commonReplacements(value) {
+    const replacementStore = user.storeAccess({
+      feature: 'CommonReplacements',
+      locale: environment.locale(),
+    }) || [];
+    let tmpValue = (/^http/.test(value))
+        ? decodeURIComponent(
+            value
+                .replace(/\/index/i, '')
+                .match(/[^\/]*[\/]?$/)[0]
+                .replace(/(\.\w+)$/i, ''),
+          )
+        : value;
+    tmpValue = tmpValue.replace(/[\s+/_-]+/g, ' ')
+          .replace(/[#?­*]/g, '')
+          .replace(/’/, `'`)
+          .trim().toLowerCase();
+    for (let rule of replacementStore) {
+      const [regex, replaceWith] = rule;
+      tmpValue = tmpValue.replace(util.toRegex(regex), replaceWith);
+    }
+    return util.capitalize('first letter', tmpValue);
+  }
+  switch (environment.locale()) {
+    case 'Dutch':
+      atest.group('commonReplacements', {
+        'About us': () => commonReplacements('overons') === 'Over ons',
+        'Read our blog': () => commonReplacements('blog') === 'Lees onze blog',
+      });
+      break;
+    default:
+      break;
+  }
+
   function forbiddenPhrase(proxy) {
     const phrases = user.storeAccess({
       feature: 'ForbiddenPhrases',
@@ -394,132 +442,6 @@ var shared = (function workflowMethodsModule() {
     };
   })();
 
-  const is = (function isModule() {
-    function isAnalystTask() {
-      const proxy = ref.analystComment && ref.analystComment[0];
-      if (!proxy || !proxy.textContent) {
-        return false;
-      }
-      const comment = proxy.textContent.trim();
-      const fishFor = user.config.get('fish');
-      if (!fishFor) {
-        return false;
-      }
-      for (let initials of fishFor.split(/, ?/)) {
-        if (RegExp('^' + initials, 'i').test(comment)) {
-          return false;
-        }
-      }
-      return true;
-    }
-
-    function isOwnTask() {
-      const proxy = ref.analystComment && ref.analystComment[0];
-      if (!proxy || !proxy.textContent) {
-        return false;
-      }
-      const comment = proxy.textContent.trim();
-      const initials = user.config.get('initials');
-      if (RegExp('^' + initials, 'i').test(comment)) {
-        return true;
-      }
-      return false;
-    }
-    return {
-      analystTask: isAnalystTask,
-      ownTask: isOwnTask,
-    }
-  })();
-
-  /**
-   * Opens/closes tabs based on urls on the page. Opens new tabs based on unique
-   * link values in ref.openInTabs. Order of tabs is determined by ref.openInTabs.
-   *
-   * #close Close all currently opened tabs.
-   * #open Opens all unique links.
-   * #refresh Closes all currently opened tabs, then opens all unique links.
-   * @ref {ref.openInTabs}
-   */
-  const tabs = (function tabsMiniModule() {
-    /** Window[] - Stores open tabs */
-    const openTabs = [];
-    async function close() {
-      const currentTabs = openTabs.slice();
-      openTabs.length = 0;
-      await util.wait(100);
-      currentTabs.forEach(tab => tab.close());
-    }
-    async function open() {
-      await util.wait(100);
-      const urls = ref.openInTabs
-          .map(el => el.value)
-          .filter(val => /^http/.test(val));
-      const uniqueLinks = [...new Set(urls)];
-      for (let link of uniqueLinks) {
-        openTabs.push(window.open(link, link));
-      };
-      if (openTabs.length !== uniqueLinks.length) {
-        user.log.warn(
-          `Could not open all tabs. Check the Chrome popup blocker.`,
-        );
-      }
-    }
-    return {
-      open,
-      close,
-      refresh: () => { close(); open(); },
-    }
-  })();
-
-  function commonReplacements(value) {
-    const replacementStore = user.storeAccess({
-      feature: 'CommonReplacements',
-      locale: environment.locale(),
-    }) || [];
-    let tmpValue = (/^http/.test(value))
-        ? decodeURIComponent(
-            value
-                .replace(/\/index/i, '')
-                .match(/[^\/]*[\/]?$/)[0]
-                .replace(/(\.\w+)$/i, ''),
-          )
-        : value;
-    tmpValue = tmpValue.replace(/[\s+/_-]+/g, ' ')
-          .replace(/[#?­*]/g, '')
-          .replace(/’/, `'`)
-          .trim().toLowerCase();
-    for (let rule of replacementStore) {
-      const [regex, replaceWith] = rule;
-      tmpValue = tmpValue.replace(util.toRegex(regex), replaceWith);
-    }
-    return util.capitalize('first letter', tmpValue);
-  }
-  switch (environment.locale()) {
-    case 'Dutch':
-      atest.group('commonReplacements', {
-        'About us': () => commonReplacements('overons') === 'Over ons',
-        'Read our blog': () => commonReplacements('blog') === 'Lees onze blog',
-      });
-      break;
-    default:
-      break;
-  }
-  
-
-  function brandCapitalisation(value) {
-    const brands = user.storeAccess({
-      feature: 'BrandCapitalisation',
-    }) || [];
-    let tmpValue = value;
-    for (let brand of brands) {
-      tmpValue = tmpValue.replace(new RegExp(brand, 'gi'), brand);
-    }
-    return tmpValue;
-  }
-  atest.group('brandCapitalisation', {
-    'iPhone': () => brandCapitalisation('Iphone') === 'iPhone',
-  });
-
   /**
    * When pasting a url, it is moved from one box to another. The url is also
    * analysed and reduced to a descriptive string.
@@ -574,11 +496,54 @@ var shared = (function workflowMethodsModule() {
   fallThrough = util.delay(fallThrough, 0);
 
   /**
+   * Dispatch a guiUpdate.
    *
+   * @param {string} message
    */
   function guiUpdate(message) {
     util.dispatch('guiUpdate', {toast: message, stage: message});
   };
+
+  /**
+   * Exposes methods that return booleans, reflecting something about
+   * the state of the task.
+   */
+  const is = (function isModule() {
+    function isAnalystTask() {
+      const proxy = ref.analystComment && ref.analystComment[0];
+      if (!proxy || !proxy.textContent) {
+        return false;
+      }
+      const comment = proxy.textContent.trim();
+      const fishFor = user.config.get('fish');
+      if (!fishFor) {
+        return false;
+      }
+      for (let initials of fishFor.split(/, ?/)) {
+        if (RegExp('^' + initials, 'i').test(comment)) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    function isOwnTask() {
+      const proxy = ref.analystComment && ref.analystComment[0];
+      if (!proxy || !proxy.textContent) {
+        return false;
+      }
+      const comment = proxy.textContent.trim();
+      const initials = user.config.get('initials');
+      if (RegExp('^' + initials, 'i').test(comment)) {
+        return true;
+      }
+      return false;
+    }
+    return {
+      analystTask: isAnalystTask,
+      ownTask: isOwnTask,
+    }
+  })();
 
   /**
    * Touches HTMLElements to keep the current task alive.
@@ -602,42 +567,6 @@ var shared = (function workflowMethodsModule() {
   keepAlive = util.debounce(keepAlive);
 
   /**
-   * Based on an extraction value, attempts to find matching data to
-   * automatically fill in.
-   * @param {Object} proxy - The proxy containing the extraction url.
-   * @todo Combine with Save feature
-   */
-  function prefill(proxy) {
-    const flowName = util.capitalize('first letter', environment.flowName());
-    const values = user.storeAccess({
-      feature: `${flowName}Prefill`,
-      locale: environment.locale(),
-      get: util.getDomain(proxy.value),
-    });
-    if (!values) {
-      return;
-    }
-    const targets = ref.prefillTarget;
-    if (targets.some((target, idx) => target.value !== values[idx])) {
-      const numValues = values.filter(v => v).length
-      if (!confirm(
-        `Would you like to use ${numValues} prefill values instead?` +
-        util.mapToBulletedList(values),
-      )) {
-        user.log.notice('Did not use prefill values');
-        return;
-      }
-    }
-    user.log.notice('Found prefill values');
-    for (let idx in values) {
-      targets[idx].value = values[idx];
-    }
-    if (ref.editButton && ref.editButton[0]) {
-      ref.editButton[0].click();
-    }
-  }
-
-    /**
    * Tests whether any proxies in a group have the same value, and flags
    * proxies that repeat previous values.
    *
@@ -695,6 +624,42 @@ var shared = (function workflowMethodsModule() {
     test.todo('Async test');
   });
   noDuplicateValues = util.delay(noDuplicateValues, 100);
+
+  /**
+   * Based on an extraction value, attempts to find matching data to
+   * automatically fill in.
+   * @param {Object} proxy - The proxy containing the extraction url.
+   * @todo Combine with Save feature
+   */
+  function prefill(proxy) {
+    const flowName = util.capitalize('first letter', environment.flowName());
+    const values = user.storeAccess({
+      feature: `${flowName}Prefill`,
+      locale: environment.locale(),
+      get: util.getDomain(proxy.value),
+    });
+    if (!values) {
+      return;
+    }
+    const targets = ref.prefillTarget;
+    if (targets.some((target, idx) => target.value !== values[idx])) {
+      const numValues = values.filter(v => v).length
+      if (!confirm(
+        `Would you like to use ${numValues} prefill values instead?` +
+        util.mapToBulletedList(values),
+      )) {
+        user.log.notice('Did not use prefill values');
+        return;
+      }
+    }
+    user.log.notice('Found prefill values');
+    for (let idx in values) {
+      targets[idx].value = values[idx];
+    }
+    if (ref.editButton && ref.editButton[0]) {
+      ref.editButton[0].click();
+    }
+  }
 
   /**
    * Pops up a confirmation dialog. On confirmation, will reset all counters.
@@ -796,6 +761,22 @@ var shared = (function workflowMethodsModule() {
   submit = util.debounce(submit, 100);
 
   const tabOrder = (function tabOrderMiniModule() {
+    /**
+     * Set the tabIndex of a proxy to 0, making it tabbable.
+     *
+     * @param {Object} proxy
+     */
+    function add(proxy) {
+      proxy.tabIndex = 0;
+    }
+    /**
+     * Set the tabIndex of a group of proxies, sequentially, making
+     * them tabbable in order.
+     *
+     * @param {Object} proxy. Ignored
+     * @param {number} idx. Ignored
+     * @param {Object[]} group
+     */
     function set(_, __, group) {
       for (let idx in group) {
         group[idx].tabIndex = idx + 1;
@@ -804,12 +785,58 @@ var shared = (function workflowMethodsModule() {
     }
     set = util.debounce(set);
 
+    /**
+     * Set the tabIndex of a proxy to -1, making it untabbable.
+     *
+     * @param {Object} proxy
+     */
     function remove(proxy) {
       proxy.tabIndex = -1;
     }
     return {
+      add,
       set,
       remove,
+    }
+  })();
+
+  /**
+   * Opens/closes tabs based on urls on the page. Opens new tabs based on unique
+   * link values in ref.openInTabs. Order of tabs is determined by ref.openInTabs.
+   *
+   * #close Close all currently opened tabs.
+   * #open Opens all unique links.
+   * #refresh Closes all currently opened tabs, then opens all unique links.
+   * @ref {ref.openInTabs}
+   */
+  const tabs = (function tabsMiniModule() {
+    /** Window[] - Stores open tabs */
+    const openTabs = [];
+    async function close() {
+      const currentTabs = openTabs.slice();
+      openTabs.length = 0;
+      await util.wait(100);
+      currentTabs.forEach(tab => tab.close());
+    }
+    async function open() {
+      await util.wait(100);
+      const urls = ref.openInTabs
+          .map(el => el.value)
+          .filter(val => /^http/.test(val));
+      const uniqueLinks = [...new Set(urls)];
+      for (let link of uniqueLinks) {
+        openTabs.push(window.open(link, link));
+      };
+      if (openTabs.length !== uniqueLinks.length) {
+        user.log.warn(
+          `Could not open all tabs. Check the Chrome popup blocker.`,
+        );
+      }
+    }
+    return {
+      open,
+      close,
+      refresh: () => { close(); open(); },
     }
   })();
 
@@ -826,8 +853,8 @@ var shared = (function workflowMethodsModule() {
     saveExtraction,
     skipTask,
     submit,
-    tabs,
     tabOrder,
+    tabs,
 
     addDashes: changeValue({
       to: '---',
@@ -1178,10 +1205,10 @@ var flows = (function workflowModule() {
       if (idx -1 > group.length) {
         return;
       }
-      if (group[idx + 1].disabled) {
+      if (group[idx + 1] && group[idx + 1].disabled) {
         click.addItem(idx + 1);
       }
-      group[idx + 1].focus();
+      group[idx + 1] && group[idx + 1].focus();
     }
 
     function swapLeft(_, idx) {
@@ -1242,7 +1269,7 @@ var flows = (function workflowModule() {
         pick: [1, 5, 9, 13, 17],
         onClick: [
           (_, idx) => console.log(idx + 1),
-          (_, idx) => click.addItem(idx + 1),
+          (_, idx) => idx > 2 && click.addItem(idx + 1),
         ],
         onInteract: [
           shared.redAlertExceed25Chars,
@@ -1454,12 +1481,12 @@ var flows = (function workflowModule() {
         onLoad: shared.tabOrder.remove,
       });
 
-      ー({
-        name: 'TabOrder',
-        select: 'textarea, label',
-        pick: [0, 1, 2, 4, 5, 7, 8, 9, 12, 13, 18, 19, 24, 25, 30, 31, 10, 14, 20, 26, 32],
-        onLoad: shared.tabOrder.set,
-      });
+//       ー({
+//         name: 'TabOrder',
+//         select: 'textarea, label',
+//         pick: [0, 1, 2, 4, 5, 7, 8, 9, 12, 13, 18, 19, 24, 25, 30, 31, 10, 14, 20, 26, 32],
+//         onLoad: shared.tabOrder.set,
+//       });
 
       eventReactions.setGlobal({
         onKeydown_CtrlEnter: submit,
