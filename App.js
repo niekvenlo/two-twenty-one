@@ -383,6 +383,7 @@ var shared = (function workflowMethodsModule() {
       commentBox.value = initials + '\n' + commentBox.value;
     }
     function removeInitials() {
+      const commentBox = getCommentBox();
        const initials = user.config.get('initials') || '';
        commentBox.value =
            commentBox.value.replace(RegExp('^' + initials + '\n'), '');
@@ -391,6 +392,43 @@ var shared = (function workflowMethodsModule() {
       addInitials,
       removeInitials,
     };
+  })();
+
+  const is = (function isModule() {
+    function isAnalystTask() {
+      const proxy = ref.analystComment && ref.analystComment[0];
+      if (!proxy || !proxy.textContent) {
+        return false;
+      }
+      const comment = proxy.textContent.trim();
+      const fishFor = user.config.get('fish');
+      if (!fishFor) {
+        return false;
+      }
+      for (let initials of fishFor.split(/, ?/)) {
+        if (RegExp('^' + initials, 'i').test(comment)) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    function isOwnTask() {
+      const proxy = ref.analystComment && ref.analystComment[0];
+      if (!proxy || !proxy.textContent) {
+        return false;
+      }
+      const comment = proxy.textContent.trim();
+      const initials = user.config.get('initials');
+      if (RegExp('^' + initials, 'i').test(comment)) {
+        return true;
+      }
+      return false;
+    }
+    return {
+      analystTask: isAnalystTask,
+      ownTask: isOwnTask,
+    }
   })();
 
   /**
@@ -580,12 +618,22 @@ var shared = (function workflowMethodsModule() {
       return;
     }
     const targets = ref.prefillTarget;
-    if (targets.some(t => t.value)) {
-      return user.log.warn('Found prefill values, but did not override');
+    if (targets.some((target, idx) => target.value !== values[idx])) {
+      const numValues = values.filter(v => v).length
+      if (!confirm(
+        `Would you like to use ${numValues} prefill values instead?` +
+        util.mapToBulletedList(values),
+      )) {
+        user.log.notice('Did not use prefill values');
+        return;
+      }
     }
     user.log.notice('Found prefill values');
     for (let idx in values) {
       targets[idx].value = values[idx];
+    }
+    if (ref.editButton && ref.editButton[0]) {
+      ref.editButton[0].click();
     }
   }
 
@@ -655,7 +703,7 @@ var shared = (function workflowMethodsModule() {
     const question =
         'Please confirm.\nAre you sure you want to reset all counters?' +
         util.mapToBulletedList(user.counter.get());
-    user.log.counter(question, {toast: true});
+    user.log.notice(question, {toast: true});
     await util.wait();
     if (confirm(question)) {
       user.counter.reset();      
@@ -686,46 +734,6 @@ var shared = (function workflowMethodsModule() {
       'Saving new default extraction for ' + domain +
       util.mapToBulletedList(values.slice(1), 2),
     );
-  }
-
-  async function skipIfAnalystTask(proxy) {
-    if (!proxy || !proxy.textContent) {
-      return;
-    }
-    const comment = proxy.textContent.trim();
-    const fishFor = user.config.get('fishFor');
-    if (!fishFor) {
-      return;
-    }
-    for (let initials of fishFor.split(/, ?/)) {
-      if (!RegExp('^' + initials, 'i').test(comment)) {
-        await util.wait();
-        util.dispatch('issueUpdate', {
-          proxy: {},
-          issueType: 'Own Task',
-          issueLevel: 'red',
-          message: `Skip this task.`,
-        });
-        return;
-      }
-    }
-  }
-
-  async function skipIfOwnTask(proxy) {
-    if (!proxy || !proxy.textContent) {
-      return;
-    }
-    const comment = proxy.textContent.trim();
-    const initials = user.config.get('initials');
-    if (RegExp('^' + initials, 'i').test(comment)) {
-      await util.wait();
-      util.dispatch('issueUpdate', {
-        proxy: {},
-        issueType: 'Own Task',
-        issueLevel: 'red',
-        message: `Skip this task.`,
-      });
-    }
   }
 
   /**
@@ -804,6 +812,7 @@ var shared = (function workflowMethodsModule() {
     fallThrough,
     forbiddenPhrase,
     guiUpdate,
+    is,
     keepAlive,
     noDuplicateValues,
     prefill,
@@ -811,8 +820,6 @@ var shared = (function workflowMethodsModule() {
     resetCounter,
     saveExtraction,
     setTabOrder,
-    skipIfAnalystTask,
-    skipIfOwnTask,
     skipTask,
     submit,
     tabs,
@@ -985,7 +992,7 @@ var flows = (function workflowModule() {
     const stages = {
       async start() {
         clickApproveYesOrNo('no');
-        shared.comment.removeInitials;
+        shared.comment.removeInitials();
         shared.guiUpdate('Ready to edit');
       },
 
@@ -993,7 +1000,7 @@ var flows = (function workflowModule() {
         clickApproveYesOrNo('yes');
         completeScreenshots();
         shared.tabs.close();
-        shared.comment.addInitials;
+        shared.comment.addInitials();
         shared.guiUpdate('Approved');
       },
 
@@ -1021,6 +1028,24 @@ var flows = (function workflowModule() {
     const approve = () => stageIs('start') && toStage('approve');
     const submit = () => stageIs('approve') && toStage('submit');
     const start = () => stageIs('approve') && toStage('start');
+
+    function beginTask() {
+      const skip = () => {
+        shared.skipTask();
+        util.wait(1000).then(() => {
+          beginTask();
+          main();
+        });
+      }
+      if (shared.is.ownTask()) {
+        skip();
+        return;
+      } else if (shared.is.analystTask() && (Math.random() < 0.75)) {
+        skip();
+        return;
+      }
+      shared.tabs.refresh();
+    }
 
     function setStatus(type) {
       const keys = {
@@ -1063,7 +1088,12 @@ var flows = (function workflowModule() {
 
     function completeScreenshots() {
       const screenshots = ref.screenshots;
-      const link = screenshots[0].value || screenshots[1].value;
+      const link =
+          screenshots[0].value ||
+          screenshots[1].value ||
+          screenshots[2].value ||
+          screenshots[3].value ||
+          screenshots[4].value;
       if (!link) {
         return;
       }
@@ -1083,10 +1113,46 @@ var flows = (function workflowModule() {
       }
     }
     
-    function clickAddItem() {
-      for (let button of ref.addItem) {
+    function clickAddItem(n) {
+      if (n < 2) {
+        for (let button of ref.addItem) {
+          button.click();
+        }
+      } else {
+        const button = ref.addItem[n - 2];
         button.click();
       }
+    }
+    
+    function clickLeaveBlank(n) {
+      if (n < 2) {
+        for (let button of ref.leaveBlank) {
+          button.click();
+        }
+      } else {
+        const button = ref.leaveBlank[n - 2];
+        button.click();
+      }
+    }
+
+    function moveLeft(_, idx, group) {
+      if (idx < 1) {
+        return;
+      }
+      if (group[idx].value === '') {
+        clickLeaveBlank(idx);
+      }
+      group[idx - 1].focus();
+    }
+
+    function moveRight(_, idx, group) {
+      if (idx -1 > group.length) {
+        return;
+      }
+      if (group[idx + 1].disabled) {
+        clickAddItem(idx + 1);
+      }
+      group[idx + 1].focus();
     }
 
     function swapLeft(_, idx) {
@@ -1135,6 +1201,16 @@ var flows = (function workflowModule() {
       user.log.ok('Deleted item', {print: false, save: false});
     }
 
+    function focusOnItem1() {
+      if (!ref.textAreas) {
+        return;
+      }
+      const textarea = ref.textAreas[0];
+      textarea.focus();
+      ref.editButton && ref.editButton[0] &&
+          ref.editButton[0].scrollIntoView();
+    }
+
     /**
      * Set up event handlers.
      */
@@ -1154,8 +1230,10 @@ var flows = (function workflowModule() {
           shared.noDuplicateValues,
           shared.forbiddenPhrase,
         ],
-        onKeydown_CtrlAltArrowLeft: swapLeft,
-        onKeydown_CtrlAltArrowRight: swapRight,
+        onKeydown_CtrlShiftAltArrowLeft: swapLeft,
+        onKeydown_CtrlShiftAltArrowRight: swapRight,
+        onKeydown_CtrlAltArrowLeft: moveLeft,
+        onKeydown_CtrlAltArrowRight: moveRight,
         onKeydown_CtrlDelete: deleteItem,
         ref: 'textAreas',
       });
@@ -1209,10 +1287,7 @@ var flows = (function workflowModule() {
         name: 'Analyst Comment',
         select: '.feedback-display-text',
         pick: [0],
-        onLoad: [
-          shared.skipIfOwnTask,
-          shared.skipIfAnalystTask,
-        ],
+        ref: 'analystComment',
       });
 
       ー({
@@ -1273,14 +1348,25 @@ var flows = (function workflowModule() {
         name: 'Edit',
         select: 'label',
         pick: [3],
+        onKeydown_CtrlAltArrowRight: [
+          (proxy) => proxy.click(),
+          focusOnItem1,
+        ],
         ref: 'editButton',
       });
 
       ー({
         name: 'Add Item',
         select: 'label',
-        pick: [5, 7, 9],
+        pick: [6, 8, 10],
         ref: 'addItem',
+      });
+
+      ー({
+        name: 'Leave Blank',
+        select: 'label',
+        pick: [7, 9, 11],
+        ref: 'leaveBlank',
       });
 
       ー({
@@ -1351,7 +1437,7 @@ var flows = (function workflowModule() {
         onKeydown_CtrlAltS: shared.saveExtraction,
         onKeydown_NumpadDivide: shared.saveExtraction,
         onKeydown_Backquote: [
-          shared.tabs.refresh,
+          beginTask,
           focusOnAddDataOrEdit,
         ],
         onKeydown_CtrlBackquote: main,
