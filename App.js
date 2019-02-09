@@ -1237,8 +1237,13 @@ var flows = (function workflowModule() {
 
       ー({
         name: 'Text',
+        rootSelect: '#extraction-editing',
         select: 'textarea',
-        pick: [2, 6, 10, 14, 18],
+        pick: [1, 5, 9, 13, 17],
+        onClick: [
+          (_, idx) => console.log(idx + 1),
+          (_, idx) => click.addItem(idx + 1),
+        ],
         onInteract: [
           shared.redAlertExceed25Chars,
           shared.noDuplicateValues,
@@ -1259,8 +1264,9 @@ var flows = (function workflowModule() {
 
       ー({
         name: 'Link',
+        rootSelect: '#extraction-editing',
         select: 'textarea',
-        pick: [3, 7, 11, 15, 19],
+        pick: [2, 6, 10, 14, 18],
         onFocusout: [
           shared.requireUrl,
           shared.removeScreenshot,
@@ -1276,8 +1282,9 @@ var flows = (function workflowModule() {
 
       ー({
         name: 'Screenshot',
+        rootSelect: '#extraction-editing',
         select: 'textarea',
-        pick: [4, 8, 12, 16, 20],
+        pick: [3, 7, 11, 15, 19],
         onFocusout: [
           shared.requireUrl,
           shared.requireScreenshot,
@@ -1291,8 +1298,9 @@ var flows = (function workflowModule() {
 
       ー({
         name: 'Dashes',
+        rootSelect: '#extraction-editing',
         select: 'textarea',
-        pick: [5, 9, 13, 17, 21],
+        pick: [4, 8, 12, 16, 20],
         onFocusin: shared.removeDashes,
         onFocusout: shared.addDashes,
         onLoad: [
@@ -1311,19 +1319,20 @@ var flows = (function workflowModule() {
 
       ー({
         name: 'Landing Page Url',
+        rootSelect: '#extraction-editing',
         select: 'textarea',
-        pick: [1],
+        pick: [0],
         onLoad: shared.prefill,
       });  
 
       ー({
         name: 'LinksAndLP',
+        rootSelect: '#extraction-editing',
         select: 'textarea',
-        pick: [1, 3, 7, 11, 15, 19],
+        pick: [0, 2, 6, 10, 14, 18],
         onInteract: shared.noDuplicateValues,
         onPaste: shared.noDuplicateValues,
       });
-
 
       ー({
         name: 'AllUrls',
@@ -1334,14 +1343,16 @@ var flows = (function workflowModule() {
 
       ー({
         name: 'Prefill',
+        rootSelect: '#extraction-editing',
         select: 'textarea',
-        pick: [2, 3, 6, 7, 10, 11, 14, 15, 18, 19],
+        pick: [1, 2, 5, 6, 9, 10, 13, 14, 17, 18],
         ref: 'prefillTarget',
       });
 
-      [[2, 3],[6, 7],[10, 11],[14, 15],[18, 19]].forEach(pair => {
+      [[1, 2],[5, 6],[9, 10],[13, 14],[17, 18]].forEach(pair => {
         ー({
           name: 'Fall',
+          rootSelect: '#extraction-editing',
           select: 'textarea',
           pick: pair,
           onPaste: shared.fallThrough,
@@ -1355,18 +1366,20 @@ var flows = (function workflowModule() {
         ref: 'statusDropdown',
       });
 
-      ー({
+      ー({ // @todo FIX
         name: 'Add Data',
+        rootSelect: '.extraction',
         select: 'label',
-        pick: [2],
+        pick: [0],
         onKeydown: click.addItem,
         ref: 'addDataButton',
       });
 
-      ー({
+      ー({ // @todo FIX
         name: 'Edit',
+        rootSelect: '.extraction',
         select: 'label',
-        pick: [3],
+        pick: [1],
         onKeydown_CtrlAltArrowRight: [
           (proxy) => proxy.click(),
           focus.item1,
@@ -1376,15 +1389,17 @@ var flows = (function workflowModule() {
 
       ー({
         name: 'Add Item',
+        rootSelect: '#extraction-editing',
         select: 'label',
-        pick: [6, 8, 10],
+        pick: [0, 2, 4],
         ref: 'addItem',
       });
 
       ー({
         name: 'Leave Blank',
+        rootSelect: '#extraction-editing',
         select: 'label',
-        pick: [7, 9, 11],
+        pick: [1, 3, 5],
         ref: 'leaveBlank',
       });
 
@@ -1397,8 +1412,9 @@ var flows = (function workflowModule() {
 
       ー({
         name: 'Comment Box',
+        rootSelect: '.addComments',
         select: 'textarea',
-        pick: [(util.isDev()) ? 0 : 64],
+        pick: [0],
         onFocusout: start,
         ref: 'finalCommentBox',
       });
