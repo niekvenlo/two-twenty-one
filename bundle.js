@@ -2248,14 +2248,18 @@ var {ー, ref} = (function domAccessModule() {
    * @param {number} o.rootNumber
    * @param {string} o.select
    * @param {number[]} o.pick
+   * @param {HTMLElement[]}
    */
-  function getHtmlElements({rootSelect, rootNumber, select, pick}) {
+  function getHtmlElements({rootSelect, rootNumber = '0', select, pick}) {
     const simpleSelect = () => {
       return [...document.querySelectorAll(select)];
     }
     const complexSelect = () => {
-      return [...document.querySelectorAll(rootSelect)][rootNumber]
-          .querySelectorAll(select || '*');
+      const root = [...document.querySelectorAll(rootSelect)][rootNumber];
+      if (!root) {
+        return [];
+      }
+      return [...root.querySelectorAll(select || '*')] || [];
     }
     const allElements = (rootSelect) ? complexSelect() : simpleSelect();
     if (!pick) {
