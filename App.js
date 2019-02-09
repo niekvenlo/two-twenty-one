@@ -795,17 +795,23 @@ var shared = (function workflowMethodsModule() {
   }
   submit = util.debounce(submit, 100);
 
-  function setTabOrder(_, __, group) {
-    for (let idx in group) {
-      group[idx].tabIndex = idx + 1;
+  const tabOrder = (function tabOrderMiniModule() {
+    function set(_, __, group) {
+      for (let idx in group) {
+        group[idx].tabIndex = idx + 1;
+      }
+      group[3].focus();
     }
-    group[3].focus();
-  }
-  setTabOrder = util.debounce(setTabOrder);
+    set = util.debounce(set);
 
-  function removeTabIndex(proxy) {
-    proxy.tabIndex = -1;
-  }
+    function remove(proxy) {
+      proxy.tabIndex = -1;
+    }
+    return {
+      set,
+      remove,
+    }
+  })();
 
   return {
     comment,
@@ -816,13 +822,12 @@ var shared = (function workflowMethodsModule() {
     keepAlive,
     noDuplicateValues,
     prefill,
-    removeTabIndex,
     resetCounter,
     saveExtraction,
-    setTabOrder,
     skipTask,
     submit,
     tabs,
+    tabOrder,
 
     addDashes: changeValue({
       to: '---',
@@ -982,22 +987,15 @@ var flows = (function workflowModule() {
       toStage('start');
     }
 
-    const clickApproveYesOrNo = (which) => {
-      if (ref.approvalButtons && ref.approvalButtons.length) {
-        const [yes, no] = ref.approvalButtons;
-        (which === 'yes') ? yes.click() : no.click();
-      }
-    }
-
     const stages = {
       async start() {
-        clickApproveYesOrNo('no');
+        click.approveNo();
         shared.comment.removeInitials();
         shared.guiUpdate('Ready to edit');
       },
 
       async approve() {
-        clickApproveYesOrNo('yes');
+        click.approveYes();
         completeScreenshots();
         shared.tabs.close();
         shared.comment.addInitials();
@@ -1028,6 +1026,68 @@ var flows = (function workflowModule() {
     const approve = () => stageIs('start') && toStage('approve');
     const submit = () => stageIs('approve') && toStage('submit');
     const start = () => stageIs('approve') && toStage('start');
+
+    const click = (function clickMiniModule() {
+      const approveYesOrNo = (which) => {
+        if (ref.approvalButtons && ref.approvalButtons.length) {
+          const [yes, no] = ref.approvalButtons;
+          (which === 'yes') ? yes.click() : no.click();
+        }
+      }
+      function addItem(n) {
+        if (n < 2) {
+          for (let button of ref.addItem) {
+            button.click();
+          }
+        } else {
+          ref.addItem && ref.addItem[n - 2] && ref.addItem[n - 2].click();
+        }
+      }
+      function leaveBlank(n) {
+        if (n < 2) {
+          for (let button of ref.leaveBlank) {
+            button.click();
+          }
+        } else {
+          const button = ref.leaveBlank[n - 2];
+          button.click();
+        }
+      }
+      return {
+        approveYes: () => approveYesOrNo('yes'),
+        approveNo: () => approveYesOrNo('no'),
+        addItem,
+        leaveBlank,
+      }
+    })();
+
+    const focus = (function focusMiniModule() {
+      function addDataButton() {
+        if (ref.addDataButton && ref.addDataButton[0]) {
+          ref.addDataButton[0].focus();
+        }
+      }
+      function editButton() {
+        if (ref.editButton && ref.editButton[0]) {
+          ref.editButton[0].focus();
+        }
+      }
+      function item1() {
+        if (!ref.textAreas) {
+          return;
+        }
+        const textarea = ref.textAreas[0];
+        textarea.focus();
+        ref.editButton && ref.editButton[0] &&
+            ref.editButton[0].scrollIntoView();
+      }
+      return {
+        addDataButton,
+        editButton,
+        item1,
+      }
+    })();
+
 
     function beginTask() {
       const skip = () => {
@@ -1104,43 +1164,12 @@ var flows = (function workflowModule() {
       }
     }
 
-    function focusOnAddDataOrEdit() {
-      if (ref.addDataButton && ref.addDataButton[0]) {
-        ref.addDataButton[0].focus();
-      }
-      if (ref.editButton && ref.editButton[0]) {
-        ref.editButton[0].focus();
-      }
-    }
-    
-    function clickAddItem(n) {
-      if (n < 2) {
-        for (let button of ref.addItem) {
-          button.click();
-        }
-      } else {
-        const button = ref.addItem[n - 2];
-        button.click();
-      }
-    }
-    
-    function clickLeaveBlank(n) {
-      if (n < 2) {
-        for (let button of ref.leaveBlank) {
-          button.click();
-        }
-      } else {
-        const button = ref.leaveBlank[n - 2];
-        button.click();
-      }
-    }
-
     function moveLeft(_, idx, group) {
       if (idx < 1) {
         return;
       }
       if (group[idx].value === '') {
-        clickLeaveBlank(idx);
+        click.leaveBlank(idx);
       }
       group[idx - 1].focus();
     }
@@ -1150,7 +1179,7 @@ var flows = (function workflowModule() {
         return;
       }
       if (group[idx + 1].disabled) {
-        clickAddItem(idx + 1);
+        click.addItem(idx + 1);
       }
       group[idx + 1].focus();
     }
@@ -1199,16 +1228,6 @@ var flows = (function workflowModule() {
       screenshot[idx].value = '';
       text[idx].focus();
       user.log.ok('Deleted item', {print: false, save: false});
-    }
-
-    function focusOnItem1() {
-      if (!ref.textAreas) {
-        return;
-      }
-      const textarea = ref.textAreas[0];
-      textarea.focus();
-      ref.editButton && ref.editButton[0] &&
-          ref.editButton[0].scrollIntoView();
     }
 
     /**
@@ -1278,7 +1297,7 @@ var flows = (function workflowModule() {
         onFocusout: shared.addDashes,
         onLoad: [
           shared.addDashes,
-          shared.removeTabIndex,
+          shared.tabOrder.remove,
         ],
         ref: 'dashes',
       });
@@ -1340,7 +1359,7 @@ var flows = (function workflowModule() {
         name: 'Add Data',
         select: 'label',
         pick: [2],
-        onKeydown: clickAddItem,
+        onKeydown: click.addItem,
         ref: 'addDataButton',
       });
 
@@ -1350,7 +1369,7 @@ var flows = (function workflowModule() {
         pick: [3],
         onKeydown_CtrlAltArrowRight: [
           (proxy) => proxy.click(),
-          focusOnItem1,
+          focus.item1,
         ],
         ref: 'editButton',
       });
@@ -1416,14 +1435,14 @@ var flows = (function workflowModule() {
       ー({
         name: 'TabRemove',
         select: 'label, button',
-        onLoad: shared.removeTabIndex,
+        onLoad: shared.tabOrder.remove,
       });
 
       ー({
         name: 'TabOrder',
         select: 'textarea, label',
         pick: [0, 1, 2, 4, 5, 7, 8, 9, 12, 13, 18, 19, 24, 25, 30, 31, 10, 14, 20, 26, 32],
-        onLoad: shared.setTabOrder,
+        onLoad: shared.tabOrder.set,
       });
 
       eventReactions.setGlobal({
@@ -1438,7 +1457,8 @@ var flows = (function workflowModule() {
         onKeydown_NumpadDivide: shared.saveExtraction,
         onKeydown_Backquote: [
           beginTask,
-          focusOnAddDataOrEdit,
+          focus.addDataButton,
+          focus.editButton,
         ],
         onKeydown_CtrlBackquote: main,
         onKeydown_CtrlAltDigit0: setStatus('canExtract'),
