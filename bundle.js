@@ -160,9 +160,9 @@ var atest = (function testModule() {
         continue;
       }
       const promise = (async () => {
-        functions.before && await functions.before();
-        const success = await functions[unitName]();
-        functions.after && await functions.after();
+        const fromBefore = functions.before && await functions.before();
+        const success = await functions[unitName](fromBefore);
+        functions.after && await functions.after(fromBefore);
         return {groupName, unitName, success};
       })();
       promises.push(promise);
@@ -928,82 +928,72 @@ var user = (function userDataModule() {
         return dumpStore({feature, locale});
       }
     }
-    test.group('storeAccess', () => {
-      const testObjectStoreName = 'TestingObject';
-      const testArrayStoreName = 'TestingArray';
-      const language = 'English';
-      const tokyo = 'Tokyo';
-      const lauren = 'Lauren Ipsum';
-      const yanny = 'Yanny Ipsum';
-
-      let blank = storeAccess({
-        feature: testObjectStoreName,
-        data: {city: tokyo},
-      });
-      test.ok(blank === undefined, 'Return undefined for undefined stores.');
-      storeAccess({
-        feature: testObjectStoreName,
-        data: {city: tokyo},
-      });
-      let city = storeAccess({
-        feature: testObjectStoreName,
-        locale: language,
-        get: 'city',
-      });
-      test.ok(city === tokyo, 'Create an object store and get shared value');
-      storeAccess({
-        feature: testObjectStoreName,
-        locale: language,
-        data: {name: lauren},
-      });
-      let name = storeAccess({
-        feature: testObjectStoreName,
-        locale: language,
-        get: 'name',
-      });
-      test.ok(name === lauren, 'Set and get a locale specific value');
-      storeAccess({
-        feature: testObjectStoreName,
-        locale: language,
-        set: {name: yanny},
-      });
-      name = storeAccess({
-        feature: testObjectStoreName,
-        locale: language,
-        get: 'name',
-      });
-      test.ok(name === yanny, 'Update object value');
-      storeAccess({
-        feature: testArrayStoreName,
-        data: [2,3,4],
-      });
-      test.fizzle(() => {
+    atest.group('storeAccess', {
+      'before': () => {
+        return {
+          objectStore: 'TestingObject',
+          arrayStore: 'TestingArray',
+          language: 'English',
+          tokyo: 'Tokyo',
+          lauren: 'Lauren Ipsum',
+          yanny: 'Yanny Ipsum',
+        }
+      },
+      'Return undefined for undefined stores': (o) => {
+        return storeAccess({
+          feature: o.objectStore,
+        }) === undefined;
+      },
+      'Create an object store and get shared value': (o) => {
         storeAccess({
-          feature: testArrayObjectName,
-          data: [2,3,4],
+          feature: o.objectStore,
+          data: {city: o.tokyo},
         });
-      }, 'When object Store receives Array');
-      let array = storeAccess({
-        feature: testArrayStoreName,
-        locale: language,
-      });
-      test.ok(util.arraysMatch(array, [2,3,4]),'Set and get array');
-      storeAccess({
-        feature: testArrayStoreName,
-        add: 5,
-      });
-      array = storeAccess({
-        feature: testArrayStoreName,
-        locale: language,
-      });
-      test.ok(
-        util.arraysMatch(array, [2,3,4,5]),
-        'Add to array',
-      );
-      delete localStorage[LOCALSTORE_BASENAME + testObjectStoreName];
-      delete localStorage[LOCALSTORE_BASENAME + testObjectStoreName + language];
-      delete localStorage[LOCALSTORE_BASENAME + testArrayStoreName];
-      delete localStorage[LOCALSTORE_BASENAME + testArrayStoreName + language];
+        return storeAccess({
+          feature: o.objectStore,
+          locale: o.language,
+          get: 'city',
+        }) === o.tokyo;
+      },
+      'Set data and get value': (o) => {
+        storeAccess({
+          feature: o.objectStore,
+          locale: o.language,
+          data: {
+            name: o.lauren,
+          },
+        });
+        return storeAccess({
+          feature: o.objectStore,
+          locale: o.language,
+          get: 'name',
+        }) === o.lauren;
+      },
+      'Change value': (o) => {
+        storeAccess({
+          feature: o.objectStore,
+          locale: o.language,
+          data: {
+            name: o.lauren,
+          },
+        });
+        storeAccess({
+          feature: o.objectStore,
+          locale: o.language,
+          set: {
+            name: o.yanny
+          },
+        });
+        return storeAccess({
+          feature: o.objectStore,
+          locale: o.language,
+          get: 'name',
+        }) === o.yanny;
+      },
+      'after': (o) => {
+        delete localStorage[LOCALSTORE_BASENAME + o.objectStore];
+        delete localStorage[LOCALSTORE_BASENAME + o.objectStore + o.language];
+      },
     });
     return storeAccess;
   })();
@@ -1232,14 +1222,14 @@ var user = (function userDataModule() {
       reset,
     };
   })();
-  test.group('counter', () => {
-    const complex = 'aG9yc2ViYXR0ZXJ5c3RhYmxl';
-    test.ok(counter.get(complex) === -1, 'Undefined counter');
-    test.ok(counter.add(complex) === 1, 'Initialised counter');
-    test.ok(counter.add(complex) === 2, 'Counter is counting');
-    test.ok(counter.get(complex) === 2, 'Counter is consistent');
-    test.ok(counter.reset(complex) === 0, 'Reset returns 0');
-    test.ok(counter.get(complex) === -1, 'Counter is gone');
+  atest.group('counter', {
+    'before': () => 'aG9yc2ViYXR0ZXJ5c3RhYmxl',
+    'Undefined counter': (name) => counter.get(name) === -1,
+    'Initialised counter': (name) => counter.add(name) === 1,
+    'Counter is counting': (name) => counter.add(name) === 2,
+    'Counter is consistent': (name) => counter.get(name) === 2,
+    'Reset returns 0': (name) => counter.reset(name) === 0,
+    'Counter is gone': (name) => counter.get(name) === -1,
   }, true);
 
   /** Object[] */
@@ -1289,9 +1279,8 @@ var user = (function userDataModule() {
     flaggedIssues = flaggedIssues.filter(removeOk);
     updateGui({issues: flaggedIssues});
   }
-  test.group('flag', () => {
-    test.fizzle(() => flag(), 'Without a issue');
-    // @todo Better tests.
+  atest.group('flag', {
+    'Fail without an issue': () => atest.throws(() => flag()),
   });
 
   /**
@@ -1329,13 +1318,13 @@ var user = (function userDataModule() {
         return JSON.stringify(payload);
       }
     }
-    test.group('payloadToString', () => {
-      let payload = 'one\ntwo';
-      let resultString = 'one\n   two';
-      test.ok(payloadToString(payload, 2) === resultString, 'Two spaces');
-      payload = {test: '1,2,3'};
-      resultString = '{"test":"1,2,3"}';
-      test.ok(payloadToString(payload, 2) === resultString, 'JSON');
+    atest.group('payloadToString', {
+      'Add two spaces to string': () => {
+        return payloadToString('one\ntwo', 2) === 'one\n   two';
+      },
+      'Convert object to JSON': () => {
+        return payloadToString({test: '1,2,3'}, 2) === '{"test":"1,2,3"}';
+      },
     });
 
     /**
@@ -1374,8 +1363,8 @@ var user = (function userDataModule() {
         };
       });
     }
-    test.group('getStore', () => {
-      test.ok(Array.isArray(getStore()), 'Returns an array');
+    atest.group('getStore', {
+      'Returns an array': () => Array.isArray(getStore()),
     });
 
     /**
@@ -1411,10 +1400,12 @@ var user = (function userDataModule() {
       const allEntries = [...entries, newEntry];
       setStore(allEntries);
     }
-    test.group('addPersistent', () => {
-      const length = getStore().length;
-      addPersistent({type: 'testing', payload: '1,2,3'});
-      test.ok((length + 1) === getStore().length), 'Added one entry';
+    atest.group('addPersistent', {
+      'Added one entry': () => {
+        const length = getStore().length;
+        addPersistent({type: 'testing', payload: '1,2,3'});
+        return getStore().length === length + 1;
+      }
     }, true);
 
     /**
@@ -1457,19 +1448,13 @@ var user = (function userDataModule() {
       entries = entries.slice(-end, -start || undefined);
       return entries;
     }
-    test.group('getEntries', () => {
-      const entries = getEntries();
-      test.ok(
-        (entries.length === LOG_PAGE_SIZE) ||
-        (getStore().length < LOG_PAGE_SIZE),
-        'Get a full page from the log, if possible',
-      );
-      const randomString = Math.random().toString();
-      const filtered = getEntries({contains: randomString});
-      test.ok(
-        filtered.length === 0,
-        'Succesfully filter out all entries',
-      );
+    atest.group('getEntries', {
+      'Get a full page, if possible': () => {
+        const entries = getEntries();
+        const fullPage = entries.length === LOG_PAGE_SIZE;
+        const logTooShort = getStore().length < LOG_PAGE_SIZE;
+        return fullPage || logTooShort;
+      }
     });
 
     /**
@@ -1482,9 +1467,6 @@ var user = (function userDataModule() {
     function print(filterBy = {}) {
       getEntries(filterBy).forEach(entry => printToConsole(entry));
     }
-    test.group('print', () => {
-      test.todo('XXXXX');
-    });
 
     /**
      * Generate a logging function.
@@ -1891,17 +1873,27 @@ var eventReactions = (function eventListenersModule() {
     }
     return filteredClone;
   }
-  test.group('unpackAndAddContext', () => {
-    const reactions = {
-      onLoad: () => {},
-      onClick: () => {},
-      onInteract: () => {},
-      name: 'Name',
-    }
-    const ret = unpackAndAddContext(reactions, {});
-    test.ok(ret.onLoad === undefined, 'onLoad removed');
-    test.ok(ret.onClick.length === 2, 'onClick added');
-    test.ok(ret.name === undefined, 'name removed');
+  atest.group('unpackAndAddContext', {
+    'before': () => {
+      return {
+        name: 'Name',
+        onLoad: () => {},
+        onClick: () => {},
+        onInteract: () => {},
+      };
+    },
+    'onLoad removed': (reactions) => {
+      const ret = unpackAndAddContext(reactions, {});
+      return ret.onLoad === undefined;
+    },
+    'onClick added': (reactions) => {
+      const ret = unpackAndAddContext(reactions, {});
+      return ret.onClick.length === 2;
+    },
+    'Name removed': (reactions) => {
+      const ret = unpackAndAddContext(reactions, {});
+      return ret.name === undefined;
+    },
   });
 
   /**
@@ -2146,7 +2138,7 @@ var {ー, ref} = (function domAccessModule() {
     );
   }
   atest.group('safeSetter', {
-    'Basic set value obn supported element': async () => {
+    'Basic set value on supported element': async () => {
       let count = 0;
       const fakeElement = {
         type: EDITABLE_ELEMENT_TYPES[0],
