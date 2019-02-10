@@ -64,9 +64,9 @@ var environment = (function environmentModule() {
   function detectTaskId() {
     if (util.isDev()) {
       return {
-      encoded: 'fffff',
-      decoded: '555' + Math.round(Math.random() * 1e11),
-    };;
+        encoded: 'fffff',
+        decoded: '555' + Math.round(Math.random() * 1e11),
+      };
     }
     const currentTask =
         Object.entries(JSON.parse(localStorage.acquiredTask))[0];
@@ -159,6 +159,7 @@ var shared = (function workflowMethodsModule() {
    * If the hit property is true, the issue is flagged according to the color
    * parameter, else it is flagged as 'ok'.
    * The message property is attached to the issue.
+   * @ref {editButton}
    *
    * @example
    * const conditional = () => ({hit: true, proxy: {value: 'originalValue'}});
@@ -351,9 +352,9 @@ var shared = (function workflowMethodsModule() {
       break;
   }
 
-  function forbiddenPhrase(proxy) {
+  function noForbiddenPhrase(proxy) {
     const phrases = user.storeAccess({
-      feature: 'ForbiddenPhrases',
+      feature: 'noForbiddenPhrases',
       locale: environment.locale(),
     }) || [];
     const packet = {proxy, issueType: 'Forbidden phrase'};
@@ -392,13 +393,20 @@ var shared = (function workflowMethodsModule() {
     }
     return cycle;
   }
-  test.group('cycleSelect', () => {
-    const toggleSelectYesNo = cycleSelect(['YES', 'NO']);
-    const proxy = {value: 'NO', blur: () => {}};
-    toggleSelectYesNo(proxy);
-    test.ok(proxy.value === 'YES', 'Changed to yes');
-    toggleSelectYesNo(proxy);
-    test.ok(proxy.value === 'NO', 'Changed back');
+  atest.group('cycleSelect', {
+    'Changed to Yes': () => {
+      const toggleSelectYesNo = cycleSelect(['YES', 'NO']);
+      const proxy = {value: 'NO', blur: () => {}};
+      toggleSelectYesNo(proxy);
+      return proxy.value === 'YES';
+    },
+    'Changed back to No': () => {
+      const toggleSelectYesNo = cycleSelect(['YES', 'NO']);
+      const proxy = {value: 'NO', blur: () => {}};
+      toggleSelectYesNo(proxy);
+      toggleSelectYesNo(proxy);
+      return proxy.value === 'NO';
+    },
   });
 
 
@@ -411,12 +419,13 @@ var shared = (function workflowMethodsModule() {
    *
    * #addInitials Adds initials and moves focus.
    * #removeInitials Removes initials.
+   * @ref {finalCommentBox}
    */
   const comment = (function commentMiniModule() {
-    const getCommentBox = () => {
+    function getCommentBox() {
       const commentBox = ref.finalCommentBox && ref.finalCommentBox[0];
-      if (!commentBox || !commentBox.click) {
-        throw new Error('EditComment requires a valid textarea proxy');
+      if (!commentBox || !commentBox.focus) {
+        throw new Error('Comment box not found');
       }
       return commentBox;
     };
@@ -441,6 +450,25 @@ var shared = (function workflowMethodsModule() {
       removeInitials,
     };
   })();
+  atest.group('comment', {
+    'Add and remove initials': () => {
+      const tmp = ref.finalCommentBox;
+      const userComment = 'user comment';
+      const fakeBox = {
+        value: userComment,
+        focus: () => {},
+        scrollIntoView: () => {},
+      };
+      const initials = user.config.get('initials');
+      ref.finalCommentBox = [fakeBox];
+      comment.addInitials();
+      const initialsFound = RegExp('^' + initials).test(fakeBox.value);
+      comment.removeInitials();
+      const initialsNotFound = !RegExp('^' + initials).test(fakeBox.value);
+      const commentFound = RegExp(userComment).test(fakeBox.value);
+      return initialsFound && initialsNotFound && commentFound;
+    },
+  });
 
   /**
    * When pasting a url, it is moved from one box to another. The url is also
@@ -509,7 +537,23 @@ var shared = (function workflowMethodsModule() {
    * the state of the task.
    */
   const is = (function isModule() {
-    function isAnalystTask() {
+    function analystTask() {
+      const taskTitle = ref.taskTitle && ref.taskTitle[0];
+      if (!taskTitle) {
+        return false;
+      }
+      if (/Analyst/.test(taskTitle.textContent)) {
+        return true;
+      }
+      return false;
+    }
+    /**
+     * Was this task analysed by a reviewer?
+     *
+     * @return {boolean} For a review task, are the initials of a known
+     * reviewer the first characters in the analyst comment box?
+     */
+    function isTaskAnalysedByReviewer() {
       const proxy = ref.analystComment && ref.analystComment[0];
       if (!proxy || !proxy.textContent) {
         return false;
@@ -527,6 +571,12 @@ var shared = (function workflowMethodsModule() {
       return true;
     }
 
+    /**
+     * Was this task analysed by you?
+     *
+     * @return {boolean} For a review task, are the initials of the
+     * current user the first characters in the analyst comment box?
+     */
     function isOwnTask() {
       const proxy = ref.analystComment && ref.analystComment[0];
       if (!proxy || !proxy.textContent) {
@@ -540,7 +590,8 @@ var shared = (function workflowMethodsModule() {
       return false;
     }
     return {
-      analystTask: isAnalystTask,
+      analystTask,
+      byReviewer: isTaskAnalysedByReviewer,
       ownTask: isOwnTask,
     }
   })();
@@ -843,7 +894,7 @@ var shared = (function workflowMethodsModule() {
   return {
     comment,
     fallThrough,
-    forbiddenPhrase,
+    noForbiddenPhrase,
     guiUpdate,
     is,
     keepAlive,
@@ -862,7 +913,7 @@ var shared = (function workflowMethodsModule() {
       is: true,
     }),
 
-    redAlertExceed25Chars: issueUpdate({
+    noMoreThan25Chars: issueUpdate({
       issueLevel: 'red',
       issueType: 'More than 25 characters long',
       when: testLength({max: 25}),
@@ -1054,11 +1105,21 @@ var flows = (function workflowModule() {
     const submit = () => stageIs('approve') && toStage('submit');
     const start = () => stageIs('approve') && toStage('start');
 
+    /**
+     * Exposes methods that try to find specific proxies and click on
+     * them.
+     */
     const click = (function clickMiniModule() {
-      const approveYesOrNo = (which) => {
+      const approveYes = () => {
         if (ref.approvalButtons && ref.approvalButtons.length) {
           const [yes, no] = ref.approvalButtons;
-          (which === 'yes') ? yes.click() : no.click();
+          yes.click();
+        }
+      }
+      const approveNo = () => {
+        if (ref.approvalButtons && ref.approvalButtons.length) {
+          const [yes, no] = ref.approvalButtons;
+          no.click();
         }
       }
       function addItem(n) {
@@ -1081,13 +1142,17 @@ var flows = (function workflowModule() {
         }
       }
       return {
-        approveYes: () => approveYesOrNo('yes'),
-        approveNo: () => approveYesOrNo('no'),
+        approveYes,
+        approveNo,
         addItem,
         leaveBlank,
       }
     })();
 
+    /**
+     * Exposes methods that try to find specific proxies and move the focus
+     * to them.
+     */
     const focus = (function focusMiniModule() {
       function addDataButton() {
         if (ref.addDataButton && ref.addDataButton[0]) {
@@ -1115,7 +1180,10 @@ var flows = (function workflowModule() {
       }
     })();
 
-
+    /**
+     * Before starting a task, decide whether to skip it or to open all
+     * tabs.
+     */
     function beginTask() {
       const skip = () => {
         shared.skipTask();
@@ -1127,13 +1195,21 @@ var flows = (function workflowModule() {
       if (shared.is.ownTask()) {
         skip();
         return;
-      } else if (shared.is.analystTask() && (Math.random() < 0.75)) {
+      } else if (shared.is.analystTask() && !shared.is.byReviewer() && (Math.random() < 0.75)) {
         skip();
         return;
       }
       shared.tabs.refresh();
     }
 
+    /**
+     * Set the current task status, by changing the values in the
+     * dropdown menus.
+     *
+     * @param {string} type
+     * @ref {statusDropdown}
+     * @ref {canOrCannotExtractButtons}
+     */
     function setStatus(type) {
       const keys = {
         'canExtract':    [0, 2, 0],
@@ -1173,6 +1249,12 @@ var flows = (function workflowModule() {
       return setTo;
     }
 
+    /**
+     * Ensure that all screenshot boxes are filled in. Fills in blank
+     * boxes with the first screenshot link found, starting from the left.
+     *
+     * @ref {screenshots}
+     */
     function completeScreenshots() {
       const screenshots = ref.screenshots;
       const link =
@@ -1191,6 +1273,15 @@ var flows = (function workflowModule() {
       }
     }
 
+    /**
+     * Move the focus to the prior proxy in the group, if possible.
+     * When moving out of an empty box, mark the corresponding item
+     * as 'Leave Blank'.
+     *
+     * @param {Object} _
+     * @param {number} idx
+     * @param {Object[]} group
+     */
     function moveLeft(_, idx, group) {
       if (idx < 1) {
         return;
@@ -1201,6 +1292,15 @@ var flows = (function workflowModule() {
       group[idx - 1].focus();
     }
 
+    /**
+     * Move the focus to the next proxy in the group, if possible.
+     * When moving into an empty box, mark the corresponding item
+     * as 'Add Item'.
+     *
+     * @param {Object} _
+     * @param {number} idx
+     * @param {Object[]} group
+     */
     function moveRight(_, idx, group) {
       if (idx -1 > group.length) {
         return;
@@ -1211,6 +1311,17 @@ var flows = (function workflowModule() {
       group[idx + 1] && group[idx + 1].focus();
     }
 
+    /**
+     * Swap the values of the currently selected item with the item to
+     * the left, if possible.
+     *
+     * @param {Object} _
+     * @param {number} idx
+     * @param {Object[]} group
+     * @ref {textAreas}
+     * @ref {linkAreas}
+     * @ref {screenshots}
+     */
     function swapLeft(_, idx) {
       const text = ref.textAreas;
       const link = ref.linkAreas;
@@ -1228,6 +1339,16 @@ var flows = (function workflowModule() {
       user.log.ok('Swapped items', {print: false, save: false});
     }
 
+    /**
+     * Swap the values of the currently selected item with the item to
+     * the right, if possible. Does not swap with disabled items.
+     *
+     * @param {Object} _
+     * @param {number} idx
+     * @ref {textAreas}
+     * @ref {linkAreas}
+     * @ref {screenshots}
+     */
     function swapRight(_, idx) {
       const text = ref.textAreas;
       const link = ref.linkAreas;
@@ -1245,6 +1366,15 @@ var flows = (function workflowModule() {
       user.log.ok('Swapped items', {print: false, save: false});
     }
 
+    /**
+     * Remove the values of the currently selected item.
+     *
+     * @param {Object} _
+     * @param {number} idx
+     * @ref {textAreas}
+     * @ref {linkAreas}
+     * @ref {screenshots}
+     */
     function deleteItem(_, idx) {
       const text = ref.textAreas;
       const link = ref.linkAreas;
@@ -1267,25 +1397,22 @@ var flows = (function workflowModule() {
         rootSelect: '#extraction-editing',
         select: 'textarea',
         pick: [1, 5, 9, 13, 17],
-        onClick: [
-          (_, idx) => console.log(idx + 1),
-          (_, idx) => idx > 2 && click.addItem(idx + 1),
-        ],
+        onClick: (_, idx) => idx > 2 && click.addItem(idx + 1),
         onInteract: [
-          shared.redAlertExceed25Chars,
+          shared.noMoreThan25Chars,
           shared.noDuplicateValues,
-          shared.forbiddenPhrase,
-        ],
-        onLoad: [
-          shared.redAlertExceed25Chars,
-          shared.noDuplicateValues,
-          shared.forbiddenPhrase,
+          shared.noForbiddenPhrase,
         ],
         onKeydown_CtrlShiftAltArrowLeft: swapLeft,
         onKeydown_CtrlShiftAltArrowRight: swapRight,
         onKeydown_CtrlAltArrowLeft: moveLeft,
         onKeydown_CtrlAltArrowRight: moveRight,
         onKeydown_CtrlDelete: deleteItem,
+        onLoad: [
+          shared.noMoreThan25Chars,
+          shared.noDuplicateValues,
+          shared.noForbiddenPhrase,
+        ],
         ref: 'textAreas',
       });
 
@@ -1298,12 +1425,12 @@ var flows = (function workflowModule() {
           shared.requireUrl,
           shared.removeScreenshot,
         ],
+        onLoad: shared.keepAlive,
         onPaste: [
           shared.requireUrl,
           shared.removePorg,
           shared.removeScreenshot,
         ],
-        onLoad: shared.keepAlive,
         ref: 'linkAreas'
       });
 
@@ -1407,6 +1534,7 @@ var flows = (function workflowModule() {
         rootSelect: '.extraction',
         select: 'label',
         pick: [1],
+        onLoad: shared.tabOrder.add,
         onKeydown_CtrlAltArrowRight: [
           (proxy) => proxy.click(),
           focus.item1,
@@ -1480,13 +1608,6 @@ var flows = (function workflowModule() {
         select: 'label, button',
         onLoad: shared.tabOrder.remove,
       });
-
-//       ー({
-//         name: 'TabOrder',
-//         select: 'textarea, label',
-//         pick: [0, 1, 2, 4, 5, 7, 8, 9, 12, 13, 18, 19, 24, 25, 30, 31, 10, 14, 20, 26, 32],
-//         onLoad: shared.tabOrder.set,
-//       });
 
       eventReactions.setGlobal({
         onKeydown_CtrlEnter: submit,
