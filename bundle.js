@@ -1557,11 +1557,11 @@ var eventReactions = (function eventListenersModule() {
     'onClick': 'click',
     'onFocusin': 'focusin',
     'onFocusout': 'focusout',
+    'onInteract': 'interact',
     'onKeydown': 'keydown',
     'onInput': 'input',
+    'onLoad': 'load',
     'onPaste': 'paste',
-    /** load is handled separately */
-    /** interact is handled separately */
   });
 
   /**
@@ -1905,6 +1905,9 @@ var eventReactions = (function eventListenersModule() {
    */
   function initGenericEventHandlers() {
     for (let type in SUPPORTED_EVENTS) {
+      if (type === 'onLoad' || type === 'onInteract') {
+        continue;
+      }
       const eventType = SUPPORTED_EVENTS[type];
       document.addEventListener(
         eventType,
@@ -1942,6 +1945,7 @@ var eventReactions = (function eventListenersModule() {
     reset: reactionStore.clear,
     set,
     setGlobal,
+    SUPPORTED_EVENTS,
   }
 })();
 
@@ -2275,6 +2279,28 @@ var {ー, ref} = (function domAccessModule() {
     return pickedElements;
   }
 
+  function checkSupportedProps(prop) {
+    for (let supported of Object.keys(eventReactions.SUPPORTED_EVENTS)) {
+      if (prop.includes(supported)) {
+        return;
+      }
+    }
+    throw new Error(
+      `${prop}  is not a supported event. Please use:` +
+      util.mapToBulletedList(eventReactions.SUPPORTED_EVENTS)
+    );
+  }
+
+  function checkReactionsAreFunctions(name, action, reactions) {
+    util.ensureIsArray(reactions).forEach(reaction => {
+      if (typeof reaction !== 'function') {
+        throw new Error(
+          `Failed to add '${action}' reaction to ${name}.`,
+        );
+      }
+    });
+  }
+
   /**
    * Set event reactions on an HTMLElement.
    *
@@ -2287,6 +2313,8 @@ var {ー, ref} = (function domAccessModule() {
     const reactions = {};
     for (let prop in options) {
       if (/^on/.test(prop)) {
+        checkSupportedProps(prop);
+        checkReactionsAreFunctions(options.name, prop, options[prop]);
         reactions[prop] = options[prop];
       }
     }
@@ -2315,11 +2343,18 @@ var {ー, ref} = (function domAccessModule() {
     const proxies = htmlElements.map((element,idx) => {
       return toProxy(element, idx, options);
     });
-    proxies.forEach(proxy => options.css && (proxy.css = options.css));
+    proxies.forEach(proxy => {
+      if (options.css) {
+        proxy.css = options.css;
+      }
+    });
     if (options.mode !== 'fresh') {
       setAllReactions(htmlElements, proxies, options);
     }
     if (options.ref) {
+      if (typeof options.ref !== 'string') {
+        throw new Error(`Ref should be a string, not ${typeof options.ref}.`);
+      }
       ref[options.ref] = proxies;
     }
     return proxies;
