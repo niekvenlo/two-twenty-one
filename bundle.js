@@ -55,7 +55,7 @@ var test = (function testModule() {
       return;
     }
     if (typeof func !== 'function') {
-      throw new Error('Test requires a function as its second parameter');
+      throw new TypeError('Test requires a function as its second parameter');
     }
     log('header', '===== ' + groupDesc);
     func();
@@ -150,7 +150,7 @@ var atest = (function testModule() {
     }
     for (let func in functions) {
       if (typeof functions[func] !== 'function') {
-        throw new Error('Atest requires an object with function values.')
+        throw new TypeError('Atest requires an object with function values.')
       }
     }
     clearTimeout(ts);
@@ -804,7 +804,7 @@ var user = (function userDataModule() {
      */
     function createStore({feature, locale, data}) {
       if (!feature) {
-        throw new Error('Cannot set data to nameless store.');
+        throw new TypeError('Cannot set data to nameless store.');
       }
       if (locale) {
         const sharedType = util.typeOf(cached.getStore(`${feature}`));
@@ -886,10 +886,10 @@ var user = (function userDataModule() {
      */
     function setValue({feature, locale = '', set}) {
       if (!feature) {
-        throw new Error('Cannot set data to nameless store.');
+        throw new TypeError('Cannot set data to nameless store.');
       }
       if (typeof set !== 'object') {
-        throw new Error('Set requires an object.');
+        throw new TypeError('Set requires an object.');
       }
       const data = cached.getStore(`${feature}${locale}`) || {};
       const newData = {...data, ...set};
@@ -911,10 +911,10 @@ var user = (function userDataModule() {
      */
     function storeAccess({feature, locale = '', add, get, set, value, data}) {
       if (typeof feature !== 'string') {
-        throw new Error('Feature must be a text string');
+        throw new TypeError('Feature must be a text string');
       }
       if (typeof locale !== 'string') {
-        throw new Error('Locale must be a text string');
+        throw new TypeError('Locale must be a text string');
       }
       if (add !== undefined) {
         return addElement({feature, locale, add});
@@ -1165,7 +1165,7 @@ var user = (function userDataModule() {
      */
     function add(name) {
       if (typeof name !== 'string') {
-        throw new Error('Counter add expects a name string');
+        throw new TypeError('Counter add expects a name string');
       }
       const /** object */ allCounts = getStore();
       const /** number */ newCount = (allCounts[name] + 1) || 1;
@@ -1198,7 +1198,7 @@ var user = (function userDataModule() {
      */
     function reset(name) {
       if (typeof name !== 'string' && name !== undefined) {
-        throw new Error('Counter reset expects a name string or nothing');
+        throw new TypeError('Counter reset expects a name string or nothing');
       }
       const allCounts = getStore();
       if (name) {
@@ -1265,7 +1265,7 @@ var user = (function userDataModule() {
       return;
     }
     if (!issueUpdate || !issueUpdate.proxy || !issueUpdate.issueType) {
-      throw new Error('Not a valid issue.');
+      throw new TypeError('Not a valid issue.');
     }
     /**
      * Filter function to remove issues that match the incoming issue.
@@ -1618,7 +1618,7 @@ var eventReactions = (function eventListenersModule() {
         return [];
       }
       if (!Array.isArray(eventTypes)) {
-        throw new Error('Please provide an array of eventTypes');
+        throw new TypeError('Please provide an array of eventTypes');
       }
       const found = [];
       const reactions = map.get(htmlElement);
@@ -1643,10 +1643,10 @@ var eventReactions = (function eventListenersModule() {
      */
     function set({htmlElement, eventType, functions}) {
       if (!util.isHTMLElement(htmlElement)) {
-        throw new Error(htmlElement + ' is not an htmlElement');
+        throw new TypeError(htmlElement + ' is not an htmlElement');
       }
       if (!Array.isArray(functions)) {
-        throw new Error('Please provide an array of functions');
+        throw new TypeError('Please provide an array of functions');
       }
       const reactions = map.get(htmlElement) || {};
       const current = get({htmlElement, eventTypes: [eventType]});
@@ -1706,17 +1706,41 @@ var eventReactions = (function eventListenersModule() {
         return '';
     }
   }
-  test.group('eventToString', () => {
-    const events = {
-      ctrlP: {type: 'keydown', ctrlKey: true, shiftKey: false, code: 'KeyP'},
-      p: {type: 'keydown', ctrlKey: false, shiftKey: false, code: 'KeyP'},
-      ctrlEnter: {type: 'keydown', ctrlKey: true, code: 'Enter'},
-      click: {type: 'click'},
-    };
-    test.ok(eventToString(events.ctrlP) === 'CtrlP', 'CtrlP');
-    test.ok(eventToString(events.p) === 'P', 'P');
-    test.ok(eventToString(events.ctrlEnter) === 'CtrlEnter', 'CtrlEnter');
-    test.ok(eventToString(events.click) === '', 'Click');
+  atest.group('eventToString', {
+    'onKeydown': () => {
+      return eventToString({
+        type: 'keydown',
+        code: 'KeyA',
+      }) === 'A';
+    },
+    'onKeydown_CtrlA': () => {
+      return eventToString({
+        type: 'keydown',
+        ctrlKey: true,
+        code: 'KeyA',
+      }) === 'CtrlA';
+    },
+    'onKeydown_CtrlShiftAltA': () => {
+      return eventToString({
+        type: 'keydown',
+        shiftKey: true,
+        ctrlKey: true,
+        altKey: true,
+        code: 'KeyA',
+      }) === 'CtrlShiftAltA';
+    },
+    'onKeydown_CtrlShiftAltA': () => {
+      return eventToString({
+        type: 'keydown',
+        ctrlKey: true,
+        code: 'Enter',
+      }) === 'CtrlEnter';
+    },
+    'onClick': () => {
+      return eventToString({
+        type: 'click',
+      }) === '';
+    },
   });
 
   /**
@@ -1734,10 +1758,35 @@ var eventReactions = (function eventListenersModule() {
     const type_k = `${type}_${eventString}`;
     return [type, type_k];
   }
-  test.group('eventToEventTypes', () => {
-    const ret = eventToEventTypes({type: 'click'});
-    test.ok(ret[0] === 'onClick', 'onClick');
-    test.ok(ret[1] === 'onClick_', 'onClick_');
+  atest.group('eventToEventTypes', {
+    'onKeydown[0]': () => {
+      return eventToEventTypes({
+        type: 'keydown',
+      })[0] === 'onKeydown';
+    },
+    'onKeydown_CtrlA[0]': () => {
+      return eventToEventTypes({
+        type: 'keydown',
+        ctrlKey: true,
+        code: 'KeyA',
+      })[0] === 'onKeydown';
+    },
+    'onKeydown_CtrlA[1]': () => {
+      return eventToEventTypes({
+        type: 'keydown',
+        ctrlKey: true,
+        code: 'KeyA',
+      })[1] === 'onKeydown_CtrlA';
+    },
+    'onKeydown_CtrlShiftAltA[1]': () => {
+      return eventToEventTypes({
+        type: 'keydown',
+        shiftKey: true,
+        ctrlKey: true,
+        altKey: true,
+        code: 'KeyA',
+      })[1] === 'onKeydown_CtrlShiftAltA';
+    },
   });
 
   /**
@@ -1749,14 +1798,32 @@ var eventReactions = (function eventListenersModule() {
       if (typeof func === 'function') {
         util.wait().then(func);
       } else {
-        throw new Error('Not a function.');
+        throw new TypeError('Not a function.');
       }
     }
   }
-  test.group('runAll', () => {
-    let sum = 0;
-    const func = () => sum++;
-    test.todo('Async');
+  atest.group('runAll', {
+    'Run 3 functions': async () => {
+      let count = 0;
+      const increment = () => count++;
+      runAll(increment, increment, increment);
+      await util.wait();
+      return count === 3;
+    },
+    'Throw unless all functions': async () => {
+      let count = 0;
+      const increment = () => count++;
+      return atest.throws(() => {
+        runAll(increment, increment, 3, increment);
+      });
+    },
+    'Fail if input is an array': async () => {
+      let count = 0;
+      const increment = () => count++;
+      return atest.throws(() => {
+        runAll([increment, increment, increment]);
+      });
+    },
   });
 
   /**
@@ -1775,6 +1842,15 @@ var eventReactions = (function eventListenersModule() {
       return () => run(proxy, idx, group);
     });
   }
+  atest.group('addContext', {
+    'Context added to functions': async () => {
+      const func = (a, b, c) => a + b + c;
+      const context = {proxy: 1, idx: 2, group: 3};
+      const withContext = addContext(func, context)[0];
+      await util.wait();
+      return withContext() === 6;
+    },
+  });
 
   /**
    * Process raw reactions objects:
@@ -1785,7 +1861,7 @@ var eventReactions = (function eventListenersModule() {
    */
   function unpackAndAddContext(reactions, context) {
     if (!reactions || !context) {
-      throw new Error('Reactions object and context are required.');
+      throw new TypeError('Reactions object and context are required.');
     }
     const cloneReaction = {...reactions};
     for (let eventType in cloneReaction) {
@@ -1842,7 +1918,7 @@ var eventReactions = (function eventListenersModule() {
    */
   function set(htmlElement, reactions, context) {
     if (!util.isHTMLElement(htmlElement)) {
-      throw new Error('Not an HTMLElement');
+      throw new TypeError('Not an HTMLElement');
     }
     const formattedReactions = unpackAndAddContext(reactions, context);
     for (let reaction in formattedReactions) {
@@ -1988,11 +2064,16 @@ var {ー, ref} = (function domAccessModule() {
    * @param {string=} name
    * @param {number} idx
    * @return {string}
-   * @example - namePlusIdx('Example', 3) => 'Example-3'
+   * @example - namePlusIdx('Example name', 3) => 'ExampleName_3'
    */
   function namePlusIdx(name = 'Unnamed', idx) {
-    return `${name}_${idx + 1}`;
+    const camelCased = util.capitalize('each word', name).replace(/\s+/, '');
+    return `${camelCased}_${idx + 1}`;
   }
+  atest.group('namePlusIdx', {
+    'One word': () => namePlusIdx('Name', 3) === 'Name_4',
+    'Two words': () => namePlusIdx('First second', 0) === 'FirstSecond_1',
+  });
 
   /**
    * Get coordinates of an HTMLElement, taking scroll position into account.
@@ -2011,7 +2092,7 @@ var {ー, ref} = (function domAccessModule() {
       left: parseInt(scrollX + rect.left),
       width: parseInt(rect.width),
       height: parseInt(rect.height),
-    }
+    };
   }
 
   /**
@@ -2028,6 +2109,17 @@ var {ー, ref} = (function domAccessModule() {
       htmlElement,
     );
   }
+  atest.group('touch', {
+    'Listen for events': async () => {
+      let count = 0;
+      const fakeElement = {
+        dispatchEvent: () => count++,
+      };
+      touch(fakeElement);
+      await util.wait();
+      return count === 4
+    }
+  });
 
   /**
    * All changes to HTMLElement values should be routed through this function.
@@ -2044,7 +2136,7 @@ var {ー, ref} = (function domAccessModule() {
       return;
     }
     if(!EDITABLE_ELEMENT_TYPES.includes(htmlElement.type)) {
-      throw new Error(`Cannot set value on ${htmlElement.type} elements`);
+      throw new TypeError(`Cannot set value on ${htmlElement.type} elements`);
     }
     htmlElement.value = newValue;
     touch(htmlElement);
@@ -2053,6 +2145,29 @@ var {ー, ref} = (function domAccessModule() {
       {print: false, toast: false},
     );
   }
+  atest.group('safeSetter', {
+    'Basic set value obn supported element': async () => {
+      let count = 0;
+      const fakeElement = {
+        type: EDITABLE_ELEMENT_TYPES[0],
+        dispatchEvent: () => count++,
+      };
+      safeSetter(fakeElement, 'Name', 'newValue');
+      await util.wait();
+      const numTouchEvents = 4;
+      return fakeElement.value = 'newValue' && count === numTouchEvents;
+    },
+    'Fail on unsupported element': async () => {
+      let count = 0;
+      const fakeElement = {
+        type: 'unsupported',
+        dispatchEvent: () => count++,
+      };
+      return atest.throws(() => {
+        safeSetter(fakeElement, 'Name', 'newValue')
+      });
+    },
+  });
 
   /**
    * Get a fresh proxy matching the select and pick parameters.
@@ -2080,6 +2195,9 @@ var {ー, ref} = (function domAccessModule() {
    * @return {Object} proxy
    */
   function makeBasicProxy({htmlElement, name, freshSelector}) {
+    if (!util.isHTMLElement(htmlElement)) {
+      throw new TypeError('Not an HTMLElement');
+    }
     const proxy = {
       name,
       value: htmlElement.value,
@@ -2148,6 +2266,9 @@ var {ー, ref} = (function domAccessModule() {
    * @return {Object} proxy
    */
   function makeProxy({htmlElement, name, mode, freshSelector}) {
+    if (!util.isHTMLElement(htmlElement)) {
+      throw new TypeError('Not an HTMLElement');
+    }
     const proxy = makeBasicProxy({
       htmlElement,
       name,
@@ -2208,7 +2329,7 @@ var {ー, ref} = (function domAccessModule() {
   function toProxy(htmlElement, idx, options) {
     options.mode = 'programmable';
     if (!util.isHTMLElement(htmlElement)) {
-      throw new Error('Not an HTMLElement');
+      throw new TypeError('Not an HTMLElement');
     }
     const cached = htmlElementWeakMap.get(htmlElement);
     if (cached && options.mode === 'fresh') {
@@ -2236,6 +2357,11 @@ var {ー, ref} = (function domAccessModule() {
     }
     return proxy;
   }
+  atest.group('toProxy', {
+    'Throws without an HTMLElement': () => {
+      return atest.throws(() => toProxy({}, 0, {}));
+    },
+  });
 
   /**
    * Access the DOM and find HTMLElements matching the parameters.
@@ -2278,6 +2404,12 @@ var {ー, ref} = (function domAccessModule() {
     }
     return pickedElements;
   }
+  atest.group('getHtmlElements', {
+    'Throws without input': () => atest.throws(() => getHtmlElements()),
+    'Returns an array': () => {
+      return Array.isArray(getHtmlElements({rootSelect: 'div'}));
+    },
+  })
 
   function checkSupportedProps(prop) {
     for (let supported of Object.keys(eventReactions.SUPPORTED_EVENTS)) {
@@ -2285,21 +2417,53 @@ var {ー, ref} = (function domAccessModule() {
         return;
       }
     }
-    throw new Error(
+    throw new TypeError(
       `${prop}  is not a supported event. Please use:` +
       util.mapToBulletedList(eventReactions.SUPPORTED_EVENTS)
     );
   }
+  atest.group('checkSupportedProps', {
+    'onLoad is ok': () => !atest.throws(() => checkSupportedProps('onLoad')),
+    'onError fails': () => atest.throws(() => checkSupportedProps('onError')),
+    'load fails': () => atest.throws(() => checkSupportedProps('load')),
+  });
 
   function checkReactionsAreFunctions(name, action, reactions) {
     util.ensureIsArray(reactions).forEach(reaction => {
       if (typeof reaction !== 'function') {
-        throw new Error(
-          `Failed to add '${action}' reaction to ${name}.`,
+        throw new TypeError(
+          `Failed to add '${action}' reaction to ${name}.` +
+          `Reaction should be a function, not ${typeof reaction}.`,
         );
       }
     });
   }
+  atest.group('checkReactionsAreFunctions', {
+    'Array of functions': () => {
+      const reactions = [() => {}, () => {}];
+      return !atest.throws(() => {
+        checkReactionsAreFunctions('Test 1', 'onLoad', reactions);
+      });
+    },
+    'Single function': () => {
+      const reactions = () => {};
+      return !atest.throws(() => {
+        checkReactionsAreFunctions('Test 1', 'onLoad', reactions);
+      });
+    },
+    'Array with undefined': () => {
+      const reactions = [() => {}, () => {}, undefined];
+      return atest.throws(() => {
+        checkReactionsAreFunctions('Test 1', 'onLoad', reactions);
+      }, TypeError);
+    },
+    'Single undefined': () => {
+      const reactions = undefined;
+      return atest.throws(() => {
+        checkReactionsAreFunctions('Test 1', 'onLoad', reactions);
+      }, TypeError);
+    },
+  });
 
   /**
    * Set event reactions on an HTMLElement.
@@ -2353,7 +2517,7 @@ var {ー, ref} = (function domAccessModule() {
     }
     if (options.ref) {
       if (typeof options.ref !== 'string') {
-        throw new Error(`Ref should be a string, not ${typeof options.ref}.`);
+        throw new TypeError(`Ref should be a string, not ${typeof options.ref}.`);
       }
       ref[options.ref] = proxies;
     }
