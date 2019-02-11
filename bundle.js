@@ -690,6 +690,16 @@ var user = (function userDataModule() {
      */
     const local = {
       /**
+       * @param {string} storeName
+       */
+      destroyStore(storeName) {
+        const string = localStorage.getItem(LOCALSTORE_BASENAME + storeName);
+        if (!string) {
+          throw new TypeError('Cannot find store to destroy');
+        }
+        localStorage.removeItem(LOCALSTORE_BASENAME + storeName);
+      },
+      /**
        * @param {string} storeName - Name of the store in localStorage.
        * @return {(Object|Array|string|number|undefined)} Data restored from
        * string in storage, or undefined. Serialisable primitives are
@@ -731,6 +741,16 @@ var user = (function userDataModule() {
     const storeCache = {};
 
     const cached = {
+      /**
+       * @param {string} storeName
+       */
+      destroyStore(storeName) {
+        if (!storeCache.hasOwnProperty(storeName)) {
+          throw new TypeError('Cannot find store to destroy');
+        }
+        delete storeCache[storeName];
+        local.destroyStore(storeName);
+      },
       /**
        * @param {string} storeName
        * @returns {(Object|Array|string|number)} Stored data.
@@ -806,6 +826,11 @@ var user = (function userDataModule() {
       if (!feature) {
         throw new TypeError('Cannot set data to nameless store.');
       }
+      try {
+        data = JSON.parse(data);
+      } catch (e) {
+        // Data is already an object.
+      }
       if (locale) {
         const sharedType = util.typeOf(cached.getStore(`${feature}`));
         const dataType = util.typeOf(data);
@@ -814,6 +839,27 @@ var user = (function userDataModule() {
         }
       }
       cached.setStore(`${feature}${locale}`, data);
+    }
+    
+    /**
+     * Set or replace all data for a specific feature, and optionally a
+     * specific locale. If no locale is specified, data will be added
+     * to a feature specific shared data store.
+     *
+     * @param {Object} o
+     * @param {string} o.feature
+     * @param {string=} o.locale
+     * @param {boolean} o.destroy - Should the store be destroyed?
+     */
+    function destroyStore({feature, locale, destroy}) {
+      if (!feature) {
+        throw new TypeError('Cannot destroy nameless store.');
+      }
+      const store = cached.getStore(`${feature}${locale}`);
+      if (!store) {
+        throw new Error('Cannot find store to destroy.');
+      }
+      cached.destroyStore(`${feature}${locale}`);
     }
 
     /**
@@ -874,6 +920,26 @@ var user = (function userDataModule() {
     }
 
     /**
+     * Remove an entry in a specific data store.
+     * If a locale is specified, the entries is removed from the locale
+     * specific store. If no locale is specified, the entry is removed
+     * from a store that is shared accross locales.
+     *
+     * @param {Object} o
+     * @param {string} o.feature
+     * @param {string=} o.locale
+     * @param {Object} o.remove - Key to be deleted from the store.
+     */
+    function removeValue({feature, locale = '', remove}) {
+      if (!feature) {
+        throw new TypeError('Cannot set data to nameless store.');
+      }
+      const data = cached.getStore(`${feature}${locale}`) || {};
+      delete data[remove];
+      cached.setStore(`${feature}${locale}`, data);
+    }
+
+    /**
      * Set an entry in a specific data store.
      * If a locale is specified, the entries is added to the locale
      * specific store. If no locale is specified, the entry is added
@@ -906,10 +972,22 @@ var user = (function userDataModule() {
      * @param {string=} o.get
      * @param {string=} o.set
      * @param {*=} o.value
+     * @param {string=} o.remove
      * @param {*=} o.data
+     * @param {string=} o.destroy
      * @return {*}
      */
-    function storeAccess({feature, locale = '', add, get, set, value, data}) {
+    function storeAccess({
+      feature,
+      locale = '',
+      add,
+      get,
+      set,
+      value,
+      remove,
+      data,
+      destroy
+    }) {
       if (typeof feature !== 'string') {
         throw new TypeError('Feature must be a text string');
       }
@@ -922,8 +1000,12 @@ var user = (function userDataModule() {
         return getValue({feature, locale, get});
       } else if (set !== undefined) {
         return setValue({feature, locale, set, value});
+      } else if (remove !== undefined) {
+        return removeValue({feature, locale, remove});
       } else if (data !== undefined) {
         return createStore({feature, locale, data});
+      } else if (destroy === true) {
+        return destroyStore({feature, locale, destroy});
       } else {
         return dumpStore({feature, locale});
       }
@@ -2372,7 +2454,13 @@ var {ー, ref} = (function domAccessModule() {
    * @param {number[]} o.pick
    * @param {HTMLElement[]}
    */
-  function getHtmlElements({rootSelect, rootNumber = '0', select, pick}) {
+  function getHtmlElements({
+    rootSelect,
+    rootNumber = '0',
+    select,
+    pick,
+    withText,
+  }) {
     const simpleSelect = () => {
       return [...document.querySelectorAll(select)];
     }
@@ -2384,8 +2472,14 @@ var {ー, ref} = (function domAccessModule() {
       return [...root.querySelectorAll(select || '*')] || [];
     }
     const allElements = (rootSelect) ? complexSelect() : simpleSelect();
+    const filterByText = (el) => {
+      if (!withText) {
+        return true;
+      }
+      return el.value === withText || el.textContent === withText;
+    };
     if (!pick) {
-      return allElements;
+      return allElements.filter(filterByText);
     }
     const pickedElements = [];
     for (let number of pick) {
@@ -2394,7 +2488,7 @@ var {ー, ref} = (function domAccessModule() {
       pickedElements.push(picked);
       }
     }
-    return pickedElements;
+    return pickedElements.filter(filterByText);
   }
   atest.group('getHtmlElements', {
     'Throws without input': () => atest.throws(() => getHtmlElements()),
@@ -2609,14 +2703,15 @@ var {ー, ref} = (function domAccessModule() {
   var toast = (function toastMiniModule() {
     const toast = document.createElement('div');
     toast.classList = 'toast';
-    toast.style.position = 'fixed';
-    toast.style.bottom = '60px';
-    toast.style.right = '60px';
     toast.style.backgroundColor = 'black';
+    toast.style.bottom = '60px';
+    toast.style.boxShadow = '0 0.2em 0.5em #aaa';
     toast.style.color = 'white';
+    toast.style.right = '60px';
     toast.style.padding = '0.8em 1.2em';
     toast.style.pointerEvents = 'none';
-    toast.style.boxShadow = '0 0.2em 0.5em #aaa';
+    toast.style.position = 'fixed';
+    toast.style.zIndex = '2001';
     document.body.append(toast);
     toast.hidden = true;
     let timer;
@@ -2688,3 +2783,11 @@ var {ー, ref} = (function domAccessModule() {
     container.setContent(html.join('\n'));
   }
 })();
+
+window.tto = {
+  test,
+  user,
+  ー,
+  ref,
+};
+'';
