@@ -135,7 +135,7 @@ var shared = (function workflowMethodsModule() {
       if (hit === is && proxy.value !== to) {
         user.log.low(
           `Set to ${(to) ? to : 'blank'}`,
-          {print: false, toast: true},
+          {print: false, toast: true}
         );
         proxy.value = to;
       }
@@ -143,7 +143,7 @@ var shared = (function workflowMethodsModule() {
   }
   test.group('changeValue', () => {
     const proxy = {value: 'z'};
-    const tester = (proxy) => ({hit: true, proxy}); 
+    const tester = (proxy) => ({hit: true, proxy});
     changeValue({to: 'x', when: tester})(proxy);
     test.ok(proxy.value === 'x', 'Changed value');
   });
@@ -174,7 +174,7 @@ var shared = (function workflowMethodsModule() {
     if (!ALERT_LEVELS.includes(issueLevel)) {
       throw new RangeError(
         issueLevel + ' is not a known issueLevel. Please use:' +
-        util.mapToBulletedList(ALERT_LEVELS),
+        util.mapToBulletedList(ALERT_LEVELS)
       );
     }
     if (typeof when !== 'function') {
@@ -194,7 +194,7 @@ var shared = (function workflowMethodsModule() {
         }
       }
       util.dispatch('issueUpdate', packet);
-    };
+    }
     return util.delay(flagThis, 20);
   }
 
@@ -209,7 +209,7 @@ var shared = (function workflowMethodsModule() {
    * @return {Object} o
    * @return {Object} o.proxy - The matched proxy
    * @return {Object} o.hit - Was the match successful?
-   * @return {Object} o.message - 
+   * @return {Object} o.message -
    * @example - Using testRegex(/x/, true) on a proxy with a value of 'x'
    * would return an object with hit = true, message = 'x did match /x/'
    */
@@ -220,7 +220,7 @@ var shared = (function workflowMethodsModule() {
       const message = `'${proxy.value}' ${didOrShouldNot} match ${regex}`;
       return {proxy, hit, message};
     }
-  };
+  }
   test.group('textRegex', () => {
     const proxy = {value: 'x'};
     const one = testRegex(/x/, true)(proxy);
@@ -245,7 +245,7 @@ var shared = (function workflowMethodsModule() {
    * @return {Object} o
    * @return {Object} o.proxy - The matched proxy
    * @return {Object} o.hit - Was the match successful?
-   * @return {Object} o.message - 
+   * @return {Object} o.message -
    * @example - Using testRegex(/x/, true) on a proxy with a value of 'x'
    * would return an object with hit = true, message = 'x did match /x/'
    */
@@ -263,7 +263,7 @@ var shared = (function workflowMethodsModule() {
       }
       return {proxy, hit: false};
     }
-  };
+  }
   test.group('textLength', () => {
     const one = testLength({min: 2})({value: 'x'});
     test.ok(one.hit === true, 'one: hit');
@@ -291,7 +291,7 @@ var shared = (function workflowMethodsModule() {
    * }
    * issueUpdate and changeValue will be triggered when your function returns
    * an object with a property hit = true.
-   * 
+   *
    * Note that you can also create a function that acts directly on the object.
    * You don't need to use the convenience functions.
    */
@@ -328,7 +328,7 @@ var shared = (function workflowMethodsModule() {
             value
                 .replace(/\/index/i, '')
                 .match(/[^\/]*[\/]?$/)[0]
-                .replace(/(\.\w+)$/i, ''),
+                .replace(/(\.\w+)$/i, '')
           )
         : value;
     tmpValue = tmpValue.replace(/[\s+/_-]+/g, ' ')
@@ -428,7 +428,7 @@ var shared = (function workflowMethodsModule() {
         throw new Error('Comment box not found');
       }
       return commentBox;
-    };
+    }
     function addInitials() {
       const commentBox = getCommentBox();
       commentBox.focus();
@@ -443,7 +443,7 @@ var shared = (function workflowMethodsModule() {
       const commentBox = getCommentBox();
        const initials = user.config.get('initials') || '';
        commentBox.value =
-           commentBox.value.replace(RegExp('^' + initials + '\n'), '');
+           commentBox.value.replace(new RegExp('^' + initials + '\n'), '');
     }
     return {
       addInitials,
@@ -462,13 +462,13 @@ var shared = (function workflowMethodsModule() {
       const initials = user.config.get('initials');
       ref.finalCommentBox = [fakeBox];
       comment.addInitials();
-      const initialsFound = RegExp('^' + initials).test(fakeBox.value);
+      const initialsFound = new RegExp('^' + initials).test(fakeBox.value);
       comment.removeInitials();
-      const initialsNotFound = !RegExp('^' + initials).test(fakeBox.value);
-      const commentFound = RegExp(userComment).test(fakeBox.value);
+      const initialsNotFound = !new RegExp('^' + initials).test(fakeBox.value);
+      const commentFound = new RegExp(userComment).test(fakeBox.value);
       return initialsFound && initialsNotFound && commentFound;
     },
-  });
+  }, true);
 
   /**
    * When pasting a url, it is moved from one box to another. The url is also
@@ -506,14 +506,14 @@ var shared = (function workflowMethodsModule() {
     if (pastedValue === value) {
       user.log.low(
         `No change to '${pastedValue}'`,
-        {print: false, toast: false},
+        {print: false, toast: false}
       );
       return;
     }
     user.log.notice(
-      `'${value}' from '${pastedValue}'`,
+      `'${value}' from '${pastedValue}'`
     );
-  };
+  }
   test.group('fallThrough', () => {
     const a = {value: 'a'};
     const b = {value: 'b'};
@@ -530,7 +530,7 @@ var shared = (function workflowMethodsModule() {
    */
   function guiUpdate(message) {
     util.dispatch('guiUpdate', {toast: message, stage: message});
-  };
+  }
 
   /**
    * Exposes methods that return booleans, reflecting something about
@@ -564,11 +564,11 @@ var shared = (function workflowMethodsModule() {
         return false;
       }
       for (let initials of fishFor.split(/, ?/)) {
-        if (RegExp('^' + initials, 'i').test(comment)) {
-          return false;
+        if (new RegExp('^' + initials, 'i').test(comment)) {
+          return true;
         }
       }
-      return true;
+      return false;
     }
 
     /**
@@ -584,7 +584,7 @@ var shared = (function workflowMethodsModule() {
       }
       const comment = proxy.textContent.trim();
       const initials = user.config.get('initials');
-      if (RegExp('^' + initials, 'i').test(comment)) {
+      if (new RegExp('^' + initials, 'i').test(comment)) {
         return true;
       }
       return false;
@@ -607,7 +607,7 @@ var shared = (function workflowMethodsModule() {
    */
   async function keepAlive(_, __, group) {
     const MINUTES = 30;
-    const INTERVAL = 10000; // ms
+    const INTERVAL = 30000; // ms
     const times = (MINUTES * 60000) / INTERVAL;
     for (let i = 0; i < times; i++) {
       await util.wait(INTERVAL);
@@ -651,12 +651,12 @@ var shared = (function workflowMethodsModule() {
       }
     }
     for (let packet of packets) {
-      if (!testing) {     
+      if (!testing) {
         util.dispatch('issueUpdate', packet);
       }
     }
     return packets;
-  };
+  }
   test.group('noDuplicateValues', () => {
     const run = (group) => {
       return noDuplicateValues(0, 0, group, true)
@@ -693,15 +693,16 @@ var shared = (function workflowMethodsModule() {
       return;
     }
     const targets = ref.prefillTarget;
-    if (targets.some((target, idx) => target.value !== values[idx])) {
-      const numValues = values.filter(v => v).length
-      if (!confirm(
-        `Would you like to use ${numValues} prefill values instead?` +
-        util.mapToBulletedList(values),
-      )) {
-        user.log.notice('Did not use prefill values');
-        return;
-      }
+    if (targets.every((target, idx) => target.value === values[idx])) {
+      return;
+    }
+    const numValues = values.filter(v => v).length
+    if (!confirm(
+      `Would you like to use ${numValues / 2} prefill values instead?` +
+      util.mapToBulletedList(values)
+    )) {
+      user.log.notice('Rejected the prefill values');
+      return;
     }
     user.log.notice('Found prefill values');
     for (let idx in values) {
@@ -716,13 +717,15 @@ var shared = (function workflowMethodsModule() {
    * Pops up a confirmation dialog. On confirmation, will reset all counters.
    */
   async function resetCounter() {
-    const question =
-        'Please confirm.\nAre you sure you want to reset all counters?' +
-        util.mapToBulletedList(user.counter.get());
+    const counterList = util.mapToBulletedList(user.counter.get());
+    const question = (counterList)
+        ? 'Please confirm.\nAre you sure you want to reset all counters?' +
+        counterList
+        : 'Nothing to reset. No counters set';
     user.log.notice(question, {toast: true});
     await util.wait();
     if (confirm(question)) {
-      user.counter.reset();      
+      user.counter.reset();
     } else {
       user.log.low('Canceled');
     }
@@ -748,7 +751,7 @@ var shared = (function workflowMethodsModule() {
     });
     user.log.ok(
       'Saving new default extraction for ' + domain +
-      util.mapToBulletedList(values.slice(1), 2),
+      util.mapToBulletedList(values.slice(1), 2)
     );
   }
 
@@ -804,6 +807,13 @@ var shared = (function workflowMethodsModule() {
     user.log.notice('Submitting\n' + environment.taskId().decoded);
     guiUpdate('Submitting');
     await util.wait(100);
+    if (button.disabled) {
+      await util.wait(100);
+      if (button.disabled) {
+        user.log.warn('Not ready to submit any more');
+        return false;
+      }
+    }
     button.click();
     util.dispatch('issueUpdate', {issueType: 'reset'});
     user.counter.add('Submitted');
@@ -877,10 +887,10 @@ var shared = (function workflowMethodsModule() {
       const uniqueLinks = [...new Set(urls)];
       for (let link of uniqueLinks) {
         openTabs.push(window.open(link, link));
-      };
+      }
       if (openTabs.length !== uniqueLinks.length) {
         user.log.warn(
-          `Could not open all tabs. Check the Chrome popup blocker.`,
+          `Could not open all tabs. Check the Chrome popup blocker.`
         );
       }
     }
@@ -1082,7 +1092,7 @@ var flows = (function workflowModule() {
 
       async submit() {
         if (ref.submitButton[0].disabled) {
-          toStage('approve');
+          toStage('start');
           user.log.warn('Task is not ready');
           return;
         }
@@ -1091,7 +1101,7 @@ var flows = (function workflowModule() {
           await util.wait(1000);
           shared.guiUpdate('Press Start');
         }
-      },
+      }
     };
 
     const stageIs = (...p) => p.includes(stage);
@@ -1102,7 +1112,7 @@ var flows = (function workflowModule() {
     }
 
     const approve = () => stageIs('start') && toStage('approve');
-    const submit = () => stageIs('approve') && toStage('submit');
+    const submit = () => stageIs('start', 'approve') && toStage('submit');
     const start = () => stageIs('approve') && toStage('start');
 
     /**
@@ -1185,19 +1195,12 @@ var flows = (function workflowModule() {
      * tabs.
      */
     function beginTask() {
-      const skip = () => {
-        shared.skipTask();
-        util.wait(1000).then(() => {
-          beginTask();
-          main();
-        });
-      }
       if (shared.is.ownTask()) {
-        skip();
+        shared.skipTask();
         return;
-      } else if (shared.is.analystTask() && !shared.is.byReviewer() && (Math.random() < 0.75)) {
-        skip();
-        return;
+//       } else if (!shared.is.analystTask() && !shared.is.byReviewer()) {
+//         shared.skipTask();
+//         return;
       }
       shared.tabs.refresh();
     }
@@ -1302,7 +1305,8 @@ var flows = (function workflowModule() {
      * @param {Object[]} group
      */
     function moveRight(_, idx, group) {
-      if (idx -1 > group.length) {
+      if (idx - 1 > group.length) {
+        console.log(idx);
         return;
       }
       if (group[idx + 1] && group[idx + 1].disabled) {
@@ -1397,7 +1401,7 @@ var flows = (function workflowModule() {
         rootSelect: '#extraction-editing',
         select: 'textarea',
         pick: [1, 5, 9, 13, 17],
-        onClick: (_, idx) => idx > 2 && click.addItem(idx + 1),
+        onClick: (_, idx) => idx > 1 && click.addItem(idx),
         onInteract: [
           shared.noMoreThan25Chars,
           shared.noDuplicateValues,
@@ -1477,7 +1481,7 @@ var flows = (function workflowModule() {
         select: 'textarea',
         pick: [0],
         onLoad: shared.prefill,
-      });  
+      });
 
       ー({
         name: 'LinksAndLP',
@@ -1490,8 +1494,9 @@ var flows = (function workflowModule() {
 
       ー({
         name: 'AllUrls',
+        rootSelect: '#extraction-editing',
         select: 'textarea',
-        pick: [0, 3, 7, 11, 15, 19, 4, 8, 12, 16, 20, 65],
+        pick: [0, 2, 6, 10, 14, 18, 3, 7, 11, 15, 19],
         ref: 'openInTabs',
       });
 
@@ -1520,20 +1525,20 @@ var flows = (function workflowModule() {
         ref: 'statusDropdown',
       });
 
-      ー({ // @todo FIX
+      ー({
         name: 'Add Data',
         rootSelect: '.extraction',
         select: 'label',
-        pick: [0],
+        withText: 'Add Data',
         onKeydown: click.addItem,
         ref: 'addDataButton',
       });
 
-      ー({ // @todo FIX
+      ー({
         name: 'Edit',
         rootSelect: '.extraction',
         select: 'label',
-        pick: [1],
+        withText: 'Edit',
         onLoad: shared.tabOrder.add,
         onKeydown_CtrlAltArrowRight: [
           (proxy) => proxy.click(),
@@ -1546,7 +1551,7 @@ var flows = (function workflowModule() {
         name: 'Add Item',
         rootSelect: '#extraction-editing',
         select: 'label',
-        pick: [0, 2, 4],
+        withText: 'Add Item',
         ref: 'addItem',
       });
 
@@ -1554,7 +1559,7 @@ var flows = (function workflowModule() {
         name: 'Leave Blank',
         rootSelect: '#extraction-editing',
         select: 'label',
-        pick: [1, 3, 5],
+        withText: 'Leave Blank',
         ref: 'leaveBlank',
       });
 
@@ -1609,6 +1614,13 @@ var flows = (function workflowModule() {
         onLoad: shared.tabOrder.remove,
       });
 
+      ー({
+        name: 'Hide',
+        select: '.extraction',
+        pick: [1, 2],
+        css: {display: 'none'},
+      });
+
       eventReactions.setGlobal({
         onKeydown_CtrlEnter: submit,
         onKeydown_CtrlNumpadEnter: submit,
@@ -1656,11 +1668,12 @@ var flows = (function workflowModule() {
 // APP module
 
 function main() {
+  if (!/com\/evaluation/.test(window.location.href)) { // @debug
+    return true;
+  }
   const detectedFlowName = environment.flowName();
   if (!detectedFlowName) {
-    const warning = 'No workflow identified';
-    shared.guiUpdate(warning);
-    return user.log.warn(warning);
+    return false;
   }
 
   util.dispatch('issueUpdate', {issueType: 'reset'});
@@ -1674,10 +1687,19 @@ function main() {
     onKeydown_Backquote: main,
   });
   flows[detectedFlowName].init();
+  return true;
 };
 
-main();
-
+(async function() {
+  try {
+    util.retry(main, 20, 150)();
+  } catch (e) {
+    const warning = 'No workflow identified';
+    shared.guiUpdate(warning);
+    user.log.warn(warning);
+  }
+})();
+undefined;
 
 /**
  * @todo Build dev tool that marks elements on the page
