@@ -1410,6 +1410,10 @@ var flows = (function workflowModule() {
       user.log.ok('Deleted item', {print: false, save: false});
     }
 
+    function moveFocusToText(_, idx) {
+      ref.textAreas && ref.textAreas[idx] && ref.textAreas[idx].focus();
+    }
+
     /**
      * Set up event handlers.
      */
@@ -1448,6 +1452,7 @@ var flows = (function workflowModule() {
           shared.requireUrl,
           shared.removeScreenshot,
         ],
+        onKeydown_CtrlAlt: moveFocusToText,
         onLoad: shared.keepAlive,
         onPaste: [
           shared.requireUrl,
@@ -1466,6 +1471,7 @@ var flows = (function workflowModule() {
           shared.requireUrl,
           shared.requireScreenshot,
         ],
+        onKeydown_CtrlAlt: moveFocusToText,
         onPaste: [
           shared.requireUrl,
           shared.requireScreenshot,
@@ -1658,8 +1664,15 @@ var flows = (function workflowModule() {
       });
 
       ー({
-        name: 'Hide',
+        name: 'Extractions2And3',
         select: '.extraction',
+        pick: [1, 2],
+        css: {display: 'none'},
+      });
+
+      ー({
+        name: 'Preview Extractions',
+        select: '.extraction-preview',
         pick: [1, 2],
         css: {display: 'none'},
       });
