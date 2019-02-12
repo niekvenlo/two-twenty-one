@@ -1187,11 +1187,13 @@ var flows = (function workflowModule() {
       function addDataButton() {
         if (ref.addDataButton && ref.addDataButton[0]) {
           ref.addDataButton[0].focus();
+          ref.addDataButton[0].scrollIntoView();
         }
       }
       function editButton() {
         if (ref.editButton && ref.editButton[0]) {
           ref.editButton[0].focus();
+          ref.editButton[0].scrollIntoView();
         }
       }
       function item1() {
@@ -1540,7 +1542,7 @@ var flows = (function workflowModule() {
         ref: 'prefillTarget',
       });
 
-      for (let pair of [[1, 2],[5, 6],[9, 10],[13, 14],[17, 18]]) {        
+      for (let pair of [[1, 2],[5, 6],[9, 10],[13, 14],[17, 18]]) {
         ー({
           name: 'Fall',
           rootSelect: '#extraction-editing',
@@ -1625,6 +1627,10 @@ var flows = (function workflowModule() {
         select: 'textarea',
         pick: [0],
         onFocusout: start,
+        onKeydown_CtrlAltArrowRight: [
+          (proxy) => proxy.click(),
+          focus.item1,
+        ],
         ref: 'finalCommentBox',
       });
 
@@ -1632,6 +1638,15 @@ var flows = (function workflowModule() {
         name: 'CanOrCannotExtract',
         select: 'label',
         pick: [0, 1],
+        onKeydown_CtrlAltArrowRight: [
+          () => {
+            if (ref.editButton && ref.editButton[0]) {
+             ref.editButton[0].click();
+            }
+          },
+          (proxy) => proxy.click(),
+          focus.item1,
+        ],
         ref: 'canOrCannotExtractButtons',
       });
 
@@ -1756,10 +1771,3 @@ function main() {
   }
 })();
 undefined;
-
-/**
- * @todo Build dev tool that marks elements on the page
- * @todo Improve fresh implementation
- * @todo Remove mode system
- * @todo Mutation listener
- */
