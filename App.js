@@ -842,7 +842,6 @@ var shared = (function workflowMethodsModule() {
       for (let idx in group) {
         group[idx].tabIndex = idx + 1;
       }
-      group[3].focus();
     }
     set = util.debounce(set);
 
@@ -881,7 +880,8 @@ var shared = (function workflowMethodsModule() {
     }
     async function open() {
       await util.wait(100);
-      const urls = ref.openInTabs
+      const allLinks = [...ref.openInTabs, ...ref.finalUrl];
+      const urls = allLinks
           .map(el => el.value)
           .filter(val => /^http/.test(val));
       const uniqueLinks = [...new Set(urls)];
@@ -1142,12 +1142,13 @@ var flows = (function workflowModule() {
         }
       }
       function leaveBlank(n) {
+        const leaveBlankButtons = ref.leaveBlank.slice(1);
         if (n < 2) {
-          for (let button of ref.leaveBlank) {
+          for (let button of leaveBlankButtons) {
             button.click();
           }
         } else {
-          const button = ref.leaveBlank[n - 2];
+          const button = leaveBlankButtons[n - 2];
           button.click();
         }
       }
@@ -1158,6 +1159,7 @@ var flows = (function workflowModule() {
         leaveBlank,
       }
     })();
+    window.tto = {...window.tto, ...click};
 
     /**
      * Exposes methods that try to find specific proxies and move the focus
@@ -1289,10 +1291,10 @@ var flows = (function workflowModule() {
       if (idx < 1) {
         return;
       }
+      group[idx - 1].focus();
       if (group[idx].value === '') {
         click.leaveBlank(idx);
       }
-      group[idx - 1].focus();
     }
 
     /**
@@ -1306,7 +1308,6 @@ var flows = (function workflowModule() {
      */
     function moveRight(_, idx, group) {
       if (idx - 1 > group.length) {
-        console.log(idx);
         return;
       }
       if (group[idx + 1] && group[idx + 1].disabled) {
@@ -1496,8 +1497,15 @@ var flows = (function workflowModule() {
         name: 'AllUrls',
         rootSelect: '#extraction-editing',
         select: 'textarea',
-        pick: [0, 2, 6, 10, 14, 18, 3, 7, 11, 15, 19],
+        pick: [2, 6, 10, 14, 18, 3, 7, 11, 15, 19, 0],
         ref: 'openInTabs',
+      });
+
+      ー({
+        name: 'Final Url',
+        select: 'textarea',
+        pick: [65],
+        ref: 'finalUrl',
       });
 
       ー({
