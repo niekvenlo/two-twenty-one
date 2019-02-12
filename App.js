@@ -354,9 +354,12 @@ var shared = (function workflowMethodsModule() {
 
   function noForbiddenPhrase(proxy) {
     const phrases = user.storeAccess({
-      feature: 'noForbiddenPhrases',
+      feature: 'ForbiddenPhrases',
       locale: environment.locale(),
     }) || [];
+    if (!phrases.length) {
+      user.log.warn('No forbidden phrases loaded.');
+    }
     const packet = {proxy, issueType: 'Forbidden phrase'};
     for (let rule of phrases) {
       const [phrase, message] = rule;
@@ -901,6 +904,20 @@ var shared = (function workflowMethodsModule() {
     }
   })();
 
+  function updateCharacterCount(_, __, group) {
+    const count = group[0].value.length;
+    const characters = count === 1 ? 'character' : 'characters';
+    group[1].textContent =
+        `You have used ${count || 'no'} ${characters}`;
+    if (count < 26) {
+      group[1].css = {color: 'black'};
+    } else if (count < 51) {
+      group[1].css = {color: '#872b20'};
+    } else {
+      group[1].css = {color: '#dd4b39'};
+    }
+  }
+
   return {
     comment,
     fallThrough,
@@ -916,6 +933,7 @@ var shared = (function workflowMethodsModule() {
     submit,
     tabOrder,
     tabs,
+    updateCharacterCount,
 
     addDashes: changeValue({
       to: '---',
@@ -1142,7 +1160,7 @@ var flows = (function workflowModule() {
         }
       }
       function leaveBlank(n) {
-        const leaveBlankButtons = ref.leaveBlank.slice(1);
+        const leaveBlankButtons = ref.leaveBlank.slice(-3);
         if (n < 2) {
           for (let button of leaveBlankButtons) {
             button.click();
@@ -1516,7 +1534,7 @@ var flows = (function workflowModule() {
         ref: 'prefillTarget',
       });
 
-      [[1, 2],[5, 6],[9, 10],[13, 14],[17, 18]].forEach(pair => {
+      for (let pair of [[1, 2],[5, 6],[9, 10],[13, 14],[17, 18]]) {        
         ー({
           name: 'Fall',
           rootSelect: '#extraction-editing',
@@ -1524,7 +1542,20 @@ var flows = (function workflowModule() {
           pick: pair,
           onPaste: shared.fallThrough,
         });
-      });
+      }
+
+      for (let rootNumber of [0, 8, 17, 26, 35]) {
+        ー({
+          name: 'Remaining',
+          rootSelect: '.extraction-item table',
+          rootNumber,
+          select: 'div, textarea',
+          pick: [2, 3],
+          onChange: shared.updateCharacterCount,
+          onKeydown: shared.updateCharacterCount,
+          onLoad: shared.updateCharacterCount,
+        });
+      }
 
       ー({
         name: 'StatusDropdown',
@@ -1539,6 +1570,10 @@ var flows = (function workflowModule() {
         select: 'label',
         withText: 'Add Data',
         onKeydown: click.addItem,
+        onKeydown_CtrlAltArrowRight: [
+          (proxy) => proxy.click(),
+          focus.item1,
+        ],
         ref: 'addDataButton',
       });
 
