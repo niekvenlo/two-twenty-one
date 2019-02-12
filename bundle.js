@@ -44,7 +44,7 @@ var test = (function testModule() {
 
   /**
    * Define a test, which can include many test items.
-   * 
+   *
    * @param {?string} groupDesc - Commonly the name of the
    * function being tested.
    * @param {function} func - Function body that contains the
@@ -650,7 +650,7 @@ var user = (function userDataModule() {
    * * config - manage configuration settings.
    * * counter - count things.
    * * log - log things.
-   * * storeAccess - access to data storage. 
+   * * storeAccess - access to data storage.
    */
 
   const LOCALSTORE_BASENAME = 'twoTwentyOne';
@@ -664,7 +664,7 @@ var user = (function userDataModule() {
   const LOG_MAX_LENGTH = 5000; // entries
   const LOG_ENTRY_MAX_LENGTH = 500; // characters per log entry
   const LOG_PAGE_SIZE = 25; // entries per page
-  const NO_COLOR_FOUND = 'yellow'; // 
+  const NO_COLOR_FOUND = 'yellow'; //
   const TIMESTAMP_STYLE = 'color: grey';
   const LOG_TYPES = {
     log: 'black',
@@ -707,7 +707,7 @@ var user = (function userDataModule() {
        */
       getStore(storeName) {
         const string = localStorage.getItem(LOCALSTORE_BASENAME + storeName);
-        return (string) ? JSON.parse(string) : undefined;
+        return (typeof string === 'string') ? JSON.parse(string) : undefined;
       },
 
       /**
@@ -864,7 +864,7 @@ var user = (function userDataModule() {
 
     /**
      * Get a data store for a specific feature.
-     * If no locale is specified, a shared store is returned. If a 
+     * If no locale is specified, a shared store is returned. If a
      * locale is specified, a merged store containing shared and locale
      * specific data is returned.
      *
@@ -1085,7 +1085,7 @@ var user = (function userDataModule() {
    *
    * @param {Date} d - A date to turn into a matching timestamp.
    * For today's Date, returns a short format (hh:mm)
-   * For other Dates, returns a long format (MM/DD hh:mm:ss) 
+   * For other Dates, returns a long format (MM/DD hh:mm:ss)
    * @return {string}
    */
   function timestamp (d = new Date()) {
@@ -1233,7 +1233,7 @@ var user = (function userDataModule() {
      * Add one to the count of an existing counter, or create a new counter
      * starting at 1.
      *
-     * @param {string} name - Name of counter to be incremented or created. 
+     * @param {string} name - Name of counter to be incremented or created.
      */
     function add(name) {
       if (typeof name !== 'string') {
@@ -1320,7 +1320,7 @@ var user = (function userDataModule() {
   /**
    * Issue tracker. Integrates updates into a consistent list of currently
    * unresolved issues.
-   * 
+   *
    * @param {Object} issueUpdate - Incoming message. This may refer to a new
    * issue, or update the status of a previous issue.
    * @param {Object} issueUpdate.proxy - HTMLElement proxy.
@@ -1452,7 +1452,7 @@ var user = (function userDataModule() {
     /**
      * Save an array of log entries.
      *
-     * @param {Object} entries - An object containing an array of log entries. 
+     * @param {Object} entries - An object containing an array of log entries.
      */
     function setStore(entries) {
       entries = entries.slice(-LOG_MAX_LENGTH).map(o => {
@@ -1475,8 +1475,8 @@ var user = (function userDataModule() {
     function addPersistent({type, payload}) {
       const entries = getStore();
       const newEntry = {
-        time: new Date(), 
-        type, 
+        time: new Date(),
+        type,
         payload
       };
       const allEntries = [...entries, newEntry];
@@ -1689,7 +1689,7 @@ var eventReactions = (function eventListenersModule() {
       for (let eventType of eventTypes) {
         if (reactions[eventType] !== undefined) {
           found.push(...reactions[eventType]);
-        }          
+        }
       }
       return found;
     }
@@ -2247,7 +2247,7 @@ var {ー, ref} = (function domAccessModule() {
    * Get a fresh proxy matching the select and pick parameters.
    * If the DOM updates, this may return a proxy to a different HTMLElement
    * than the original proxy.
-   * 
+   *
    * @param {Object} freshSelector
    * @param {string} freshSelector.select
    * @param {number[]} freshSelector.pick
@@ -2356,7 +2356,7 @@ var {ー, ref} = (function domAccessModule() {
     }
     function brokenSetter(newValue) {
       throw new Error(
-          `Cannot set value of ${name} to '${newValue}'. ` + 
+          `Cannot set value of ${name} to '${newValue}'. ` +
           `Element is not programmatically editable.`
       );
     }
@@ -2790,4 +2790,4 @@ window.tto = {
   ー,
   ref,
 };
-'';
+undefined;
