@@ -16,7 +16,7 @@ var ForbiddenPhrases = String.raw`[
     "Double spaces are not allowed"
   ]
 ]`;
-var ForBiddenPhrasesDutch = String.raw`[
+var ForbiddenPhrasesDutch = String.raw`[
   [
     "/\\b(ons|het) biografie/i",
     "Onze/de"
@@ -958,14 +958,75 @@ function set(stores) {
 
 // chrome.storage.local.clear();
 
-set({
-  ForbiddenPhrases,
-  ForBiddenPhrasesDutch,
-  BrandCapitalisation,
-  CommonReplacementsDutch,
-});
-
-chrome.storage.local.get(null, (data) => {
-  document.getElementById('main').textContent = 'Data loaded into memory';
-  console.log('Data loaded:', data);
-});
+window.onload = function() {
+  function loadDutchStuff() {
+    set({
+      ForbiddenPhrases,
+      ForbiddenPhrasesDutch,
+      BrandCapitalisation,
+      CommonReplacementsDutch,
+    });
+    chrome.storage.local.get(null, (data) => {
+      toast('Data loaded into memory');
+      console.log('Data loaded:', data);
+    });
+  }
+  
+  const toast = (function() {
+    const toast = document.createElement('div');
+    toast.style.position = 'fixed';
+    toast.style.bottom = '30px';
+    toast.style.right = '30px';
+    toast.style.backgroundColor = 'black';
+    toast.style.color = 'white';
+    toast.style.padding = '10px';
+    toast.hidden = true;
+    document.body.append(toast);
+    let ts;
+    return function(msg) {
+      toast.hidden = false;
+      toast.textContent = msg;
+      clearTimeout(ts);
+      ts = setTimeout(() => {
+        toast.textContent = '';
+        toast.hidden = true;
+      }, 1000);
+    };
+  })();
+  
+  function makeButton(text, callback) {
+    const button = document.createElement('button');
+    button.textContent = text;
+    button.style.backgroundColor = 'purple';
+    button.style.borderColor = 'transparent black black transparent';
+    button.style.borderWidth = '2px';
+    button.style.color = 'white';
+    button.style.padding = '10px';
+    button.addEventListener('click', callback);
+    document.getElementById('main').append(button);
+    return button;
+  }
+  
+  function makeTextbox(desc, defaultText, callback) {
+    const textbox = document.createElement('textarea');
+    textbox.value = defaultText;
+    textbox.title = desc;
+    textbox.style.backgroundColor = 'white';
+    textbox.style.borderColor = '#333 purple purple #333';
+    textbox.style.borderWidth = '2px';
+    textbox.style.color = 'purple';
+    textbox.style.padding = '10px';
+    textbox.addEventListener('blur', () => callback(textbox));
+    document.getElementById('main').append(textbox);
+    return textbox;
+  }
+  
+  
+  const confBox = makeTextbox('Configuration', 'xxx', (tex) => {
+    set({Configuration: String.raw`{"initials":"${tex.value}"}`});
+    toast('Initials saved');
+  });
+  chrome.storage.local.get('Configuration', ({Configuration}) => confBox.value = Configuration.initials);
+  
+  makeButton('Load Dutch stuff', loadDutchStuff);
+};
