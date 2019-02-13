@@ -685,110 +685,36 @@ var user = (function userDataModule() {
    */
   const storeAccess = (function storesMiniModule() {
 
-    /**
-     * Wraps around localStorage to parse JSON to object.
-     */
-    const local = {
-      /**
-       * @param {string} storeName
-       */
-      destroyStore(storeName) {
-        const string = localStorage.getItem(LOCALSTORE_BASENAME + storeName);
-        if (!string) {
-          throw new TypeError('Cannot find store to destroy');
-        }
-        localStorage.removeItem(LOCALSTORE_BASENAME + storeName);
-      },
-      /**
-       * @param {string} storeName - Name of the store in localStorage.
-       * @return {(Object|Array|string|number|undefined)} Data restored from
-       * string in storage, or undefined. Serialisable primitives are
-       * supported, functions and RegExp are not.
-       */
-      getStore(storeName) {
-        const string = localStorage.getItem(LOCALSTORE_BASENAME + storeName);
-        return (typeof string === 'string') ? JSON.parse(string) : undefined;
-      },
-
-      /**
-       * @param {string} storeName - Name of the item in localStorage
-       * @param {object} data - Object, string or number to be stored.
-       * Will silently overwrite previously stored values.
-       */
-      setStore(storeName, data) {
-        if (!data) {
-          return;
-        }
-        localStorage.setItem(
-          LOCALSTORE_BASENAME + storeName,
-          JSON.stringify(data),
-        );
-      }
-    };
-    atest.group('local', {
-      'getStore and setStore': () => {
-        const preserve = local.getStore(CONFIG_STORE_NAME);
-        local.setStore(CONFIG_STORE_NAME, {test: true});
-        const successfullySet = local.getStore(CONFIG_STORE_NAME).test;
-        local.setStore(CONFIG_STORE_NAME, preserve);
-        return successfullySet;
-      },
-    });
-
-    /**
-     * Simply wraps around localStore to add cache in memory.
-     */
-    const storeCache = {};
-
-    const cached = {
-      /**
-       * @param {string} storeName
-       */
-      destroyStore(storeName) {
+    const cached = (function chromeLocalModule() {
+      let storeCache = {};
+      
+      chrome.storage.local.get(null, (result) => storeCache = result);
+      
+      function destroyStore(storeName) {
         if (!storeCache.hasOwnProperty(storeName)) {
           throw new TypeError('Cannot find store to destroy');
         }
         delete storeCache[storeName];
-        local.destroyStore(storeName);
-      },
-      /**
-       * @param {string} storeName
-       * @returns {(Object|Array|string|number)} Stored data.
-       */
-      getStore(storeName) {
+        chrome.storage.local.remove([storeName]);
+      }
+      function getStore(storeName) {
         if (storeCache.hasOwnProperty(storeName)) {
           return storeCache[storeName];
         }
-        const fromStore = local.getStore(storeName);
-        storeCache[storeName] = fromStore;
-        return fromStore;
-      },
-      /**
-       * @param {string} storeName
-       * @returns {(Object|Array|string|number)} Stored data.
-       */
-      setStore(storeName, data) {
+      }
+      function setStore(storeName, data) {
         if (!storeName) {
           throw new TypeError('Cannot create nameless store');
         }
         storeCache[storeName] = data;
-        local.setStore(storeName, data);
-      },
-    };
-    atest.group('cached', {
-      'getStore': () => local.getStore(CONFIG_STORE_NAME),
-      'setStore': () => {
-        const preserve = local.getStore(CONFIG_STORE_NAME);
-        local.setStore(CONFIG_STORE_NAME, {test: true});
-        const successfullySet = local.getStore(CONFIG_STORE_NAME).test;
-        local.setStore(CONFIG_STORE_NAME, preserve);
-        return successfullySet;
-      },
-      'cached': async () => {
-        await util.wait();
-        return Object.entries(storeCache).length !== 0;
-      },
-    });
+        chrome.storage.local.set({[storeName]: data});
+      }
+      return {
+        destroyStore,
+        getStore,
+        setStore,
+      }
+    })();
 
     /**
      * Add a data element to an Array data store.
@@ -1073,8 +999,26 @@ var user = (function userDataModule() {
         }) === o.yanny;
       },
       'after': (o) => {
-        delete localStorage[LOCALSTORE_BASENAME + o.objectStore];
-        delete localStorage[LOCALSTORE_BASENAME + o.objectStore + o.language];
+        const shared = storeAccess({
+          feature: o.objectStore,
+          locale: o.language,
+        });
+        const locale = storeAccess({
+          feature: o.objectStore,
+        });
+        if (shared) {
+          storeAccess({
+            feature: o.objectStore,
+            destroy: true,
+          })
+        }
+        if (locale) {
+          storeAccess({
+            feature: o.objectStore,
+            locale: o.language,
+            destroy: true,
+          })
+        }
       },
     });
     return storeAccess;
@@ -2783,11 +2727,4 @@ var {ー, ref} = (function domAccessModule() {
     container.setContent(html.join('\n'));
   }
 })();
-
-window.tto = {
-  test,
-  user,
-  ー,
-  ref,
-};
 undefined;
