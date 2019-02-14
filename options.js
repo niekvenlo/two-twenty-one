@@ -1053,7 +1053,7 @@ window.onload = function() {
    */
   function set(stores) {
     for (let store in stores) {
-      chrome.storage.local.set({[store]: JSON.parse(stores[store])});
+      chrome.storage.local.set({[store]: stores[store]});
     }
   }
   
@@ -1122,4 +1122,13 @@ window.onload = function() {
       makeEditor(store, allStores[store]);
     }
   });
+  
+  const button = document.createElement('button');
+  button.textContent = 'Reset default values';
+  button.addEventListener('click', () => {
+    set(defaultStores);
+    toast('Resetting default values');
+    setTimeout(() => window.location.reload(), 1000);
+  });
+  document.getElementById('buttons').append(button);
 };
