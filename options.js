@@ -1,4 +1,4 @@
-var ForbiddenPhrases = String.raw`[
+var ForbiddenPhrases = JSON.parse(String.raw`[
   [
     "/\\s&\\w|\\w&\\s/",
     "Use spaces on both sides of the &"
@@ -39,9 +39,9 @@ var ForbiddenPhrases = String.raw`[
     "/\\n",
     "Line breaks are not allowed"
   ]
-]`;
+]`);
 
-var ForbiddenPhrasesDutch = String.raw`[
+var ForbiddenPhrasesDutch = JSON.parse(String.raw`[
   [
     "/\\b(ons|het) biografie/i",
     "Onze/de"
@@ -540,9 +540,9 @@ var ForbiddenPhrasesDutch = String.raw`[
     "/Hoe werkt het/i",
     "Use 'How het werkt'"
   ]
-]`;
+]`);
 
-var BrandCapitalisation = String.raw`
+var BrandCapitalisation = JSON.parse(String.raw`
 [
  "AdWords",
  "iPhone",
@@ -553,9 +553,9 @@ var BrandCapitalisation = String.raw`
  "iTunes",
  "MacBook",
  "YouTube"
-]`;
+]`);
 
-var CommonReplacementsDutch = String.raw`[
+var CommonReplacementsDutch = JSON.parse(String.raw`[
   [
     "/.*/preise/",
     "Prijzen bekijken"
@@ -980,9 +980,7 @@ var CommonReplacementsDutch = String.raw`[
     "/\\bHP\\b/i",
     "HP"
   ]
-]`;
-
-// chrome.storage.local.clear();
+]`);
 
 window.onload = function() {
   
@@ -1097,8 +1095,6 @@ window.onload = function() {
     title.textContent = name;
     title.style.margin = '20px 0 0 0';
     const textarea = document.createElement('textarea');
-    textarea.style.height = '50%';
-    textarea.style.width = '100%';
     textarea.value = prettifyJSON(JSON.stringify(data));
     textarea.addEventListener('blur', handleBlur);
     contain.appendChild(title);
@@ -1113,9 +1109,12 @@ window.onload = function() {
     BrandCapitalisation,
     CommonReplacementsDutch,
   }
+
+  // chrome.storage.local.clear();
   
   chrome.storage.local.get(null, (stores) => {
     var allStores = {...defaultStores, ...stores};
+    console.log(allStores);
     for (let store in allStores) {
       if (store === 'LogBook') {
         continue;
