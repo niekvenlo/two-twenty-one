@@ -196,7 +196,7 @@ var shared = (function workflowMethodsModule() {
       }
       util.dispatch('issueUpdate', packet);
     }
-    return util.delay(flagThis, 20);
+    return util.delay(flagThis, 40);
   }
 
   /**
@@ -884,7 +884,7 @@ var shared = (function workflowMethodsModule() {
     }
     async function open() {
       await util.wait(100);
-      const allLinks = [...ref.openInTabs, ...ref.finalUrl];
+      const allLinks = [...ref.invalidScreenshot, ...ref.openInTabs];
       const urls = allLinks
           .map(el => el.value)
           .filter(val => /^http/.test(val));
@@ -918,6 +918,7 @@ var shared = (function workflowMethodsModule() {
       group[1].css = {color: '#dd4b39'};
     }
   }
+  updateCharacterCount = util.delay(updateCharacterCount);
 
   return {
     comment,
@@ -1133,6 +1134,19 @@ var flows = (function workflowModule() {
     const approve = () => stageIs('start') && toStage('approve');
     const submit = () => stageIs('start', 'approve') && toStage('submit');
     const start = () => stageIs('approve') && toStage('start');
+    
+    function attention({on, n = 0, focus, click, scrollIntoView}) {
+      if (Array.isArray(on)) {
+        on = on[n];
+      }
+      if (!on || !on.click) {
+        throw new Error(`Invalid 'on': ${on}`);
+      }
+      focus && on.focus();
+      click && on.click();
+      scrollIntoView && on.scrollIntoView();
+      }
+    }
 
     /**
      * Exposes methods that try to find specific proxies and click on
@@ -1146,15 +1160,10 @@ var flows = (function workflowModule() {
         }
       }
       function approveNo () {
-        if (ref.approvalButtons && ref.approvalButtons.length) {
-          const [yes, no] = ref.approvalButtons;
-          no.click();
-        }
+        attention({on: ref.approvalButtons, n: 1, click: true});
       }
       function editButton() {
-        if (ref.editButton && ref.editButton[0]) {
-         ref.editButton[0].click();
-        }
+        attention({on: ref.editButton, click: true});
       }
       function addItem(n) {
         if (n < 2) {
@@ -1272,10 +1281,13 @@ var flows = (function workflowModule() {
       if (!ref.statusDropdown) {
         throw new Error('No status dropdown menus selected.');
       }
-      function canExtract(type) {
+      function clickCanExtract(type) {
         if (!ref.canOrCannotExtractButtons) {
           user.log.warn('canOrCannotExtractButtons not found');
           return;
+        }
+        if (type !== 'canExtract' && ref.invalidScreenshot) {
+          invalidScreenshot[0] && invalidScreenshot[0].focus()
         }
         const n = (type === 'canExtract') ? 0 : 1;
         const button = ref.canOrCannotExtractButtons[n];
@@ -1287,7 +1299,7 @@ var flows = (function workflowModule() {
         const dropdowns = ref.statusDropdown;
         dropdowns[0].value = b;
         dropdowns[c].value = d;
-        canExtract(type);
+        clickCanExtract(type);
       }
       return setTo;
     }
@@ -1439,6 +1451,24 @@ var flows = (function workflowModule() {
     function moveFocusToText(_, idx) {
       ref.textAreas && ref.textAreas[idx] && ref.textAreas[idx].focus();
     }
+    
+    function checkDomainMismatch() {
+      const getTrimmedDomain = (url) => {
+        return util.getDomain(url).split('.').slice(-2).join('.');
+      }
+      const one = getTrimmedDomain('https://' + ref.creative[1].textContent);
+      const two = getTrimmedDomain(ref.openInTabs.slice(-1)[0].value);
+      const three = getTrimmedDomain(ref.finalUrl[0].value);
+      const links = [one, two, three].filter(o => o);
+
+      const packet = {proxy: ref.creative[1], issueType: 'Domain mismatch'};
+      if (new Set(links).size !== 1) {
+        packet.issueLevel = 'orange';
+        packet.message = links.join(', ');
+      }
+      util.dispatch('issueUpdate', packet);
+    }
+    checkDomainMismatch = util.debounce(checkDomainMismatch);
 
     /**
      * Set up event handlers.
@@ -1565,6 +1595,27 @@ var flows = (function workflowModule() {
         select: 'textarea',
         pick: [65],
         ref: 'finalUrl',
+      });
+      
+      ー({
+        name: 'InvalidScreenshot',
+        rootSelect: '.errorbox-good',
+        rootNumber: 1,
+        select: 'textarea',
+        onKeydown_CtrlAltArrowRight: [
+          () => attention({on: ref.finalCommentbox, focus: true});
+        ],
+        ref: 'invalidScreenshot',
+      });
+      
+      ー({
+        name: 'Creative',
+        rootSelect: '.context-item',
+        rootNumber: [2],
+        select: '*',
+        pick: [3, 6, 8],
+        onLoad: checkDomainMismatch,
+        ref: 'creative',
       });
 
       ー({
