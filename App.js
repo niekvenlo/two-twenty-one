@@ -69,7 +69,8 @@ var environment = (function environmentModule() {
       };
     }
     const currentTask =
-        Object.entries(JSON.parse(localStorage.acquiredTask))[0];
+        Object.entries(JSON.parse(localStorage.acquiredTask))[0] ||
+            [undefined, undefined];
     return {
       encoded: currentTask[0],
       decoded: currentTask[1],
@@ -486,7 +487,7 @@ var shared = (function workflowMethodsModule() {
   function fallThrough (_, idx, group) {
     const LOG_ENTRY_MAX_LENGTH = 100;
     if (group.length !== 2) {
-      throw new RangeError('fallThrough requires two proxies.')
+      throw new RangeError('fallThrough requires two proxies.');
     }
     if (idx > 0) {
       return;
@@ -1138,16 +1139,21 @@ var flows = (function workflowModule() {
      * them.
      */
     const click = (function clickMiniModule() {
-      const approveYes = () => {
+      function approveYes () {
         if (ref.approvalButtons && ref.approvalButtons.length) {
           const [yes, no] = ref.approvalButtons;
           yes.click();
         }
       }
-      const approveNo = () => {
+      function approveNo () {
         if (ref.approvalButtons && ref.approvalButtons.length) {
           const [yes, no] = ref.approvalButtons;
           no.click();
+        }
+      }
+      function editButton() {
+        if (ref.editButton && ref.editButton[0]) {
+         ref.editButton[0].click();
         }
       }
       function addItem(n) {
@@ -1173,11 +1179,11 @@ var flows = (function workflowModule() {
       return {
         approveYes,
         approveNo,
+        editButton,
         addItem,
         leaveBlank,
       }
     })();
-    window.tto = {...window.tto, ...click};
 
     /**
      * Exposes methods that try to find specific proxies and move the focus
@@ -1200,15 +1206,27 @@ var flows = (function workflowModule() {
         if (!ref.textAreas) {
           return;
         }
+        click.editButton();
         const textarea = ref.textAreas[0];
         textarea.focus();
         ref.editButton && ref.editButton[0] &&
             ref.editButton[0].scrollIntoView();
       }
+      function item(n) {
+        if (!ref.textAreas) {
+          return;
+        }
+        click.editButton();
+        const textarea = ref.textAreas[n - 1];
+        textarea.focus();
+        ref.editButton && ref.editButton[n - 1] &&
+            ref.editButton[n - 1].scrollIntoView();
+      }
       return {
         addDataButton,
         editButton,
         item1,
+        item,
       }
     })();
 
@@ -1411,6 +1429,12 @@ var flows = (function workflowModule() {
       text[idx].focus();
       user.log.ok('Deleted item', {print: false, save: false});
     }
+    
+    function deleteAllItems() {
+      for (let idx in [0,1,2,3,4,5]) {
+        deleteItem(null, idx);
+      }
+    }
 
     function moveFocusToText(_, idx) {
       ref.textAreas && ref.textAreas[idx] && ref.textAreas[idx].focus();
@@ -1437,6 +1461,7 @@ var flows = (function workflowModule() {
         onKeydown_CtrlAltArrowLeft: moveLeft,
         onKeydown_CtrlAltArrowRight: moveRight,
         onKeydown_CtrlDelete: deleteItem,
+        onKeydown_CtrlShiftDelete: deleteAllItems,
         onLoad: [
           shared.noMoreThan25Chars,
           shared.noDuplicateValues,
@@ -1507,6 +1532,14 @@ var flows = (function workflowModule() {
         rootSelect: '#extraction-editing',
         select: 'textarea',
         pick: [0],
+        onKeydown_CtrlAltArrowRight: [
+          () => {
+            if (ref.editButton && ref.editButton[0]) {
+             ref.editButton[0].click();
+            }
+          },
+          focus.item1,
+        ],
         onLoad: shared.prefill,
       });
 
@@ -1577,9 +1610,12 @@ var flows = (function workflowModule() {
         rootSelect: '.extraction',
         select: 'label',
         withText: 'Add Data',
-        onKeydown: click.addItem,
         onKeydown_CtrlAltArrowRight: [
-          (proxy) => proxy.click(),
+          () => {
+            if (ref.editButton && ref.editButton[0]) {
+             ref.editButton[0].click();
+            }
+          },
           focus.item1,
         ],
         ref: 'addDataButton',
@@ -1628,7 +1664,11 @@ var flows = (function workflowModule() {
         pick: [0],
         onFocusout: start,
         onKeydown_CtrlAltArrowRight: [
-          (proxy) => proxy.click(),
+          () => {
+            if (ref.editButton && ref.editButton[0]) {
+             ref.editButton[0].click();
+            }
+          },
           focus.item1,
         ],
         ref: 'finalCommentBox',
@@ -1644,7 +1684,6 @@ var flows = (function workflowModule() {
              ref.editButton[0].click();
             }
           },
-          (proxy) => proxy.click(),
           focus.item1,
         ],
         ref: 'canOrCannotExtractButtons',
