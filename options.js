@@ -8,14 +8,39 @@ var ForbiddenPhrases = String.raw`[
     "Use spaces on both sides of the /"
   ],
   [
-    "/[,;]/",
-    "Commas, semicolons and periods are not allowed"
+    "/[,.]/",
+    "Commas and periods are not allowed"
+  ],
+  [
+    "/[:;]/",
+    "Colons and semicolons are not allowed"
+  ],
+  [
+    "/[!?]/",
+    "Exclamation marks and question marks are not allowed"
+  ],
+  [
+    "/[\\(\\)\\[\\]\\{\\}\\<\\>]/",
+    "Brackets are not allowed"
+  ],
+  [
+    "/[\\/\\\\]/",
+    "Slashes are not allowed"
+  ],
+  [
+    "/[@#$^*–~]/",
+    "Special characters are not allowed"
   ],
   [
     "/  /",
     "Double spaces are not allowed"
+  ],
+  [
+    "/\\n",
+    "Line breaks are not allowed"
   ]
 ]`;
+
 var ForbiddenPhrasesDutch = String.raw`[
   [
     "/\\b(ons|het) biografie/i",
@@ -506,8 +531,17 @@ var ForbiddenPhrasesDutch = String.raw`[
   [
     "/prgramma/i",
     "Use 'Programma'"
+  ],
+  [
+    "/onderhoudplannen/i",
+    "Use 'Onderhoudsplannen'"
+  ],
+  [
+    "/Hoe werkt het/i",
+    "Use 'How het werkt'"
   ]
 ]`;
+
 var BrandCapitalisation = String.raw`
 [
  "AdWords",
@@ -520,6 +554,7 @@ var BrandCapitalisation = String.raw`
  "MacBook",
  "YouTube"
 ]`;
+
 var CommonReplacementsDutch = String.raw`[
   [
     "/.*/preise/",
@@ -554,7 +589,7 @@ var CommonReplacementsDutch = String.raw`[
     "Diverse $1"
   ],
   [
-    "/^brands$|.*\bmerken.*/i",
+    "/^brands$|.*\\bmerken.*/i",
     "Merkenoverzicht"
   ],
   [
@@ -678,7 +713,7 @@ var CommonReplacementsDutch = String.raw`[
     "Aanmelden nieuwsbrief"
   ],
   [
-    "/.*nieuws\b.*/i",
+    "/.*nieuws\\b.*/i",
     "Lees ons nieuws"
   ],
   [
@@ -754,27 +789,27 @@ var CommonReplacementsDutch = String.raw`[
     "cv-ketel"
   ],
   [
-    "/fotos\b/i",
+    "/fotos\\b/i",
     "foto's"
   ],
   [
-    "/accus\b/i",
+    "/accus\\b/i",
     "accu's"
   ],
   [
-    "/autos\b/i",
+    "/autos\\b/i",
     "auto's"
   ],
   [
-    "/\bvacuum/i",
+    "/\\bvacuum/i",
     "vacuüm"
   ],
   [
-    "/\bcafe/i",
+    "/\\bcafe/i",
     "café"
   ],
   [
-    "/cafe\b/i",
+    "/cafe\\b/i",
     "café"
   ],
   [
@@ -914,7 +949,7 @@ var CommonReplacementsDutch = String.raw`[
     "Building"
   ],
   [
-    "/\bnew\b/i",
+    "/\\bnew\\b/i",
     "/New"
   ],
   [
@@ -930,56 +965,42 @@ var CommonReplacementsDutch = String.raw`[
     "EHBO"
   ],
   [
-    "/\bIT\b/i",
+    "/\\bIT\\b/i",
     "IT"
   ],
   [
-    "/\bICT\b/i",
+    "/\\bICT\\b/i",
     "ICT"
   ],
   [
-    "/\bVIP\b/i",
+    "/\\bVIP\\b/i",
     "VIP"
   ],
   [
-    "/\bHP\b/i",
+    "/\\bHP\\b/i",
     "HP"
   ]
 ]`;
 
-/**
- * @param {Object} stores - Map of JSON strings to store as objects.
- */
-function set(stores) {
-  for (let store in stores) {
-    chrome.storage.local.set({[store]: JSON.parse(stores[store])});
-  }
-}
-
 // chrome.storage.local.clear();
 
 window.onload = function() {
-  function loadDutchStuff() {
-    set({
-      ForbiddenPhrases,
-      ForbiddenPhrasesDutch,
-      BrandCapitalisation,
-      CommonReplacementsDutch,
-    });
-    chrome.storage.local.get(null, (data) => {
-      toast('Data loaded into memory');
-      console.log('Data loaded:', data);
-    });
-  }
   
+  /**
+   * Show a quick popup message that quickly disappears.
+   *
+   * @param {string} msg - The text of the message
+   */
   const toast = (function() {
     const toast = document.createElement('div');
-    toast.style.position = 'fixed';
-    toast.style.bottom = '30px';
-    toast.style.right = '30px';
     toast.style.backgroundColor = 'black';
+    toast.style.bottom = '60px';
+    toast.style.boxShadow = '0 0.2em 0.5em #aaa';
     toast.style.color = 'white';
-    toast.style.padding = '10px';
+    toast.style.padding = '0.8em 1.2em';
+    toast.style.position = 'fixed';
+    toast.style.right = '60px';
+    toast.style.zIndex = '2001';
     toast.hidden = true;
     document.body.append(toast);
     let ts;
@@ -994,39 +1015,112 @@ window.onload = function() {
     };
   })();
   
-  function makeButton(text, callback) {
-    const button = document.createElement('button');
-    button.textContent = text;
-    button.style.backgroundColor = 'purple';
-    button.style.borderColor = 'transparent black black transparent';
-    button.style.borderWidth = '2px';
-    button.style.color = 'white';
-    button.style.padding = '10px';
-    button.addEventListener('click', callback);
-    document.getElementById('main').append(button);
-    return button;
+  /**
+   * Add linebreaks and spacing to JSON for legibility.
+   *
+   * @param {string} json - JSON formatted string.
+   * @param {string} JSON formatted string with spacing.
+   */
+  function prettifyJSON(json) {
+    var out = '';
+    var depth = 0;
+    var inQuote = false;
+    for (let char of json) {
+      if (!inQuote && char === ']' || char === '}') {
+        depth--;
+        out += '\n' + '  '.repeat(depth);
+      }
+      out += char;
+      if (!inQuote && (char === ':' || char === ',')) {
+        out += ' ';
+      }
+      if (char === '"') {
+        inQuote = !inQuote;
+      }
+      if (!inQuote && char === '[' || char === '{') {
+        depth++;
+        out += '\n' + '  '.repeat(depth);
+      }
+      if (!inQuote && char === ',') {
+        out += '\n' + '  '.repeat(depth);
+      }
+    }
+    return out;
   }
   
-  function makeTextbox(desc, defaultText, callback) {
-    const textbox = document.createElement('textarea');
-    textbox.value = defaultText;
-    textbox.title = desc;
-    textbox.style.backgroundColor = 'white';
-    textbox.style.borderColor = '#333 purple purple #333';
-    textbox.style.borderWidth = '2px';
-    textbox.style.color = 'purple';
-    textbox.style.padding = '10px';
-    textbox.addEventListener('blur', () => callback(textbox));
-    document.getElementById('main').append(textbox);
-    return textbox;
+  /**
+   * Store data in chrome.storage.local.
+   *
+   * @param {Object} stores - Map of JSON strings to store as objects.
+   */
+  function set(stores) {
+    for (let store in stores) {
+      chrome.storage.local.set({[store]: JSON.parse(stores[store])});
+    }
   }
   
+  /**
+   * Make a single editor for a data store.
+   *
+   * @param {string} name
+   * @param {Object} data
+   */
+  function makeEditor(name, data) {
+    if (typeof data !== 'object') {
+      throw new Error('Data should be an object');
+    }
+    
+    /**
+     * On blur, if the textarea value is valid JSON, save the new data.
+     * Otherwise, move the focus to the point at which the parse failed.
+     */
+    const handleBlur = () => {
+      try {
+        const obj = JSON.parse(textarea.value);
+        toast('Saving new data for ' + name);
+        set({[name]: JSON.stringify(obj)});
   
-  const confBox = makeTextbox('Configuration', 'xxx', (tex) => {
-    set({Configuration: String.raw`{"initials":"${tex.value}"}`});
-    toast('Initials saved');
+      } catch (e) {
+        if (!(e instanceof SyntaxError)) {
+          throw e;
+        }
+        const errorAt = e.message.match(/\d*$/)[0];
+        toast(`Invalid formatting (@${errorAt})`)
+        textarea.focus();
+        textarea.selectionStart = errorAt;
+        textarea.selectionEnd = errorAt;
+      }
+    }
+  
+    const contain = document.createElement('div');
+    const title = document.createElement('div');
+    title.textContent = name;
+    title.style.margin = '20px 0 0 0';
+    const textarea = document.createElement('textarea');
+    textarea.style.height = '50%';
+    textarea.style.width = '100%';
+    textarea.value = prettifyJSON(JSON.stringify(data));
+    textarea.addEventListener('blur', handleBlur);
+    contain.appendChild(title);
+    contain.appendChild(textarea);
+    document.getElementById('main').append(contain);
+  }
+  
+  var defaultStores = {
+    Configuration: {initials: '__'},
+    ForbiddenPhrases,
+    ForbiddenPhrasesDutch,
+    BrandCapitalisation,
+    CommonReplacementsDutch,
+  }
+  
+  chrome.storage.local.get(null, (stores) => {
+    var allStores = {...defaultStores, ...stores};
+    for (let store in allStores) {
+      if (store === 'LogBook') {
+        continue;
+      }
+      makeEditor(store, allStores[store]);
+    }
   });
-  chrome.storage.local.get('Configuration', ({Configuration}) => confBox.value = Configuration.initials);
-  
-  makeButton('Load Dutch stuff', loadDutchStuff);
 };
