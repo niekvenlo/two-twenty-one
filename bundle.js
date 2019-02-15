@@ -1,142 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
-// TEST module
-
-var test = (function testModule() {
-  'use strict';
-
-  /**
-   * @fileoverview Exports testing functions.
-   * Define a new test with group.
-   * Use ok, fizzle and solid to define test items:
-   * - pass ok a true statement.
-   * - pass fizzle a function that throws an error.
-   * - pass solid a function that does not throw an error.
-   * Results are logged to the console if there is a failure.
-   * @example
-   * test.group('Name', () => {
-   *   test.ok(1===1, '1 equals 1');
-   * });
-   * which would record:
-   * ===== Name
-   * OK: 1 equals 1
-   */
-
-  const RUN_UNSAFE_TESTS = false;
-  const AUTO_PRINT_DELAY = 1000;
-  const PRINT_COLORS = {
-    header: 'color: grey',
-    ok: 'color: green',
-    fail: 'color: red',
-    todo: 'color: purple',
-  }
-
-  const testingLogBook = [];
-  let failuresRecorded = false;
-  let enclosedInGroup = false;
-
-  const print = () => testingLogBook.forEach(el => console.log(...el));
-
-  const log = (type, message) => {
-    testingLogBook.push([`%c${message}`, PRINT_COLORS[type]]);
-  };
-
-  /**
-   * Define a test, which can include many test items.
-   *
-   * @param {?string} groupDesc - Commonly the name of the
-   * function being tested.
-   * @param {function} func - Function body that contains the
-   * test items.
-   */
-  const group = (groupDesc, func, unsafe) => {
-    if (unsafe && !RUN_UNSAFE_TESTS) {
-      return;
-    }
-    if (typeof func !== 'function') {
-      throw new TypeError('Test requires a function as its second parameter');
-    }
-    log('header', '===== ' + groupDesc);
-    func();
-  };
-
-  /**
-   * Test a statement for truth.
-   *
-   * @param {boolean} statement - Truthy or falsy statement
-   * @param {?string} itemDesc - Description of test item.
-   */
-  const ok = (statement, itemDesc) => {
-    if (statement === true) {
-      log('ok', ' OK: ' + itemDesc);
-    } else {
-      log('fail', ' FAIL: ' + itemDesc);
-      failuresRecorded = true;
-    }
-  }
-
-  /**
-   * Test that a function throws an error.
-   *
-   * @param {function} fizzleFunc - Function that is
-   * expected to throw an error.
-   * @param {?string} itemDesc - Description of test item.
-   */
-  const fizzle = (fizzleFunc, itemDesc) => {
-    try {
-      fizzleFunc();
-      log('fail', ' FAIL: ' + itemDesc + ' did not fizzle');
-      failuresRecorded = true;
-    } catch (e) {
-      log('ok', ' OK: ' + itemDesc + ' fizzled');
-    }
-  }
-
-  /**
-   * Test that a function does not throw an error.
-   *
-   * @param {function} throwingFunc - Function that is
-   * expected to run without throwing an error.
-   * @param {?string} itemDesc - Description of test item.
-   */
-  const solid = (throwingFunc, itemDesc) => {
-    try {
-      throwingFunc();
-      log('ok', ' OK: ' + itemDesc + ' is solid');
-    } catch (e) {
-      log('fail', ' FAIL: ' + itemDesc + ' is not solid');
-      failuresRecorded = true;
-    }
-  }
-
-  const todo = (message) => {
-    log('todo', 'TODO: ' + message);
-  };
-
-  // Automatically print results if there's a fail result.
-  setTimeout(() => {
-    if (failuresRecorded) {
-      print();
-    }
-  }, AUTO_PRINT_DELAY);
-
- return {
-   fizzle,
-   group,
-   ok,
-   print,
-   solid,
-   todo,
- };
-})();
-
-
-
-
-////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
 // ASYNC TEST module
 
 var atest = (function testModule() {
@@ -256,6 +120,18 @@ var util = (function utilityModule() {
     'One mismatch': () => arraysMatch([5, 4, 5], [3, 4, 5]) === false,
     'Different order': () => arraysMatch([3, 4, 5], [4, 3, 5]) === false,
   });
+  
+  function attention({on, n = 0, focus, click, scrollIntoView}) {
+    if (Array.isArray(on)) {
+      on = on[n];
+    }
+    if (!on || !on.click) {
+      return;
+    }
+    focus && on.focus();
+    click && on.click();
+    scrollIntoView && on.scrollIntoView();
+  }
 
   function beep() {
     (new Audio(
@@ -371,8 +247,9 @@ var util = (function utilityModule() {
    * @param {number} ms - The delay in milliseconds.
    */
   function delay(func, ms = DEFAULT_DELAY) {
-    function delayed(...params) {
-      wait(ms).then(() => func(...params));
+    async function delayed(...params) {
+      await wait(ms);
+      return func(...params);
     }
     return delayed;
   }
@@ -533,7 +410,9 @@ var util = (function utilityModule() {
         }
         await wait(delay);
       }
-      throw new Error('Did not succeed after ' + retries + ' retries');
+      throw new Error(
+        `Failed. Ran ${func.name || 'unnamed function'} ${retries} times`
+      );
     }
   }
   atest.group('retry', {
@@ -560,14 +439,19 @@ var util = (function utilityModule() {
    * @param {string}
    * @return {RegExp}
    */
-  const toRegex = (string)=>{
-    const [,regex,flags] = string.match(/\/(.+)\/([gimuy]*)/);
-    return RegExp(regex, flags);
+  const toRegex = (string)=> {
+    try {
+      const [,regex,flags] = string.match(/\/(.+)\/([gimuy]*)/);
+      return RegExp(regex, flags);
+    } catch (e) {
+      console.debug('Cannot make RegExp from ' + string);
+      return;
+    }
   }
   atest.group('toRegex', {
     'Simple': () => toRegex('/abc/gi').toString() === '/abc/gi',
     'Complex': () => toRegex('/^\d?[a-c]+/g').toString() === '/^d?[a-c]+/g',
-    'Malformed string': () => atest.throws(() => toRegex('abc/gi'), TypeError),
+    'Malformed string': () => toRegex('abc/gi') === undefined,
   })
 
   /**
@@ -616,6 +500,7 @@ var util = (function utilityModule() {
 
   return {
     arraysMatch,
+    attention,
     beep,
     bundle,
     capitalize,
@@ -686,9 +571,31 @@ var user = (function userDataModule() {
   const storeAccess = (function storesMiniModule() {
 
     const cached = (function chromeLocalModule() {
+      if (!!localStorage.useLocalStorage) {
+        return {
+          destroyStore() {},
+          getStore() {},
+          setStore() {},
+        }
+      }
       let storeCache = {};
       
-      chrome.storage.local.get(null, (result) => storeCache = result);
+      function populateCacheFromChomeStorage() {
+        chrome.storage.local.get(null, (result) => {
+          storeCache = result;
+          console.debug(result);
+        });
+      }
+      populateCacheFromChomeStorage();
+      
+      try { // @todo Remove try/catch block
+        chrome.storage.onChanged.addListener(() => {
+          console.debug('Repopulating cache');
+          populateCacheFromChomeStorage();
+        });
+      } catch (e) {
+        console.debug('Failed to set onChange listener', e);
+      }
       
       function destroyStore(storeName) {
         if (!storeCache.hasOwnProperty(storeName)) {
@@ -705,6 +612,9 @@ var user = (function userDataModule() {
       function setStore(storeName, data) {
         if (!storeName) {
           throw new TypeError('Cannot create nameless store');
+        }
+        if (typeof data !== 'object') {
+          throw new TypeError('Data should be an object, not ' + typeof data);
         }
         storeCache[storeName] = data;
         chrome.storage.local.set({[storeName]: data});
@@ -754,8 +664,8 @@ var user = (function userDataModule() {
       }
       try {
         data = JSON.parse(data);
+        console.debug('CreateStore received this JSON: ', data);
       } catch (e) {
-        // Data is already an object.
       }
       if (locale) {
         const sharedType = util.typeOf(cached.getStore(`${feature}`));
