@@ -24,8 +24,8 @@ var ForbiddenPhrases = JSON.parse(String.raw`[
     "Brackets are not allowed"
   ],
   [
-    "/[\\/\\\\]/",
-    "Slashes are not allowed"
+    "/[\\\\]/",
+    "Backslash is not allowed"
   ],
   [
     "/[@#$^*–~]/",
@@ -190,10 +190,6 @@ var ForbiddenPhrasesDutch = JSON.parse(String.raw`[
   ],
   [
     "/code95/i"
-  ],
-  [
-    "/accessories/i",
-    "Use 'accessoires'"
   ],
   [
     "/^Fysiotherapeut$/",
@@ -397,23 +393,35 @@ var ForbiddenPhrasesDutch = JSON.parse(String.raw`[
     "/kinderen\\w/i"
   ],
   [
+    "/accessories/i",
+    "Use 'accessoires'"
+  ],
+  [
     "/accesoires/i",
-    "Use acceSSoires"
+    "Use 'accessoires'"
   ],
   [
     "/acessoires/i",
-    "Use aCCessoires"
+    "Use 'accessoires'"
+  ],
+  [
+    "/accesoire/i",
+    "Use 'accessoire'"
+  ],
+  [
+    "/acessoire/i",
+    "Use 'accessoire'"
   ],
   [
     "/^alle (accommodatie|menu|maatwerk)$/i"
   ],
   [
     "/acommodatie/i",
-    "Use aCCommodatie"
+    "Use 'accommodatie'"
   ],
   [
     "/accomodatie/i",
-    "Use accoMModatie"
+    "Use 'accommodatie'"
   ],
   [
     "/^alles (\\w*machines)/i"
@@ -1115,7 +1123,6 @@ window.onload = function() {
     CommonReplacementsDutch,
   }
 
-  // chrome.storage.local.clear();
   
   chrome.storage.local.get(null, (stores) => {
     var allStores = {...defaultStores, ...stores};
@@ -1130,6 +1137,7 @@ window.onload = function() {
   const button = document.createElement('button');
   button.textContent = 'Reset default values';
   button.addEventListener('click', () => {
+    chrome.storage.local.clear();
     set(defaultStores);
     toast('Resetting default values');
     setTimeout(() => window.location.reload(), 1000);
