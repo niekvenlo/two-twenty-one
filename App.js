@@ -41,6 +41,9 @@ var environment = (function environmentModule() {
     if (/twentyone/.test(headerText)) {
       return 'sl';
     }
+    if (/#activeevals\/subpage=labels/.test(document.location.href)) {
+      return 'labels';
+    }
     return '';
   }
 
@@ -142,12 +145,12 @@ var shared = (function workflowMethodsModule() {
       }
     }
   }
-  test.group('changeValue', () => {
-    const proxy = {value: 'z'};
-    const tester = (proxy) => ({hit: true, proxy});
-    changeValue({to: 'x', when: tester})(proxy);
-    test.ok(proxy.value === 'x', 'Changed value');
-  });
+  // test.group('changeValue', () => {
+  //   const proxy = {value: 'z'};
+  //   const tester = (proxy) => ({hit: true, proxy});
+  //   changeValue({to: 'x', when: tester})(proxy);
+  //   test.ok(proxy.value === 'x', 'Changed value');
+  // });
 
   /**
    * Convenience function. Report a new issue or update the status of an issue.
@@ -190,9 +193,7 @@ var shared = (function workflowMethodsModule() {
       if (hit === is) {
         packet.issueLevel = issueLevel;
         packet.message = message;
-        if (ref.editButton && ref.editButton[0]) {
-          ref.editButton[0].click();
-        }
+        util.attention({on: ref.editButton, n: 0, click: true});
       }
       util.dispatch('issueUpdate', packet);
     }
@@ -222,18 +223,18 @@ var shared = (function workflowMethodsModule() {
       return {proxy, hit, message};
     }
   }
-  test.group('textRegex', () => {
-    const proxy = {value: 'x'};
-    const one = testRegex(/x/, true)(proxy);
-    test.ok(one.hit === true, 'one: hit');
-    test.ok(one.message === `'x' did match /x/`, 'one: message');
-    const two = testRegex(/x/, false)(proxy);
-    test.ok(two.hit === false, 'two: no hit');
-    test.ok(two.message === `'x' should not match /x/`, 'two: message');
-    const three = testRegex(/c/, false)(proxy);
-    test.ok(three.hit === true, 'three: hit');
-    test.ok(three.message === `'x' should not match /c/`, 'three: message');
-  });
+  // test.group('textRegex', () => {
+  //   const proxy = {value: 'x'};
+  //   const one = testRegex(/x/, true)(proxy);
+  //   test.ok(one.hit === true, 'one: hit');
+  //   test.ok(one.message === `'x' did match /x/`, 'one: message');
+  //   const two = testRegex(/x/, false)(proxy);
+  //   test.ok(two.hit === false, 'two: no hit');
+  //   test.ok(two.message === `'x' should not match /x/`, 'two: message');
+  //   const three = testRegex(/c/, false)(proxy);
+  //   test.ok(three.hit === true, 'three: hit');
+  //   test.ok(three.message === `'x' should not match /c/`, 'three: message');
+  // });
 
   /**
    * A function that returns an object containing a hit property, a proxy
@@ -265,17 +266,17 @@ var shared = (function workflowMethodsModule() {
       return {proxy, hit: false};
     }
   }
-  test.group('textLength', () => {
-    const one = testLength({min: 2})({value: 'x'});
-    test.ok(one.hit === true, 'one: hit');
-    test.ok(one.message === 'Value is too short', 'one: message');
-    const two = testLength({max: 3})({value: 'x'});
-    test.ok(two.hit === false, 'two: no hit');
-    test.ok(two.message === undefined, 'two: message');
-    const three = testLength({min: 2, max: 5})({value: 'x x x'});
-    test.ok(three.hit === false, 'one: no hit');
-    test.ok(three.message === undefined, 'two: message');
-  }, true);
+  // test.group('textLength', () => {
+  //   const one = testLength({min: 2})({value: 'x'});
+  //   test.ok(one.hit === true, 'one: hit');
+  //   test.ok(one.message === 'Value is too short', 'one: message');
+  //   const two = testLength({max: 3})({value: 'x'});
+  //   test.ok(two.hit === false, 'two: no hit');
+  //   test.ok(two.message === undefined, 'two: message');
+  //   const three = testLength({min: 2, max: 5})({value: 'x x x'});
+  //   test.ok(three.hit === false, 'one: no hit');
+  //   test.ok(three.message === undefined, 'two: message');
+  // }, true);
 
   /**
    * For developers, this function is an example of a tester function.
@@ -364,7 +365,8 @@ var shared = (function workflowMethodsModule() {
     const packet = {proxy, issueType: 'Forbidden phrase'};
     for (let rule of phrases) {
       const [phrase, message] = rule;
-      if (util.toRegex(phrase).test(proxy.value)) {
+      const regex = util.toRegex(phrase);
+      if (regex && regex.test(proxy.value)) {
         const clearValue = proxy.value.replace(/\s/g, '░');
         const clearPhrase = phrase.replace(/\s/g, '░');
         packet.issueLevel = 'orange';
@@ -518,13 +520,13 @@ var shared = (function workflowMethodsModule() {
       `'${value}' from '${pastedValue}'`
     );
   }
-  test.group('fallThrough', () => {
-    const a = {value: 'a'};
-    const b = {value: 'b'};
-    fallThrough(1, 0, [a, b]);
-    test.ok(a.value === 'Moved', 'a.value = Moved');
-    test.ok(b.value === 'a', 'b.value = a');
-  }, true);
+  // test.group('fallThrough', () => {
+  //   const a = {value: 'a'};
+  //   const b = {value: 'b'};
+  //   fallThrough(1, 0, [a, b]);
+  //   test.ok(a.value === 'Moved', 'a.value = Moved');
+  //   test.ok(b.value === 'a', 'b.value = a');
+  // }, true);
   fallThrough = util.delay(fallThrough, 0);
 
   /**
@@ -661,23 +663,23 @@ var shared = (function workflowMethodsModule() {
     }
     return packets;
   }
-  test.group('noDuplicateValues', () => {
-    const run = (group) => {
-      return noDuplicateValues(0, 0, group, true)
-          .filter(issue => issue.message);
-    }
-    const a = {};
-    const b = {value: ''};
-    const c = {value: ''};
-    const d = {value: 'x'};
-    const e = {value: 'x'};
-    test.ok(run([a]).length === 0, 'Single proxy, no issue');
-    test.ok(run([a, d]).length === 0, 'Two proxies, no issues');
-    test.ok(run([b, c]).length === 0, 'Two proxies, no issues, still');
-    test.ok(run([a, b, c, c, d]).length === 0, 'Five proxies, no issue');
-    test.ok(run([a, b, c, d, e]).length === 2, 'Five proxies, two issues');
-    test.todo('Async test');
-  });
+  // test.group('noDuplicateValues', () => {
+  //   const run = (group) => {
+  //     return noDuplicateValues(0, 0, group, true)
+  //         .filter(issue => issue.message);
+  //   }
+  //   const a = {};
+  //   const b = {value: ''};
+  //   const c = {value: ''};
+  //   const d = {value: 'x'};
+  //   const e = {value: 'x'};
+  //   test.ok(run([a]).length === 0, 'Single proxy, no issue');
+  //   test.ok(run([a, d]).length === 0, 'Two proxies, no issues');
+  //   test.ok(run([b, c]).length === 0, 'Two proxies, no issues, still');
+  //   test.ok(run([a, b, c, c, d]).length === 0, 'Five proxies, no issue');
+  //   test.ok(run([a, b, c, d, e]).length === 2, 'Five proxies, two issues');
+  //   test.todo('Async test');
+  // });
   noDuplicateValues = util.delay(noDuplicateValues, 100);
 
   /**
@@ -687,6 +689,9 @@ var shared = (function workflowMethodsModule() {
    * @todo Combine with Save feature
    */
   function prefill(proxy) {
+    if (!user.config.get('enablePrefill')) {
+      return;
+    }
     const flowName = util.capitalize('first letter', environment.flowName());
     const values = user.storeAccess({
       feature: `${flowName}Prefill`,
@@ -712,9 +717,7 @@ var shared = (function workflowMethodsModule() {
     for (let idx in values) {
       targets[idx].value = values[idx];
     }
-    if (ref.editButton && ref.editButton[0]) {
-      ref.editButton[0].click();
-    }
+    util.attention({on: ref.editButton, n: 0, click: true});
   }
 
   /**
@@ -883,8 +886,13 @@ var shared = (function workflowMethodsModule() {
       currentTabs.forEach(tab => tab.close());
     }
     async function open() {
+      const invalidScreenshot = ref.invalidScreenshot || [];
+      const openInTabs = ref.openInTabs || [];
+      const finalUrl = ref.finalUrl || [];
       await util.wait(100);
-      const allLinks = [...ref.invalidScreenshot, ...ref.openInTabs];
+      const allLinks = (user.config.get('includeFinalUrl'))
+          ? [...invalidScreenshot, ...openInTabs]
+          : [...invalidScreenshot, ...openInTabs, ...finalUrl];
       const urls = allLinks
           .map(el => el.value)
           .filter(val => /^http/.test(val));
@@ -1010,8 +1018,7 @@ var flows = (function workflowModule() {
        * Click the 'Acquire next task' button.
        */
       async function clickAcquire() {
-        const button = ref.firstButton[0];
-        button.click();
+        util.attention({on: ref.firstButton, click: true});
         try {
           await util.retry(clickContinue, 20, 100)();
         } catch (e) {
@@ -1042,8 +1049,7 @@ var flows = (function workflowModule() {
        */
       function toggleSelectWithKey(key) {
         return function toggle() {
-          const idx = key - 1;
-          ref.select && ref.select[idx] && ref.select[idx].click();
+          util.attention({on: ref.select, n: key - 1, click: true});
         }
       }
 
@@ -1078,6 +1084,46 @@ var flows = (function workflowModule() {
     }
     return {init};
   })();
+  
+  const labels = (function labelsModule() {
+    function countTasks() {
+      try {
+        let dataLoaded = false;
+        const counters = {
+          'Active': 0,
+          'Disagreement': 0,
+          'Completed': 0,
+          'Pending': 0,
+          'Invalidated': 0,
+        };
+        const letters = Object.keys(counters);
+        const nums = [...document.querySelectorAll('.IX2JW6B-k-a:nth-child(7)')]
+            .map(e => e.textContent);
+        for (let n of nums) {
+          const b = n.split(' / ');
+          for (let i in b) {
+            const letter = letters[i];
+            counters[letter] += Number(b[i]);
+            if (Number(b[i]) > 0) {
+              dataLoaded = true;
+            }
+          }
+        }
+        util.dispatch('guiUpdate', {stage: 'Currently visible', counters});
+        return dataLoaded;
+      } catch (e) {
+        user.log.warn('Labels flow encountered an error.');
+        return false;
+      }
+    }
+    countTasks = util.retry(countTasks, 30, 1000);
+    function init() {
+      util.dispatch('guiUpdate', {stage: 'Trying to count'});
+      countTasks();
+    }
+    
+    return {init};
+  })();
 
   const sl = (function slModule() {
 
@@ -1097,13 +1143,13 @@ var flows = (function workflowModule() {
 
     const stages = {
       async start() {
-        click.approveNo();
+        util.attention({on: ref.approvalButtons, n: 1, click: true});
         shared.comment.removeInitials();
         shared.guiUpdate('Ready to edit');
       },
 
       async approve() {
-        click.approveYes();
+        util.attention({on: ref.approvalButtons, n: 0, click: true});
         completeScreenshots();
         shared.tabs.close();
         shared.comment.addInitials();
@@ -1134,44 +1180,19 @@ var flows = (function workflowModule() {
     const approve = () => stageIs('start') && toStage('approve');
     const submit = () => stageIs('start', 'approve') && toStage('submit');
     const start = () => stageIs('approve') && toStage('start');
-    
-    function attention({on, n = 0, focus, click, scrollIntoView}) {
-      if (Array.isArray(on)) {
-        on = on[n];
-      }
-      if (!on || !on.click) {
-        throw new Error(`Invalid 'on': ${on}`);
-      }
-      focus && on.focus();
-      click && on.click();
-      scrollIntoView && on.scrollIntoView();
-      }
-    }
 
     /**
      * Exposes methods that try to find specific proxies and click on
      * them.
      */
     const click = (function clickMiniModule() {
-      function approveYes () {
-        if (ref.approvalButtons && ref.approvalButtons.length) {
-          const [yes, no] = ref.approvalButtons;
-          yes.click();
-        }
-      }
-      function approveNo () {
-        attention({on: ref.approvalButtons, n: 1, click: true});
-      }
-      function editButton() {
-        attention({on: ref.editButton, click: true});
-      }
       function addItem(n) {
         if (n < 2) {
           for (let button of ref.addItem) {
             button.click();
           }
         } else {
-          ref.addItem && ref.addItem[n - 2] && ref.addItem[n - 2].click();
+          util.attention({on: ref.addItem, n: n - 2, click: true});
         }
       }
       function leaveBlank(n) {
@@ -1186,9 +1207,6 @@ var flows = (function workflowModule() {
         }
       }
       return {
-        approveYes,
-        approveNo,
-        editButton,
         addItem,
         leaveBlank,
       }
@@ -1200,36 +1218,33 @@ var flows = (function workflowModule() {
      */
     const focus = (function focusMiniModule() {
       function addDataButton() {
-        if (ref.addDataButton && ref.addDataButton[0]) {
-          ref.addDataButton[0].focus();
-          ref.addDataButton[0].scrollIntoView();
-        }
+        util.attention({
+          on: ref.addDataButton, n: 0, focus: true, scrollIntoView: true
+        });
       }
       function editButton() {
-        if (ref.editButton && ref.editButton[0]) {
-          ref.editButton[0].focus();
-          ref.editButton[0].scrollIntoView();
-        }
+        util.attention({
+          on: ref.editButton, n: 0, focus: true, scrollIntoView: true
+        });
       }
       function item1() {
-        if (!ref.textAreas) {
-          return;
-        }
-        click.editButton();
-        const textarea = ref.textAreas[0];
-        textarea.focus();
-        ref.editButton && ref.editButton[0] &&
-            ref.editButton[0].scrollIntoView();
+        util.attention({
+          on: ref.textAreas, n: 0, click: true, focus: true
+        });
+        util.attention({
+          on: ref.editButton, n: 0, click: true, scrollIntoView: true
+        });
       }
       function item(n) {
         if (!ref.textAreas) {
           return;
         }
-        click.editButton();
-        const textarea = ref.textAreas[n - 1];
-        textarea.focus();
-        ref.editButton && ref.editButton[n - 1] &&
-            ref.editButton[n - 1].scrollIntoView();
+        util.attention({
+          on: ref.textAreas, n: n - 1, focus: true
+        });
+        util.attention({
+          on: ref.editButton, n: n - 1, click: true, scrollIntoView: true
+        });
       }
       return {
         addDataButton,
@@ -1247,9 +1262,6 @@ var flows = (function workflowModule() {
       if (shared.is.ownTask()) {
         shared.skipTask();
         return;
-//       } else if (!shared.is.analystTask() && !shared.is.byReviewer()) {
-//         shared.skipTask();
-//         return;
       }
       shared.tabs.refresh();
     }
@@ -1287,12 +1299,12 @@ var flows = (function workflowModule() {
           return;
         }
         if (type !== 'canExtract' && ref.invalidScreenshot) {
-          invalidScreenshot[0] && invalidScreenshot[0].focus()
+          util.attention({on: ref.invalidScreenshot, focus: true});
         }
         const n = (type === 'canExtract') ? 0 : 1;
-        const button = ref.canOrCannotExtractButtons[n];
-        button.click();
-        button.focus();
+        util.attention({
+          on: ref.canOrCannotExtractButtons, n, click: true, focus: true
+        });
       }
       async function setTo() {
         const [b, c, d] = keys[type];
@@ -1363,7 +1375,7 @@ var flows = (function workflowModule() {
       if (group[idx + 1] && group[idx + 1].disabled) {
         click.addItem(idx + 1);
       }
-      group[idx + 1] && group[idx + 1].focus();
+      util.attention({on: group, n: idx + 1, focus: true});
     }
 
     /**
@@ -1449,12 +1461,12 @@ var flows = (function workflowModule() {
     }
 
     function moveFocusToText(_, idx) {
-      ref.textAreas && ref.textAreas[idx] && ref.textAreas[idx].focus();
+      util.attention({on: ref.textAreas, n: idx, focus: true});
     }
     
     function checkDomainMismatch() {
       const getTrimmedDomain = (url) => {
-        return util.getDomain(url).split('.').slice(-2).join('.');
+        return util.getDomain(url).split('.').slice(-2).join('.').toLowerCase();
       }
       const one = getTrimmedDomain('https://' + ref.creative[1].textContent);
       const two = getTrimmedDomain(ref.openInTabs.slice(-1)[0].value);
@@ -1563,11 +1575,7 @@ var flows = (function workflowModule() {
         select: 'textarea',
         pick: [0],
         onKeydown_CtrlAltArrowRight: [
-          () => {
-            if (ref.editButton && ref.editButton[0]) {
-             ref.editButton[0].click();
-            }
-          },
+          () => util.attention({on: ref.editButton, click: true}),
           focus.item1,
         ],
         onLoad: shared.prefill,
@@ -1603,7 +1611,7 @@ var flows = (function workflowModule() {
         rootNumber: 1,
         select: 'textarea',
         onKeydown_CtrlAltArrowRight: [
-          () => attention({on: ref.finalCommentbox, focus: true});
+          () => util.attention({on: ref.finalCommentBox, focus: true}),
         ],
         ref: 'invalidScreenshot',
       });
@@ -1662,11 +1670,7 @@ var flows = (function workflowModule() {
         select: 'label',
         withText: 'Add Data',
         onKeydown_CtrlAltArrowRight: [
-          () => {
-            if (ref.editButton && ref.editButton[0]) {
-             ref.editButton[0].click();
-            }
-          },
+          () => util.attention({on: ref.addDataButton, n: 0, click: true}),
           focus.item1,
         ],
         ref: 'addDataButton',
@@ -1715,11 +1719,7 @@ var flows = (function workflowModule() {
         pick: [0],
         onFocusout: start,
         onKeydown_CtrlAltArrowRight: [
-          () => {
-            if (ref.editButton && ref.editButton[0]) {
-             ref.editButton[0].click();
-            }
-          },
+          () => util.attention({on: ref.editButton, n: 0, click: true}),
           focus.item1,
         ],
         ref: 'finalCommentBox',
@@ -1730,11 +1730,7 @@ var flows = (function workflowModule() {
         select: 'label',
         pick: [0, 1],
         onKeydown_CtrlAltArrowRight: [
-          () => {
-            if (ref.editButton && ref.editButton[0]) {
-             ref.editButton[0].click();
-            }
-          },
+          () => util.attention({on: ref.editButton, n: 0, click: true}),
           focus.item1,
         ],
         ref: 'canOrCannotExtractButtons',
@@ -1816,6 +1812,7 @@ var flows = (function workflowModule() {
 
   return {
     home,
+    labels,
     sl,
   };
 })();
@@ -1829,9 +1826,6 @@ var flows = (function workflowModule() {
 // APP module
 
 function main() {
-  if (!/com\/evaluation/.test(window.location.href)) { // @debug
-    return true;
-  }
   const detectedFlowName = environment.flowName();
   if (!detectedFlowName) {
     return false;
@@ -1853,7 +1847,7 @@ function main() {
 
 (async function() {
   try {
-    util.retry(main, 20, 150)();
+    await util.retry(main, 20, 150)();
   } catch (e) {
     const warning = 'No workflow identified';
     shared.guiUpdate(warning);
