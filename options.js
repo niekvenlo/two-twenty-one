@@ -1029,7 +1029,7 @@ window.onload = function() {
         out += '\n' + '  '.repeat(depth);
       }
       out += char;
-      if (!inQuote && (char === ':' || char === ',')) {
+      if (!inQuote && char === ':') {
         out += ' ';
       }
       if (char === '"') {
@@ -1053,6 +1053,9 @@ window.onload = function() {
    */
   function set(stores) {
     for (let store in stores) {
+      if (typeof stores[store] !== 'object') {
+        throw new Error(`Trying to set ${store} with ${typeof stores[store]}`);
+      }
       chrome.storage.local.set({[store]: stores[store]});
     }
   }
@@ -1065,7 +1068,9 @@ window.onload = function() {
    */
   function makeEditor(name, data) {
     if (typeof data !== 'object') {
-      throw new Error('Data should be an object');
+      throw new Error(
+        `Data for ${name} should be an object, not ${typeof data}`
+      );
     }
     
     /**
@@ -1076,7 +1081,7 @@ window.onload = function() {
       try {
         const obj = JSON.parse(textarea.value);
         toast('Saving new data for ' + name);
-        set({[name]: JSON.stringify(obj)});
+        set({[name]: obj});
   
       } catch (e) {
         if (!(e instanceof SyntaxError)) {
@@ -1114,7 +1119,6 @@ window.onload = function() {
   
   chrome.storage.local.get(null, (stores) => {
     var allStores = {...defaultStores, ...stores};
-    console.log(allStores);
     for (let store in allStores) {
       if (store === 'LogBook') {
         continue;
@@ -1132,3 +1136,4 @@ window.onload = function() {
   });
   document.getElementById('buttons').append(button);
 };
+undefined;
