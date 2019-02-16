@@ -14,23 +14,37 @@ var environment = (function environmentModule() {
    * @return {string} Description of the current workflow.
    */
   function detectWorkflow() {
+    const firstButton = ー({
+      name: 'First Button',
+      select: 'button',
+      pick: [0],
+    })[0];
     const header = ー({
       name: 'Header',
       select: 'h1',
       pick: [0],
     })[0];
+    const buttonText = firstButton && firstButton.textContent;
     const headerText = header && header.textContent;
-
-    switch (true) {
-      case /telinks/.test(headerText):
-        return 'sl';
-      case /ppets/.test(headerText):
-        return 'ss';
-      case headerText === 'TwoTwentyOne Dutch':
-        return 'sl';
-      default:
-        return 'home';
+    if (/Acquire/.test(buttonText)) {
+      return 'home';
     }
+    if (/Continue/.test(buttonText)) {
+      return 'home';
+    }
+    if (/telinks/.test(headerText)) {
+      return 'sl'
+    }
+    if (/ppets/.test(headerText)) {
+      return 'ss'
+    }
+    if (/twentyone/.test(headerText)) {
+      return 'sl';
+    }
+    if (/#activeevals\/subpage=labels/.test(document.location.href)) {
+      return 'labels';
+    }
+    return '';
   }
 
   /**
@@ -53,12 +67,13 @@ var environment = (function environmentModule() {
   function detectTaskId() {
     if (util.isDev()) {
       return {
-      encoded: 'fffff',
-      decoded: '555' + Math.round(Math.random() * 1e11),
-    };;
+        encoded: 'fffff',
+        decoded: '555' + Math.round(Math.random() * 1e11),
+      };
     }
     const currentTask =
-        Object.entries(JSON.parse(localStorage.acquiredTask))[0];
+        Object.entries(JSON.parse(localStorage.acquiredTask))[0] ||
+            [undefined, undefined];
     return {
       encoded: currentTask[0],
       decoded: currentTask[1],
@@ -124,18 +139,18 @@ var shared = (function workflowMethodsModule() {
       if (hit === is && proxy.value !== to) {
         user.log.low(
           `Set to ${(to) ? to : 'blank'}`,
-          {print: false, toast: true},
+          {print: false, toast: true}
         );
         proxy.value = to;
       }
     }
   }
-  test.group('changeValue', () => {
-    const proxy = {value: 'z'};
-    const tester = (proxy) => ({hit: true, proxy}); 
-    changeValue({to: 'x', when: tester})(proxy);
-    test.ok(proxy.value === 'x', 'Changed value');
-  });
+  // test.group('changeValue', () => {
+  //   const proxy = {value: 'z'};
+  //   const tester = (proxy) => ({hit: true, proxy});
+  //   changeValue({to: 'x', when: tester})(proxy);
+  //   test.ok(proxy.value === 'x', 'Changed value');
+  // });
 
   /**
    * Convenience function. Report a new issue or update the status of an issue.
@@ -148,6 +163,7 @@ var shared = (function workflowMethodsModule() {
    * If the hit property is true, the issue is flagged according to the color
    * parameter, else it is flagged as 'ok'.
    * The message property is attached to the issue.
+   * @ref {editButton}
    *
    * @example
    * const conditional = () => ({hit: true, proxy: {value: 'originalValue'}});
@@ -162,7 +178,7 @@ var shared = (function workflowMethodsModule() {
     if (!ALERT_LEVELS.includes(issueLevel)) {
       throw new RangeError(
         issueLevel + ' is not a known issueLevel. Please use:' +
-        util.mapToBulletedList(ALERT_LEVELS),
+        util.mapToBulletedList(ALERT_LEVELS)
       );
     }
     if (typeof when !== 'function') {
@@ -177,13 +193,11 @@ var shared = (function workflowMethodsModule() {
       if (hit === is) {
         packet.issueLevel = issueLevel;
         packet.message = message;
-        if (ref.editButton && ref.editButton[0]) {
-          ref.editButton[0].click();
-        }
+        util.attention({on: ref.editButton, n: 0, click: true});
       }
       util.dispatch('issueUpdate', packet);
-    };
-    return util.delay(flagThis, 20);
+    }
+    return util.delay(flagThis, 40);
   }
 
   /**
@@ -197,7 +211,7 @@ var shared = (function workflowMethodsModule() {
    * @return {Object} o
    * @return {Object} o.proxy - The matched proxy
    * @return {Object} o.hit - Was the match successful?
-   * @return {Object} o.message - 
+   * @return {Object} o.message -
    * @example - Using testRegex(/x/, true) on a proxy with a value of 'x'
    * would return an object with hit = true, message = 'x did match /x/'
    */
@@ -208,19 +222,19 @@ var shared = (function workflowMethodsModule() {
       const message = `'${proxy.value}' ${didOrShouldNot} match ${regex}`;
       return {proxy, hit, message};
     }
-  };
-  test.group('textRegex', () => {
-    const proxy = {value: 'x'};
-    const one = testRegex(/x/, true)(proxy);
-    test.ok(one.hit === true, 'one: hit');
-    test.ok(one.message === `'x' did match /x/`, 'one: message');
-    const two = testRegex(/x/, false)(proxy);
-    test.ok(two.hit === false, 'two: no hit');
-    test.ok(two.message === `'x' should not match /x/`, 'two: message');
-    const three = testRegex(/c/, false)(proxy);
-    test.ok(three.hit === true, 'three: hit');
-    test.ok(three.message === `'x' should not match /c/`, 'three: message');
-  });
+  }
+  // test.group('textRegex', () => {
+  //   const proxy = {value: 'x'};
+  //   const one = testRegex(/x/, true)(proxy);
+  //   test.ok(one.hit === true, 'one: hit');
+  //   test.ok(one.message === `'x' did match /x/`, 'one: message');
+  //   const two = testRegex(/x/, false)(proxy);
+  //   test.ok(two.hit === false, 'two: no hit');
+  //   test.ok(two.message === `'x' should not match /x/`, 'two: message');
+  //   const three = testRegex(/c/, false)(proxy);
+  //   test.ok(three.hit === true, 'three: hit');
+  //   test.ok(three.message === `'x' should not match /c/`, 'three: message');
+  // });
 
   /**
    * A function that returns an object containing a hit property, a proxy
@@ -233,7 +247,7 @@ var shared = (function workflowMethodsModule() {
    * @return {Object} o
    * @return {Object} o.proxy - The matched proxy
    * @return {Object} o.hit - Was the match successful?
-   * @return {Object} o.message - 
+   * @return {Object} o.message -
    * @example - Using testRegex(/x/, true) on a proxy with a value of 'x'
    * would return an object with hit = true, message = 'x did match /x/'
    */
@@ -251,18 +265,18 @@ var shared = (function workflowMethodsModule() {
       }
       return {proxy, hit: false};
     }
-  };
-  test.group('textLength', () => {
-    const one = testLength({min: 2})({value: 'x'});
-    test.ok(one.hit === true, 'one: hit');
-    test.ok(one.message === 'Value is too short', 'one: message');
-    const two = testLength({max: 3})({value: 'x'});
-    test.ok(two.hit === false, 'two: no hit');
-    test.ok(two.message === undefined, 'two: message');
-    const three = testLength({min: 2, max: 5})({value: 'x x x'});
-    test.ok(three.hit === false, 'one: no hit');
-    test.ok(three.message === undefined, 'two: message');
-  }, true);
+  }
+  // test.group('textLength', () => {
+  //   const one = testLength({min: 2})({value: 'x'});
+  //   test.ok(one.hit === true, 'one: hit');
+  //   test.ok(one.message === 'Value is too short', 'one: message');
+  //   const two = testLength({max: 3})({value: 'x'});
+  //   test.ok(two.hit === false, 'two: no hit');
+  //   test.ok(two.message === undefined, 'two: message');
+  //   const three = testLength({min: 2, max: 5})({value: 'x x x'});
+  //   test.ok(three.hit === false, 'one: no hit');
+  //   test.ok(three.message === undefined, 'two: message');
+  // }, true);
 
   /**
    * For developers, this function is an example of a tester function.
@@ -279,7 +293,7 @@ var shared = (function workflowMethodsModule() {
    * }
    * issueUpdate and changeValue will be triggered when your function returns
    * an object with a property hit = true.
-   * 
+   *
    * Note that you can also create a function that acts directly on the object.
    * You don't need to use the convenience functions.
    */
@@ -292,15 +306,67 @@ var shared = (function workflowMethodsModule() {
     }
   }
 
-  function forbiddenPhrase(proxy) {
+  function brandCapitalisation(value) {
+    const brands = user.storeAccess({
+      feature: 'BrandCapitalisation',
+    }) || [];
+    let tmpValue = value;
+    for (let brand of brands) {
+      tmpValue = tmpValue.replace(new RegExp(brand, 'gi'), brand);
+    }
+    return tmpValue;
+  }
+  atest.group('brandCapitalisation', {
+    'iPhone': () => brandCapitalisation('Iphone') === 'iPhone',
+  });
+
+  function commonReplacements(value) {
+    const replacementStore = user.storeAccess({
+      feature: 'CommonReplacements',
+      locale: environment.locale(),
+    }) || [];
+    let tmpValue = (/^http/.test(value))
+        ? decodeURIComponent(
+            value
+                .replace(/\/index/i, '')
+                .match(/[^\/]*[\/]?$/)[0]
+                .replace(/(\.\w+)$/i, '')
+          )
+        : value;
+    tmpValue = tmpValue.replace(/[\s+/_-]+/g, ' ')
+          .replace(/[#?­*]/g, '')
+          .replace(/’/, `'`)
+          .trim().toLowerCase();
+    for (let rule of replacementStore) {
+      const [regex, replaceWith] = rule;
+      tmpValue = tmpValue.replace(util.toRegex(regex), replaceWith);
+    }
+    return util.capitalize('first letter', tmpValue);
+  }
+  switch (environment.locale()) {
+    case 'Dutch':
+      atest.group('commonReplacements', {
+        'About us': () => commonReplacements('overons') === 'Over ons',
+        'Read our blog': () => commonReplacements('blog') === 'Lees onze blog',
+      });
+      break;
+    default:
+      break;
+  }
+
+  function noForbiddenPhrase(proxy) {
     const phrases = user.storeAccess({
       feature: 'ForbiddenPhrases',
       locale: environment.locale(),
     }) || [];
+    if (!phrases.length) {
+      user.log.warn('No forbidden phrases loaded.');
+    }
     const packet = {proxy, issueType: 'Forbidden phrase'};
     for (let rule of phrases) {
       const [phrase, message] = rule;
-      if (util.toRegex(phrase).test(proxy.value)) {
+      const regex = util.toRegex(phrase);
+      if (regex && regex.test(proxy.value)) {
         const clearValue = proxy.value.replace(/\s/g, '░');
         const clearPhrase = phrase.replace(/\s/g, '░');
         packet.issueLevel = 'orange';
@@ -333,13 +399,20 @@ var shared = (function workflowMethodsModule() {
     }
     return cycle;
   }
-  test.group('cycleSelect', () => {
-    const toggleSelectYesNo = cycleSelect(['YES', 'NO']);
-    const proxy = {value: 'NO', blur: () => {}};
-    toggleSelectYesNo(proxy);
-    test.ok(proxy.value === 'YES', 'Changed to yes');
-    toggleSelectYesNo(proxy);
-    test.ok(proxy.value === 'NO', 'Changed back');
+  atest.group('cycleSelect', {
+    'Changed to Yes': () => {
+      const toggleSelectYesNo = cycleSelect(['YES', 'NO']);
+      const proxy = {value: 'NO', blur: () => {}};
+      toggleSelectYesNo(proxy);
+      return proxy.value === 'YES';
+    },
+    'Changed back to No': () => {
+      const toggleSelectYesNo = cycleSelect(['YES', 'NO']);
+      const proxy = {value: 'NO', blur: () => {}};
+      toggleSelectYesNo(proxy);
+      toggleSelectYesNo(proxy);
+      return proxy.value === 'NO';
+    },
   });
 
 
@@ -350,15 +423,20 @@ var shared = (function workflowMethodsModule() {
   /**
    * Simplifies common changes to the comment box.
    *
-   * @param {string} mode - Either 'addInitials' or 'removeInitials'.
-   * @ref {ref.finalCommentBox}
+   * #addInitials Adds initials and moves focus.
+   * #removeInitials Removes initials.
+   * @ref {finalCommentBox}
    */
-  function editComment(mode) {
-    const commentBox = ref.finalCommentBox && ref.finalCommentBox[0];
-    if (!commentBox || !commentBox.click) {
-      throw new Error('EditComment requires a valid textarea proxy');
+  const comment = (function commentMiniModule() {
+    function getCommentBox() {
+      const commentBox = ref.finalCommentBox && ref.finalCommentBox[0];
+      if (!commentBox || !commentBox.focus) {
+        throw new Error('Comment box not found');
+      }
+      return commentBox;
     }
-    if (mode === 'addInitials') {
+    function addInitials() {
+      const commentBox = getCommentBox();
       commentBox.focus();
       commentBox.scrollIntoView();
       const initials = user.config.get('initials') || '';
@@ -366,101 +444,37 @@ var shared = (function workflowMethodsModule() {
         return;
       }
       commentBox.value = initials + '\n' + commentBox.value;
-    } else if (mode === 'removeInitials') {
+    }
+    function removeInitials() {
+      const commentBox = getCommentBox();
        const initials = user.config.get('initials') || '';
        commentBox.value =
-           commentBox.value.replace(RegExp('^' + initials + '\n'), '');
-    }
-  }
-
-  /**
-   * Opens/closes tabs based on urls on the page. Opens new tabs based on unique
-   * link values in ref.openInTabs. Order of tabs is determined by ref.openInTabs.
-   *
-   * #close Close all currently opened tabs.
-   * #open Opens all unique links.
-   * #refresh Closes all currently opened tabs, then opens all unique links.
-   * @ref {ref.openInTabs}
-   */
-  const tabs = (function tabsMiniModule() {
-    /** Window[] - Stores open tabs */
-    const openTabs = [];
-    async function close() {
-      const currentTabs = openTabs.slice();
-      openTabs.length = 0;
-      await util.wait(100);
-      currentTabs.forEach(tab => tab.close());
-    }
-    async function open() {
-      await util.wait(100);
-      const urls = ref.openInTabs
-          .map(el => el.value)
-          .filter(val => /^http/.test(val));
-      const uniqueLinks = [...new Set(urls)];
-      for (let link of uniqueLinks) {
-        openTabs.push(window.open(link, link));
-      };
-      if (openTabs.length !== uniqueLinks.length) {
-        user.log.warn(
-          `Could not open all tabs. Check the Chrome popup blocker.`,
-        );
-      }
+           commentBox.value.replace(new RegExp('^' + initials + '\n'), '');
     }
     return {
-      open,
-      close,
-      refresh: () => { close(); open(); },
-    }
+      addInitials,
+      removeInitials,
+    };
   })();
-
-  function commonReplacements(value) {
-    const replacementStore = user.storeAccess({
-      feature: 'CommonReplacements',
-      locale: environment.locale(),
-    }) || [];
-    let tmpValue = (/^http/.test(value))
-        ? decodeURIComponent(
-            value
-                .replace(/\/index/i, '')
-                .match(/[^\/]*[\/]?$/)[0]
-                .replace(/(\.\w+)$/i, ''),
-          )
-        : value;
-    tmpValue = tmpValue.replace(/[\s+/_-]+/g, ' ')
-          .replace(/[#?­*]/g, '')
-          .replace(/’/, `'`)
-          .trim().toLowerCase();
-    for (let rule of replacementStore) {
-      const [regex, replaceWith] = rule;
-      tmpValue = tmpValue.replace(util.toRegex(regex), replaceWith);
-    }
-    return util.capitalize('first letter', tmpValue);
-  }
-  switch (environment.locale()) {
-    case 'Dutch':
-      atest.group('commonReplacements', {
-        'About us': () => commonReplacements('overons') === 'Over ons',
-        'Read our blog': () => commonReplacements('blog') === 'Lees onze blog',
-      });
-      break;
-    default:
-      break;
-  }
-  
-
-  function brandCapitalisation(value) {
-    const brands = user.storeAccess({
-      feature: 'BrandCapitalisation',
-    }) || [];
-    let tmpValue = value;
-    for (let brand of brands) {
-      tmpValue = tmpValue.replace(new RegExp(brand, 'gi'), brand);
-    }
-    return tmpValue;
-  }
-  atest.group('brandCapitalisation', {
-    'iPhone': () => brandCapitalisation('Iphone') === 'iPhone',
-  });
+  atest.group('comment', {
+    'Add and remove initials': () => {
+      const tmp = ref.finalCommentBox;
+      const userComment = 'user comment';
+      const fakeBox = {
+        value: userComment,
+        focus: () => {},
+        scrollIntoView: () => {},
+      };
+      const initials = user.config.get('initials');
+      ref.finalCommentBox = [fakeBox];
+      comment.addInitials();
+      const initialsFound = new RegExp('^' + initials).test(fakeBox.value);
+      comment.removeInitials();
+      const initialsNotFound = !new RegExp('^' + initials).test(fakeBox.value);
+      const commentFound = new RegExp(userComment).test(fakeBox.value);
+      return initialsFound && initialsNotFound && commentFound;
+    },
+  }, true);
 
   /**
    * When pasting a url, it is moved from one box to another. The url is also
@@ -475,7 +489,7 @@ var shared = (function workflowMethodsModule() {
   function fallThrough (_, idx, group) {
     const LOG_ENTRY_MAX_LENGTH = 100;
     if (group.length !== 2) {
-      throw new RangeError('fallThrough requires two proxies.')
+      throw new RangeError('fallThrough requires two proxies.');
     }
     if (idx > 0) {
       return;
@@ -498,29 +512,95 @@ var shared = (function workflowMethodsModule() {
     if (pastedValue === value) {
       user.log.low(
         `No change to '${pastedValue}'`,
-        {print: false, toast: false},
+        {print: false, toast: false}
       );
       return;
     }
     user.log.notice(
-      `'${value}' from '${pastedValue}'`,
+      `'${value}' from '${pastedValue}'`
     );
-  };
-  test.group('fallThrough', () => {
-    const a = {value: 'a'};
-    const b = {value: 'b'};
-    fallThrough(1, 0, [a, b]);
-    test.ok(a.value === 'Moved', 'a.value = Moved');
-    test.ok(b.value === 'a', 'b.value = a');
-  }, true);
+  }
+  // test.group('fallThrough', () => {
+  //   const a = {value: 'a'};
+  //   const b = {value: 'b'};
+  //   fallThrough(1, 0, [a, b]);
+  //   test.ok(a.value === 'Moved', 'a.value = Moved');
+  //   test.ok(b.value === 'a', 'b.value = a');
+  // }, true);
   fallThrough = util.delay(fallThrough, 0);
 
   /**
+   * Dispatch a guiUpdate.
    *
+   * @param {string} message
    */
   function guiUpdate(message) {
     util.dispatch('guiUpdate', {toast: message, stage: message});
-  };
+  }
+
+  /**
+   * Exposes methods that return booleans, reflecting something about
+   * the state of the task.
+   */
+  const is = (function isModule() {
+    function analystTask() {
+      const taskTitle = ref.taskTitle && ref.taskTitle[0];
+      if (!taskTitle) {
+        return false;
+      }
+      if (/Analyst/.test(taskTitle.textContent)) {
+        return true;
+      }
+      return false;
+    }
+    /**
+     * Was this task analysed by a reviewer?
+     *
+     * @return {boolean} For a review task, are the initials of a known
+     * reviewer the first characters in the analyst comment box?
+     */
+    function isTaskAnalysedByReviewer() {
+      const proxy = ref.analystComment && ref.analystComment[0];
+      if (!proxy || !proxy.textContent) {
+        return false;
+      }
+      const comment = proxy.textContent.trim();
+      const fishFor = user.config.get('fish');
+      if (!fishFor) {
+        return false;
+      }
+      for (let initials of fishFor.split(/, ?/)) {
+        if (new RegExp('^' + initials, 'i').test(comment)) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    /**
+     * Was this task analysed by you?
+     *
+     * @return {boolean} For a review task, are the initials of the
+     * current user the first characters in the analyst comment box?
+     */
+    function isOwnTask() {
+      const proxy = ref.analystComment && ref.analystComment[0];
+      if (!proxy || !proxy.textContent) {
+        return false;
+      }
+      const comment = proxy.textContent.trim();
+      const initials = user.config.get('initials');
+      if (new RegExp('^' + initials, 'i').test(comment)) {
+        return true;
+      }
+      return false;
+    }
+    return {
+      analystTask,
+      byReviewer: isTaskAnalysedByReviewer,
+      ownTask: isOwnTask,
+    }
+  })();
 
   /**
    * Touches HTMLElements to keep the current task alive.
@@ -532,8 +612,8 @@ var shared = (function workflowMethodsModule() {
    * @param {Object[]} group - Array of proxies to touch.
    */
   async function keepAlive(_, __, group) {
-    const MINUTES = 6;
-    const INTERVAL = 10000; // ms
+    const MINUTES = 30;
+    const INTERVAL = 30000; // ms
     const times = (MINUTES * 60000) / INTERVAL;
     for (let i = 0; i < times; i++) {
       await util.wait(INTERVAL);
@@ -544,32 +624,6 @@ var shared = (function workflowMethodsModule() {
   keepAlive = util.debounce(keepAlive);
 
   /**
-   * Based on an extraction value, attempts to find matching data to
-   * automatically fill in.
-   * @param {Object} proxy - The proxy containing the extraction url.
-   * @todo Combine with Save feature
-   */
-  function prefill(proxy) {
-    const flowName = util.capitalize('first letter', environment.flowName());
-    const values = user.storeAccess({
-      feature: `${flowName}Prefill`,
-      locale: environment.locale(),
-      get: util.getDomain(proxy.value),
-    });
-    if (!values) {
-      return;
-    }
-    const targets = ref.prefillTarget;
-    if (targets.some(t => t.value)) {
-      return user.log.warn('Found prefill values, but did not override');
-    }
-    user.log.notice('Found prefill values');
-    for (let idx in values) {
-      targets[idx].value = values[idx];
-    }
-  }
-
-    /**
    * Tests whether any proxies in a group have the same value, and flags
    * proxies that repeat previous values.
    *
@@ -603,42 +657,82 @@ var shared = (function workflowMethodsModule() {
       }
     }
     for (let packet of packets) {
-      if (!testing) {     
+      if (!testing) {
         util.dispatch('issueUpdate', packet);
       }
     }
     return packets;
-  };
-  test.group('noDuplicateValues', () => {
-    const run = (group) => {
-      return noDuplicateValues(0, 0, group, true)
-          .filter(issue => issue.message);
-    }
-    const a = {};
-    const b = {value: ''};
-    const c = {value: ''};
-    const d = {value: 'x'};
-    const e = {value: 'x'};
-    test.ok(run([a]).length === 0, 'Single proxy, no issue');
-    test.ok(run([a, d]).length === 0, 'Two proxies, no issues');
-    test.ok(run([b, c]).length === 0, 'Two proxies, no issues, still');
-    test.ok(run([a, b, c, c, d]).length === 0, 'Five proxies, no issue');
-    test.ok(run([a, b, c, d, e]).length === 2, 'Five proxies, two issues');
-    test.todo('Async test');
-  });
+  }
+  // test.group('noDuplicateValues', () => {
+  //   const run = (group) => {
+  //     return noDuplicateValues(0, 0, group, true)
+  //         .filter(issue => issue.message);
+  //   }
+  //   const a = {};
+  //   const b = {value: ''};
+  //   const c = {value: ''};
+  //   const d = {value: 'x'};
+  //   const e = {value: 'x'};
+  //   test.ok(run([a]).length === 0, 'Single proxy, no issue');
+  //   test.ok(run([a, d]).length === 0, 'Two proxies, no issues');
+  //   test.ok(run([b, c]).length === 0, 'Two proxies, no issues, still');
+  //   test.ok(run([a, b, c, c, d]).length === 0, 'Five proxies, no issue');
+  //   test.ok(run([a, b, c, d, e]).length === 2, 'Five proxies, two issues');
+  //   test.todo('Async test');
+  // });
   noDuplicateValues = util.delay(noDuplicateValues, 100);
+
+  /**
+   * Based on an extraction value, attempts to find matching data to
+   * automatically fill in.
+   * @param {Object} proxy - The proxy containing the extraction url.
+   * @todo Combine with Save feature
+   */
+  function prefill(proxy) {
+    if (!user.config.get('enablePrefill')) {
+      return;
+    }
+    const flowName = util.capitalize('first letter', environment.flowName());
+    const values = user.storeAccess({
+      feature: `${flowName}Prefill`,
+      locale: environment.locale(),
+      get: util.getDomain(proxy.value),
+    });
+    if (!values) {
+      return;
+    }
+    const targets = ref.prefillTarget;
+    if (targets.every((target, idx) => target.value === values[idx])) {
+      return;
+    }
+    const numValues = values.filter(v => v).length
+    if (!confirm(
+      `Would you like to use ${numValues / 2} prefill values instead?` +
+      util.mapToBulletedList(values)
+    )) {
+      user.log.notice('Rejected the prefill values');
+      return;
+    }
+    user.log.notice('Found prefill values');
+    for (let idx in values) {
+      targets[idx].value = values[idx];
+    }
+    util.attention({on: ref.editButton, n: 0, click: true});
+  }
 
   /**
    * Pops up a confirmation dialog. On confirmation, will reset all counters.
    */
   async function resetCounter() {
-    const question =
-        'Please confirm.\nAre you sure you want to reset all counters?' +
-        util.mapToBulletedList(user.counter.get());
-    user.log.counter(question, {toast: true});
+    const counterList = util.mapToBulletedList(user.counter.get());
+    const question = (counterList)
+        ? 'Please confirm.\nAre you sure you want to reset all counters?' +
+        counterList
+        : 'Nothing to reset. No counters set';
+    user.log.notice(question, {toast: true});
     await util.wait();
     if (confirm(question)) {
-      user.counter.reset();      
+      user.counter.reset();
     } else {
       user.log.low('Canceled');
     }
@@ -664,7 +758,7 @@ var shared = (function workflowMethodsModule() {
     });
     user.log.ok(
       'Saving new default extraction for ' + domain +
-      util.mapToBulletedList(values.slice(1), 2),
+      util.mapToBulletedList(values.slice(1), 2)
     );
   }
 
@@ -720,6 +814,13 @@ var shared = (function workflowMethodsModule() {
     user.log.notice('Submitting\n' + environment.taskId().decoded);
     guiUpdate('Submitting');
     await util.wait(100);
+    if (button.disabled) {
+      await util.wait(100);
+      if (button.disabled) {
+        user.log.warn('Not ready to submit any more');
+        return false;
+      }
+    }
     button.click();
     util.dispatch('issueUpdate', {issueType: 'reset'});
     user.counter.add('Submitted');
@@ -727,33 +828,122 @@ var shared = (function workflowMethodsModule() {
   }
   submit = util.debounce(submit, 100);
 
-  function setTabOrder(_, __, group) {
-    for (let idx in group) {
-      group[idx].tabIndex = idx + 1;
+  const tabOrder = (function tabOrderMiniModule() {
+    /**
+     * Set the tabIndex of a proxy to 0, making it tabbable.
+     *
+     * @param {Object} proxy
+     */
+    function add(proxy) {
+      proxy.tabIndex = 0;
     }
-    group[3].focus();
-  }
-  setTabOrder = util.debounce(setTabOrder);
+    /**
+     * Set the tabIndex of a group of proxies, sequentially, making
+     * them tabbable in order.
+     *
+     * @param {Object} proxy. Ignored
+     * @param {number} idx. Ignored
+     * @param {Object[]} group
+     */
+    function set(_, __, group) {
+      for (let idx in group) {
+        group[idx].tabIndex = idx + 1;
+      }
+    }
+    set = util.debounce(set);
 
-  function removeTabIndex(proxy) {
-    proxy.tabIndex = -1;
+    /**
+     * Set the tabIndex of a proxy to -1, making it untabbable.
+     *
+     * @param {Object} proxy
+     */
+    function remove(proxy) {
+      proxy.tabIndex = -1;
+    }
+    return {
+      add,
+      set,
+      remove,
+    }
+  })();
+
+  /**
+   * Opens/closes tabs based on urls on the page. Opens new tabs based on unique
+   * link values in ref.openInTabs. Order of tabs is determined by ref.openInTabs.
+   *
+   * #close Close all currently opened tabs.
+   * #open Opens all unique links.
+   * #refresh Closes all currently opened tabs, then opens all unique links.
+   * @ref {ref.openInTabs}
+   */
+  const tabs = (function tabsMiniModule() {
+    /** Window[] - Stores open tabs */
+    const openTabs = [];
+    async function close() {
+      const currentTabs = openTabs.slice();
+      openTabs.length = 0;
+      await util.wait(100);
+      currentTabs.forEach(tab => tab.close());
+    }
+    async function open() {
+      const invalidScreenshot = ref.invalidScreenshot || [];
+      const openInTabs = ref.openInTabs || [];
+      const finalUrl = ref.finalUrl || [];
+      await util.wait(100);
+      const allLinks = (user.config.get('includeFinalUrl'))
+          ? [...invalidScreenshot, ...openInTabs]
+          : [...invalidScreenshot, ...openInTabs, ...finalUrl];
+      const urls = allLinks
+          .map(el => el.value)
+          .filter(val => /^http/.test(val));
+      const uniqueLinks = [...new Set(urls)];
+      for (let link of uniqueLinks) {
+        openTabs.push(window.open(link, link));
+      }
+      if (openTabs.length !== uniqueLinks.length) {
+        user.log.warn(
+          `Could not open all tabs. Check the Chrome popup blocker.`
+        );
+      }
+    }
+    return {
+      open,
+      close,
+      refresh: () => { close(); open(); },
+    }
+  })();
+
+  function updateCharacterCount(_, __, group) {
+    const count = group[0].value.length;
+    const characters = count === 1 ? 'character' : 'characters';
+    group[1].textContent =
+        `You have used ${count || 'no'} ${characters}`;
+    if (count < 26) {
+      group[1].css = {color: 'black'};
+    } else if (count < 51) {
+      group[1].css = {color: '#872b20'};
+    } else {
+      group[1].css = {color: '#dd4b39'};
+    }
   }
+  updateCharacterCount = util.delay(updateCharacterCount);
 
   return {
-    editComment,
-    tabs,
+    comment,
     fallThrough,
+    noForbiddenPhrase,
     guiUpdate,
+    is,
     keepAlive,
-    forbiddenPhrase,
-    prefill,
     noDuplicateValues,
-    removeTabIndex,
+    prefill,
     resetCounter,
     saveExtraction,
-    setTabOrder,
     skipTask,
     submit,
+    tabOrder,
+    tabs,
+    updateCharacterCount,
 
     addDashes: changeValue({
       to: '---',
@@ -761,7 +951,7 @@ var shared = (function workflowMethodsModule() {
       is: true,
     }),
 
-    redAlertExceed25Chars: issueUpdate({
+    noMoreThan25Chars: issueUpdate({
       issueLevel: 'red',
       issueType: 'More than 25 characters long',
       when: testLength({max: 25}),
@@ -821,21 +1011,21 @@ var flows = (function workflowModule() {
 
     function init() {
 
-      shared.guiUpdate('Ready');
+      shared.guiUpdate('Loaded');
+      user.log.ok('TwoTwentyOne loaded');
 
       /**
        * Click the 'Acquire next task' button.
        */
       async function clickAcquire() {
-        const button = ref.firstButton[0];
-        button.click();
+        util.attention({on: ref.firstButton, click: true});
         try {
           await util.retry(clickContinue, 20, 100)();
         } catch (e) {
           user.log.warn('Continue button did not appear.', {print: false});
         }
         main();
-        await util.wait(500);
+        await util.wait(400);
         shared.guiUpdate('Press Start');
       }
 
@@ -859,8 +1049,7 @@ var flows = (function workflowModule() {
        */
       function toggleSelectWithKey(key) {
         return function toggle() {
-          const idx = key - 1;
-          ref.select && ref.select[idx] && ref.select[idx].click();
+          util.attention({on: ref.select, n: key - 1, click: true});
         }
       }
 
@@ -876,6 +1065,7 @@ var flows = (function workflowModule() {
         name: 'First Button',
         select: 'button',
         pick: [0],
+        onClick: clickAcquire,
         ref: 'firstButton',
       });
 
@@ -892,6 +1082,46 @@ var flows = (function workflowModule() {
       });
 
     }
+    return {init};
+  })();
+  
+  const labels = (function labelsModule() {
+    function countTasks() {
+      try {
+        let dataLoaded = false;
+        const counters = {
+          'Active': 0,
+          'Disagreement': 0,
+          'Completed': 0,
+          'Pending': 0,
+          'Invalidated': 0,
+        };
+        const letters = Object.keys(counters);
+        const nums = [...document.querySelectorAll('.IX2JW6B-k-a:nth-child(7)')]
+            .map(e => e.textContent);
+        for (let n of nums) {
+          const b = n.split(' / ');
+          for (let i in b) {
+            const letter = letters[i];
+            counters[letter] += Number(b[i]);
+            if (Number(b[i]) > 0) {
+              dataLoaded = true;
+            }
+          }
+        }
+        util.dispatch('guiUpdate', {stage: 'Currently visible', counters});
+        return dataLoaded;
+      } catch (e) {
+        user.log.warn('Labels flow encountered an error.');
+        return false;
+      }
+    }
+    countTasks = util.retry(countTasks, 30, 1000);
+    function init() {
+      util.dispatch('guiUpdate', {stage: 'Trying to count'});
+      countTasks();
+    }
+    
     return {init};
   })();
 
@@ -911,32 +1141,25 @@ var flows = (function workflowModule() {
       toStage('start');
     }
 
-    const clickApproveYesOrNo = (which) => {
-      if (ref.approvalButtons.length) {
-        const [yes, no] = ref.approvalButtons;
-        (which === 'yes') ? yes.click() : no.click();
-      }
-    }
-
     const stages = {
       async start() {
-        clickApproveYesOrNo('no');
-        shared.editComment('removeInitials');
+        util.attention({on: ref.approvalButtons, n: 1, click: true});
+        shared.comment.removeInitials();
         shared.guiUpdate('Ready to edit');
       },
 
       async approve() {
-        clickApproveYesOrNo('yes');
+        util.attention({on: ref.approvalButtons, n: 0, click: true});
         completeScreenshots();
         shared.tabs.close();
-        shared.editComment('addInitials');
+        shared.comment.addInitials();
         shared.guiUpdate('Approved');
       },
 
       async submit() {
         if (ref.submitButton[0].disabled) {
+          toStage('start');
           user.log.warn('Task is not ready');
-          toStage('approve');
           return;
         }
         const submitted = await shared.submit();
@@ -944,7 +1167,7 @@ var flows = (function workflowModule() {
           await util.wait(1000);
           shared.guiUpdate('Press Start');
         }
-      },
+      }
     };
 
     const stageIs = (...p) => p.includes(stage);
@@ -955,9 +1178,102 @@ var flows = (function workflowModule() {
     }
 
     const approve = () => stageIs('start') && toStage('approve');
-    const submit = () => stageIs('approve') && toStage('submit');
+    const submit = () => stageIs('start', 'approve') && toStage('submit');
     const start = () => stageIs('approve') && toStage('start');
 
+    /**
+     * Exposes methods that try to find specific proxies and click on
+     * them.
+     */
+    const click = (function clickMiniModule() {
+      function addItem(n) {
+        if (n < 2) {
+          for (let button of ref.addItem) {
+            button.click();
+          }
+        } else {
+          util.attention({on: ref.addItem, n: n - 2, click: true});
+        }
+      }
+      function leaveBlank(n) {
+        const leaveBlankButtons = ref.leaveBlank.slice(-3);
+        if (n < 2) {
+          for (let button of leaveBlankButtons) {
+            button.click();
+          }
+        } else {
+          const button = leaveBlankButtons[n - 2];
+          button.click();
+        }
+      }
+      return {
+        addItem,
+        leaveBlank,
+      }
+    })();
+
+    /**
+     * Exposes methods that try to find specific proxies and move the focus
+     * to them.
+     */
+    const focus = (function focusMiniModule() {
+      function addDataButton() {
+        util.attention({
+          on: ref.addDataButton, n: 0, focus: true, scrollIntoView: true
+        });
+      }
+      function editButton() {
+        util.attention({
+          on: ref.editButton, n: 0, focus: true, scrollIntoView: true
+        });
+      }
+      function item1() {
+        util.attention({
+          on: ref.textAreas, n: 0, click: true, focus: true
+        });
+        util.attention({
+          on: ref.editButton, n: 0, click: true, scrollIntoView: true
+        });
+      }
+      function item(n) {
+        if (!ref.textAreas) {
+          return;
+        }
+        util.attention({
+          on: ref.textAreas, n: n - 1, focus: true
+        });
+        util.attention({
+          on: ref.editButton, n: n - 1, click: true, scrollIntoView: true
+        });
+      }
+      return {
+        addDataButton,
+        editButton,
+        item1,
+        item,
+      }
+    })();
+
+    /**
+     * Before starting a task, decide whether to skip it or to open all
+     * tabs.
+     */
+    function beginTask() {
+      if (shared.is.ownTask()) {
+        shared.skipTask();
+        return;
+      }
+      shared.tabs.refresh();
+    }
+
+    /**
+     * Set the current task status, by changing the values in the
+     * dropdown menus.
+     *
+     * @param {string} type
+     * @ref {statusDropdown}
+     * @ref {canOrCannotExtractButtons}
+     */
     function setStatus(type) {
       const keys = {
         'canExtract':    [0, 2, 0],
@@ -977,29 +1293,43 @@ var flows = (function workflowModule() {
       if (!ref.statusDropdown) {
         throw new Error('No status dropdown menus selected.');
       }
-      function canExtract(type) {
+      function clickCanExtract(type) {
         if (!ref.canOrCannotExtractButtons) {
           user.log.warn('canOrCannotExtractButtons not found');
           return;
         }
+        if (type !== 'canExtract' && ref.invalidScreenshot) {
+          util.attention({on: ref.invalidScreenshot, focus: true});
+        }
         const n = (type === 'canExtract') ? 0 : 1;
-        const button = ref.canOrCannotExtractButtons[n];
-        button.click();
-        button.focus();
+        util.attention({
+          on: ref.canOrCannotExtractButtons, n, click: true, focus: true
+        });
       }
       async function setTo() {
         const [b, c, d] = keys[type];
         const dropdowns = ref.statusDropdown;
         dropdowns[0].value = b;
         dropdowns[c].value = d;
-        canExtract(type);
+        clickCanExtract(type);
       }
       return setTo;
     }
 
+    /**
+     * Ensure that all screenshot boxes are filled in. Fills in blank
+     * boxes with the first screenshot link found, starting from the left.
+     *
+     * @ref {screenshots}
+     */
     function completeScreenshots() {
       const screenshots = ref.screenshots;
-      const link = screenshots[0].value || screenshots[1].value;
+      const link =
+          screenshots[0].value ||
+          screenshots[1].value ||
+          screenshots[2].value ||
+          screenshots[3].value ||
+          screenshots[4].value;
       if (!link) {
         return;
       }
@@ -1010,21 +1340,55 @@ var flows = (function workflowModule() {
       }
     }
 
-    function focusOnAddDataOrEdit() {
-      if (ref.addDataButton && ref.addDataButton[0]) {
-        ref.addDataButton[0].focus();
+    /**
+     * Move the focus to the prior proxy in the group, if possible.
+     * When moving out of an empty box, mark the corresponding item
+     * as 'Leave Blank'.
+     *
+     * @param {Object} _
+     * @param {number} idx
+     * @param {Object[]} group
+     */
+    function moveLeft(_, idx, group) {
+      if (idx < 1) {
+        return;
       }
-      if (ref.editButton && ref.editButton[0]) {
-        ref.editButton[0].focus();
-      }
-    }
-    
-    function clickAddItem() {
-      for (let button of ref.addItem) {
-        button.click();
+      group[idx - 1].focus();
+      if (group[idx].value === '') {
+        click.leaveBlank(idx);
       }
     }
 
+    /**
+     * Move the focus to the next proxy in the group, if possible.
+     * When moving into an empty box, mark the corresponding item
+     * as 'Add Item'.
+     *
+     * @param {Object} _
+     * @param {number} idx
+     * @param {Object[]} group
+     */
+    function moveRight(_, idx, group) {
+      if (idx - 1 > group.length) {
+        return;
+      }
+      if (group[idx + 1] && group[idx + 1].disabled) {
+        click.addItem(idx + 1);
+      }
+      util.attention({on: group, n: idx + 1, focus: true});
+    }
+
+    /**
+     * Swap the values of the currently selected item with the item to
+     * the left, if possible.
+     *
+     * @param {Object} _
+     * @param {number} idx
+     * @param {Object[]} group
+     * @ref {textAreas}
+     * @ref {linkAreas}
+     * @ref {screenshots}
+     */
     function swapLeft(_, idx) {
       const text = ref.textAreas;
       const link = ref.linkAreas;
@@ -1042,6 +1406,16 @@ var flows = (function workflowModule() {
       user.log.ok('Swapped items', {print: false, save: false});
     }
 
+    /**
+     * Swap the values of the currently selected item with the item to
+     * the right, if possible. Does not swap with disabled items.
+     *
+     * @param {Object} _
+     * @param {number} idx
+     * @ref {textAreas}
+     * @ref {linkAreas}
+     * @ref {screenshots}
+     */
     function swapRight(_, idx) {
       const text = ref.textAreas;
       const link = ref.linkAreas;
@@ -1059,6 +1433,15 @@ var flows = (function workflowModule() {
       user.log.ok('Swapped items', {print: false, save: false});
     }
 
+    /**
+     * Remove the values of the currently selected item.
+     *
+     * @param {Object} _
+     * @param {number} idx
+     * @ref {textAreas}
+     * @ref {linkAreas}
+     * @ref {screenshots}
+     */
     function deleteItem(_, idx) {
       const text = ref.textAreas;
       const link = ref.linkAreas;
@@ -1070,6 +1453,34 @@ var flows = (function workflowModule() {
       text[idx].focus();
       user.log.ok('Deleted item', {print: false, save: false});
     }
+    
+    function deleteAllItems() {
+      for (let idx in [0,1,2,3,4,5]) {
+        deleteItem(null, idx);
+      }
+    }
+
+    function moveFocusToText(_, idx) {
+      util.attention({on: ref.textAreas, n: idx, focus: true});
+    }
+    
+    function checkDomainMismatch() {
+      const getTrimmedDomain = (url) => {
+        return util.getDomain(url).split('.').slice(-2).join('.').toLowerCase();
+      }
+      const one = getTrimmedDomain('https://' + ref.creative[1].textContent);
+      const two = getTrimmedDomain(ref.openInTabs.slice(-1)[0].value);
+      const three = getTrimmedDomain(ref.finalUrl[0].value);
+      const links = [one, two, three].filter(o => o);
+
+      const packet = {proxy: ref.creative[1], issueType: 'Domain mismatch'};
+      if (new Set(links).size !== 1) {
+        packet.issueLevel = 'orange';
+        packet.message = links.join(', ');
+      }
+      util.dispatch('issueUpdate', packet);
+    }
+    checkDomainMismatch = util.debounce(checkDomainMismatch);
 
     /**
      * Set up event handlers.
@@ -1078,17 +1489,25 @@ var flows = (function workflowModule() {
 
       ー({
         name: 'Text',
+        rootSelect: '#extraction-editing',
         select: 'textarea',
-        pick: [2, 6, 10, 14, 18],
+        pick: [1, 5, 9, 13, 17],
+        onClick: (_, idx) => idx > 1 && click.addItem(idx),
         onInteract: [
-          shared.redAlertExceed25Chars,
+          shared.noMoreThan25Chars,
           shared.noDuplicateValues,
-          shared.forbiddenPhrase,
+          shared.noForbiddenPhrase,
         ],
+        onKeydown_CtrlShiftAltArrowLeft: swapLeft,
+        onKeydown_CtrlShiftAltArrowRight: swapRight,
+        onKeydown_CtrlAltArrowLeft: moveLeft,
+        onKeydown_CtrlAltArrowRight: moveRight,
+        onKeydown_CtrlDelete: deleteItem,
+        onKeydown_CtrlShiftDelete: deleteAllItems,
         onLoad: [
-          shared.redAlertExceed25Chars,
+          shared.noMoreThan25Chars,
           shared.noDuplicateValues,
-          shared.forbiddenPhrase,
+          shared.noForbiddenPhrase,
         ],
         onKeydown_CtrlAltArrowLeft: swapLeft,
         onKeydown_CtrlAltArrowRight: swapRight,
@@ -1098,12 +1517,15 @@ var flows = (function workflowModule() {
 
       ー({
         name: 'Link',
+        rootSelect: '#extraction-editing',
         select: 'textarea',
-        pick: [3, 7, 11, 15, 19],
+        pick: [2, 6, 10, 14, 18],
         onFocusout: [
           shared.requireUrl,
           shared.removeScreenshot,
         ],
+        onKeydown_CtrlAlt: moveFocusToText,
+        onLoad: shared.keepAlive,
         onPaste: [
           shared.requireUrl,
           shared.removePorg,
@@ -1114,12 +1536,14 @@ var flows = (function workflowModule() {
 
       ー({
         name: 'Screenshot',
+        rootSelect: '#extraction-editing',
         select: 'textarea',
-        pick: [4, 8, 12, 16, 20],
+        pick: [3, 7, 11, 15, 19],
         onFocusout: [
           shared.requireUrl,
           shared.requireScreenshot,
         ],
+        onKeydown_CtrlAlt: moveFocusToText,
         onPaste: [
           shared.requireUrl,
           shared.requireScreenshot,
@@ -1129,56 +1553,112 @@ var flows = (function workflowModule() {
 
       ー({
         name: 'Dashes',
+        rootSelect: '#extraction-editing',
         select: 'textarea',
-        pick: [5, 9, 13, 17, 21],
+        pick: [4, 8, 12, 16, 20],
         onFocusin: shared.removeDashes,
         onFocusout: shared.addDashes,
         onLoad: [
           shared.addDashes,
-          shared.keepAlive,
-          shared.removeTabIndex,
+          shared.tabOrder.remove,
         ],
         ref: 'dashes',
       });
 
       ー({
+        name: 'Analyst Comment',
+        select: '.feedback-display-text',
+        pick: [0],
+        ref: 'analystComment',
+      });
+
+      ー({
         name: 'Landing Page Url',
+        rootSelect: '#extraction-editing',
         select: 'textarea',
-        pick: [1],
+        pick: [0],
+        onKeydown_CtrlAltArrowRight: [
+          () => util.attention({on: ref.editButton, click: true}),
+          focus.item1,
+        ],
         onLoad: shared.prefill,
-      });  
+      });
 
       ー({
         name: 'LinksAndLP',
+        rootSelect: '#extraction-editing',
         select: 'textarea',
-        pick: [1, 3, 7, 11, 15, 19],
+        pick: [0, 2, 6, 10, 14, 18],
         onInteract: shared.noDuplicateValues,
         onPaste: shared.noDuplicateValues,
       });
 
-
       ー({
         name: 'AllUrls',
+        rootSelect: '#extraction-editing',
         select: 'textarea',
-        pick: [0, 3, 7, 11, 15, 19, 4, 8, 12, 16, 20, 65],
+        pick: [2, 6, 10, 14, 18, 3, 7, 11, 15, 19, 0],
         ref: 'openInTabs',
       });
 
       ー({
-        name: 'Prefill',
+        name: 'Final Url',
         select: 'textarea',
-        pick: [2, 3, 6, 7, 10, 11, 14, 15, 18, 19],
+        pick: [65],
+        ref: 'finalUrl',
+      });
+      
+      ー({
+        name: 'InvalidScreenshot',
+        rootSelect: '.errorbox-good',
+        rootNumber: 1,
+        select: 'textarea',
+        onKeydown_CtrlAltArrowRight: [
+          () => util.attention({on: ref.finalCommentBox, focus: true}),
+        ],
+        ref: 'invalidScreenshot',
+      });
+      
+      ー({
+        name: 'Creative',
+        rootSelect: '.context-item',
+        rootNumber: [2],
+        select: '*',
+        pick: [3, 6, 8],
+        onLoad: checkDomainMismatch,
+        ref: 'creative',
+      });
+
+      ー({
+        name: 'Prefill',
+        rootSelect: '#extraction-editing',
+        select: 'textarea',
+        pick: [1, 2, 5, 6, 9, 10, 13, 14, 17, 18],
         ref: 'prefillTarget',
       });
 
-      [[2, 3],[6, 7],[10, 11],[14, 15],[18, 19]].forEach(pair => {
+      for (let pair of [[1, 2],[5, 6],[9, 10],[13, 14],[17, 18]]) {
         ー({
           name: 'Fall',
+          rootSelect: '#extraction-editing',
           select: 'textarea',
           pick: pair,
           onPaste: shared.fallThrough,
         });
-      });
+      }
+
+      for (let rootNumber of [0, 8, 17, 26, 35]) {
+        ー({
+          name: 'Remaining',
+          rootSelect: '.extraction-item table',
+          rootNumber,
+          select: 'div, textarea',
+          pick: [2, 3],
+          onChange: shared.updateCharacterCount,
+          onKeydown: shared.updateCharacterCount,
+          onLoad: shared.updateCharacterCount,
+        });
+      }
 
       ー({
         name: 'StatusDropdown',
@@ -1189,24 +1669,43 @@ var flows = (function workflowModule() {
 
       ー({
         name: 'Add Data',
+        rootSelect: '.extraction',
         select: 'label',
-        pick: [2],
-        onKeydown: clickAddItem,
+        withText: 'Add Data',
+        onKeydown_CtrlAltArrowRight: [
+          () => util.attention({on: ref.addDataButton, n: 0, click: true}),
+          focus.item1,
+        ],
         ref: 'addDataButton',
       });
 
       ー({
         name: 'Edit',
+        rootSelect: '.extraction',
         select: 'label',
-        pick: [3],
+        withText: 'Edit',
+        onLoad: shared.tabOrder.add,
+        onKeydown_CtrlAltArrowRight: [
+          (proxy) => proxy.click(),
+          focus.item1,
+        ],
         ref: 'editButton',
       });
 
       ー({
         name: 'Add Item',
+        rootSelect: '#extraction-editing',
         select: 'label',
-        pick: [5, 7, 9],
+        withText: 'Add Item',
         ref: 'addItem',
+      });
+
+      ー({
+        name: 'Leave Blank',
+        rootSelect: '#extraction-editing',
+        select: 'label',
+        withText: 'Leave Blank',
+        ref: 'leaveBlank',
       });
 
       ー({
@@ -1218,9 +1717,14 @@ var flows = (function workflowModule() {
 
       ー({
         name: 'Comment Box',
+        rootSelect: '.addComments',
         select: 'textarea',
-        pick: [(util.isDev()) ? 0 : 64],
+        pick: [0],
         onFocusout: start,
+        onKeydown_CtrlAltArrowRight: [
+          () => util.attention({on: ref.editButton, n: 0, click: true}),
+          focus.item1,
+        ],
         ref: 'finalCommentBox',
       });
 
@@ -1228,6 +1732,10 @@ var flows = (function workflowModule() {
         name: 'CanOrCannotExtract',
         select: 'label',
         pick: [0, 1],
+        onKeydown_CtrlAltArrowRight: [
+          () => util.attention({on: ref.editButton, n: 0, click: true}),
+          focus.item1,
+        ],
         ref: 'canOrCannotExtractButtons',
       });
 
@@ -1256,14 +1764,21 @@ var flows = (function workflowModule() {
       ー({
         name: 'TabRemove',
         select: 'label, button',
-        onLoad: shared.removeTabIndex,
+        onLoad: shared.tabOrder.remove,
       });
 
       ー({
-        name: 'TabOrder',
-        select: 'textarea, label',
-        pick: [0, 1, 2, 4, 5, 7, 8, 9, 12, 13, 18, 19, 24, 25, 30, 31, 10, 14, 20, 26, 32],
-        onLoad: shared.setTabOrder,
+        name: 'Extractions2And3',
+        select: '.extraction',
+        pick: [1, 2],
+        css: {display: 'none'},
+      });
+
+      ー({
+        name: 'Preview Extractions',
+        select: '.extraction-preview',
+        pick: [1, 2],
+        css: {display: 'none'},
       });
 
       eventReactions.setGlobal({
@@ -1277,8 +1792,9 @@ var flows = (function workflowModule() {
         onKeydown_CtrlAltS: shared.saveExtraction,
         onKeydown_NumpadDivide: shared.saveExtraction,
         onKeydown_Backquote: [
-          shared.tabs.refresh,
-          focusOnAddDataOrEdit,
+          beginTask,
+          focus.addDataButton,
+          focus.editButton,
         ],
         onKeydown_CtrlBackquote: main,
         onKeydown_CtrlAltDigit0: setStatus('canExtract'),
@@ -1297,150 +1813,10 @@ var flows = (function workflowModule() {
     return {init};
   })();
 
-  const ss = (function ssModule() {
-
-    /** string - Describes the current stage */
-    let stage;
-
-    function init() {
-      setupReactions();
-      toStage('start');
-    }
-
-    const stages = {
-      'start': () => {
-        shared.editComment('removeInitials');
-        shared.guiUpdate('Ready to edit');
-
-      },
-      'approve': () => {
-        shared.tabs.close();
-        shared.editComment('addInitials');
-        shared.guiUpdate('Approved');
-
-      },
-      'submit': async () => {
-        if (ref.submitButton[0].disabled) {
-          user.log.warn('Task is not ready');
-          toStage('approve');
-          return;
-        }
-        const submitted = await shared.submit();
-        if (!submitted) {
-          toStage('start');
-          return false;
-        }
-      },
-    };
-
-    const stageIs = (...p) => p.includes(stage);
-
-    async function toStage(name) {
-      stage = name;
-      stages[name]();
-    }
-
-    const approve = () => stageIs('start') && toStage('approve');
-    const submit = () => stageIs('approve') && toStage('submit');
-    const start = () => stageIs('approve') && toStage('start');
-
-    /**
-     * Set up event handlers.
-     */
-    function setupReactions() {
-
-      ー({
-        name: 'Text',
-        select: 'textarea',
-        pick: [3, 6, 9, 12, 15],
-        onInteract: [
-          shared.noDuplicateValues,
-          shared.forbiddenPhrase,
-        ],
-        onLoad: [
-          shared.noDuplicateValues,
-          shared.forbiddenPhrase,
-        ],
-        css: {backgroundColor: 'PapayaWhip'},
-      });
-
-      ー({
-        name: 'Screenshot',
-        select: 'textarea',
-        pick: [4, 7, 10, 13, 16],
-        onFocusout: [
-          shared.requireUrl,
-          shared.requireScreenshot,
-        ],
-        onPaste: [
-          shared.requireUrl,
-          shared.requireScreenshot,
-        ],
-        css: {backgroundColor: 'AliceBlue'},
-      });
-
-      ー({
-        name: 'Dashes',
-        select: 'textarea',
-        pick: [5, 8, 11, 14, 17],
-        onFocusin: shared.removeDashes,
-        onFocusout: shared.addDashes,
-        onLoad: [
-          shared.addDashes,
-          shared.keepAlive,
-        ],
-        css: {backgroundColor: 'LightCyan'},
-      });
-
-      ー({
-        name: 'AllUrls',
-        select: 'textarea',
-        pick: [4, 7, 10, 13, 16],
-        ref: 'openInTabs',
-      });
-
-      ー({ // @todo Confirm position
-        name: 'Comment Box',
-        select: 'textarea',
-        pick: [(util.isDev()) ? 0 : 52],
-        onFocusout: () => start,
-        ref: 'finalCommentBox',
-      });
-
-      ー({
-        name: 'SubmitButton',
-        select: '.submitTaskButton',
-        pick: [0],
-        css: {opacity: 0.2},
-        ref: 'submitButton',
-      });
-
-      ー({
-        name: 'Skip Button',
-        select: '.taskIssueButton',
-        pick: [0],
-        ref: 'skipButton',
-      });
-
-      eventReactions.setGlobal({
-        onKeydown_CtrlEnter: submit,
-        onKeydown_CtrlNumpadEnter: submit,
-        onKeydown_Backslash: approve,
-        onKeydown_BracketLeft: shared.resetCounter,
-        onKeydown_BracketRight: shared.skipTask,
-        onKeydown_CtrlAltS: shared.saveExtraction,
-        onKeydown_Backquote: shared.tabs.refresh,
-        onKeydown_CtrlBackquote: main,
-      });
-    }
-
-    return {init};
-  })();
-
   return {
     home,
+    labels,
     sl,
-    ss,
   };
 })();
 
@@ -1455,27 +1831,30 @@ var flows = (function workflowModule() {
 function main() {
   const detectedFlowName = environment.flowName();
   if (!detectedFlowName) {
-    const warning = 'No workflow identified';
-    shared.guiUpdate(warning)
-    return user.log.warn(warning);
+    return false;
   }
 
+  util.dispatch('issueUpdate', {issueType: 'reset'});
   eventReactions.reset();
+  ー({
+    name: 'Links',
+    select: 'a',
+    onClick: util.delay(main, 1000),
+  });
   eventReactions.setGlobal({
     onKeydown_Backquote: main,
   });
-  util.dispatch('issueUpdate', {issueType: 'reset'});
-  const flow = flows[detectedFlowName];
-  flow.init();
+  flows[detectedFlowName].init();
+  return true;
 };
 
-util.wait(100).then(() => user.log.ok('TwoTwentyOne loaded'));
-main();
-
-
-/**
- * @todo Build dev tool that marks elements on the page
- * @todo Improve fresh implementation
- * @todo Remove mode system
- * @todo Mutation listener
- */
+(async function() {
+  try {
+    await util.retry(main, 20, 150)();
+  } catch (e) {
+    const warning = 'No workflow identified';
+    shared.guiUpdate(warning);
+    user.log.warn(warning);
+  }
+})();
+undefined;

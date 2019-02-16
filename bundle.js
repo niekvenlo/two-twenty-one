@@ -1,142 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
-// TEST module
-
-var test = (function testModule() {
-  'use strict';
-
-  /**
-   * @fileoverview Exports testing functions.
-   * Define a new test with group.
-   * Use ok, fizzle and solid to define test items:
-   * - pass ok a true statement.
-   * - pass fizzle a function that throws an error.
-   * - pass solid a function that does not throw an error.
-   * Results are logged to the console if there is a failure.
-   * @example
-   * test.group('Name', () => {
-   *   test.ok(1===1, '1 equals 1');
-   * });
-   * which would record:
-   * ===== Name
-   * OK: 1 equals 1
-   */
-
-  const RUN_UNSAFE_TESTS = false;
-  const AUTO_PRINT_DELAY = 1000;
-  const PRINT_COLORS = {
-    header: 'color: grey',
-    ok: 'color: green',
-    fail: 'color: red',
-    todo: 'color: purple',
-  }
-
-  const testingLogBook = [];
-  let failuresRecorded = false;
-  let enclosedInGroup = false;
-
-  const print = () => testingLogBook.forEach(el => console.log(...el));
-
-  const log = (type, message) => {
-    testingLogBook.push([`%c${message}`, PRINT_COLORS[type]]);
-  };
-
-  /**
-   * Define a test, which can include many test items.
-   * 
-   * @param {?string} groupDesc - Commonly the name of the
-   * function being tested.
-   * @param {function} func - Function body that contains the
-   * test items.
-   */
-  const group = (groupDesc, func, unsafe) => {
-    if (unsafe && !RUN_UNSAFE_TESTS) {
-      return;
-    }
-    if (typeof func !== 'function') {
-      throw new Error('Test requires a function as its second parameter');
-    }
-    log('header', '===== ' + groupDesc);
-    func();
-  };
-
-  /**
-   * Test a statement for truth.
-   *
-   * @param {boolean} statement - Truthy or falsy statement
-   * @param {?string} itemDesc - Description of test item.
-   */
-  const ok = (statement, itemDesc) => {
-    if (statement === true) {
-      log('ok', ' OK: ' + itemDesc);
-    } else {
-      log('fail', ' FAIL: ' + itemDesc);
-      failuresRecorded = true;
-    }
-  }
-
-  /**
-   * Test that a function throws an error.
-   *
-   * @param {function} fizzleFunc - Function that is
-   * expected to throw an error.
-   * @param {?string} itemDesc - Description of test item.
-   */
-  const fizzle = (fizzleFunc, itemDesc) => {
-    try {
-      fizzleFunc();
-      log('fail', ' FAIL: ' + itemDesc + ' did not fizzle');
-      failuresRecorded = true;
-    } catch (e) {
-      log('ok', ' OK: ' + itemDesc + ' fizzled');
-    }
-  }
-
-  /**
-   * Test that a function does not throw an error.
-   *
-   * @param {function} throwingFunc - Function that is
-   * expected to run without throwing an error.
-   * @param {?string} itemDesc - Description of test item.
-   */
-  const solid = (throwingFunc, itemDesc) => {
-    try {
-      throwingFunc();
-      log('ok', ' OK: ' + itemDesc + ' is solid');
-    } catch (e) {
-      log('fail', ' FAIL: ' + itemDesc + ' is not solid');
-      failuresRecorded = true;
-    }
-  }
-
-  const todo = (message) => {
-    log('todo', 'TODO: ' + message);
-  };
-
-  // Automatically print results if there's a fail result.
-  setTimeout(() => {
-    if (failuresRecorded) {
-      print();
-    }
-  }, AUTO_PRINT_DELAY);
-
- return {
-   fizzle,
-   group,
-   ok,
-   print,
-   solid,
-   todo,
- };
-})();
-
-
-
-
-////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
 // ASYNC TEST module
 
 var atest = (function testModule() {
@@ -150,7 +14,7 @@ var atest = (function testModule() {
     }
     for (let func in functions) {
       if (typeof functions[func] !== 'function') {
-        throw new Error('Atest requires an object with function values.')
+        throw new TypeError('Atest requires an object with function values.')
       }
     }
     clearTimeout(ts);
@@ -160,9 +24,9 @@ var atest = (function testModule() {
         continue;
       }
       const promise = (async () => {
-        functions.before && await functions.before();
-        const success = await functions[unitName]();
-        functions.after && await functions.after();
+        const fromBefore = functions.before && await functions.before();
+        const success = await functions[unitName](fromBefore);
+        functions.after && await functions.after(fromBefore);
         return {groupName, unitName, success};
       })();
       promises.push(promise);
@@ -256,6 +120,25 @@ var util = (function utilityModule() {
     'One mismatch': () => arraysMatch([5, 4, 5], [3, 4, 5]) === false,
     'Different order': () => arraysMatch([3, 4, 5], [4, 3, 5]) === false,
   });
+  
+  function attention({on, n = 0, focus, click, scrollIntoView}) {
+    if (Array.isArray(on)) {
+      on = on[n];
+    }
+    if (!on || !on.click) {
+      return;
+    }
+    focus && on.focus();
+    click && on.click();
+    scrollIntoView && on.scrollIntoView();
+  }
+
+  function beep() {
+    (new Audio(
+    'data:audio/wav;base64,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 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////VEFHAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAU291bmRib3kuZGUAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMjAwNGh0dHA6Ly93d3cuc291bmRib3kuZGUAAAAAAAAAACU='
+    )).play();
+  }
+  beep = debounce(beep, 1000);
 
   /**
    * Call several functions with a single function call.
@@ -364,8 +247,9 @@ var util = (function utilityModule() {
    * @param {number} ms - The delay in milliseconds.
    */
   function delay(func, ms = DEFAULT_DELAY) {
-    function delayed(...params) {
-      wait(ms).then(() => func(...params));
+    async function delayed(...params) {
+      await wait(ms);
+      return func(...params);
     }
     return delayed;
   }
@@ -526,7 +410,9 @@ var util = (function utilityModule() {
         }
         await wait(delay);
       }
-      throw new Error('Did not succeed after ' + retries + ' retries');
+      throw new Error(
+        `Failed. Ran ${func.name || 'unnamed function'} ${retries} times`
+      );
     }
   }
   atest.group('retry', {
@@ -553,14 +439,19 @@ var util = (function utilityModule() {
    * @param {string}
    * @return {RegExp}
    */
-  const toRegex = (string)=>{
-    const [,regex,flags] = string.match(/\/(.+)\/([gimuy]*)/);
-    return RegExp(regex, flags);
+  const toRegex = (string)=> {
+    try {
+      const [,regex,flags] = string.match(/\/(.+)\/([gimuy]*)/);
+      return RegExp(regex, flags);
+    } catch (e) {
+      console.debug('Cannot make RegExp from ' + string);
+      return;
+    }
   }
   atest.group('toRegex', {
     'Simple': () => toRegex('/abc/gi').toString() === '/abc/gi',
     'Complex': () => toRegex('/^\d?[a-c]+/g').toString() === '/^d?[a-c]+/g',
-    'Malformed string': () => atest.throws(() => toRegex('abc/gi'), TypeError),
+    'Malformed string': () => toRegex('abc/gi') === undefined,
   })
 
   /**
@@ -609,6 +500,8 @@ var util = (function utilityModule() {
 
   return {
     arraysMatch,
+    attention,
+    beep,
     bundle,
     capitalize,
     debounce,
@@ -642,7 +535,7 @@ var user = (function userDataModule() {
    * * config - manage configuration settings.
    * * counter - count things.
    * * log - log things.
-   * * storeAccess - access to data storage. 
+   * * storeAccess - access to data storage.
    */
 
   const LOCALSTORE_BASENAME = 'twoTwentyOne';
@@ -656,7 +549,7 @@ var user = (function userDataModule() {
   const LOG_MAX_LENGTH = 5000; // entries
   const LOG_ENTRY_MAX_LENGTH = 500; // characters per log entry
   const LOG_PAGE_SIZE = 25; // entries per page
-  const NO_COLOR_FOUND = 'yellow'; // 
+  const NO_COLOR_FOUND = 'yellow'; //
   const TIMESTAMP_STYLE = 'color: grey';
   const LOG_TYPES = {
     log: 'black',
@@ -677,87 +570,61 @@ var user = (function userDataModule() {
    */
   const storeAccess = (function storesMiniModule() {
 
-    /**
-     * Wraps around localStorage to parse JSON to object.
-     */
-    const local = {
-      /**
-       * @param {string} storeName - Name of the store in localStorage.
-       * @return {(Object|Array|string|number|undefined)} Data restored from
-       * string in storage, or undefined. Serialisable primitives are
-       * supported, functions and RegExp are not.
-       */
-      getStore(storeName) {
-        const string = localStorage.getItem(LOCALSTORE_BASENAME + storeName);
-        return (string) ? JSON.parse(string) : undefined;
-      },
-
-      /**
-       * @param {string} storeName - Name of the item in localStorage
-       * @param {object} data - Object, string or number to be stored.
-       * Will silently overwrite previously stored values.
-       */
-      setStore(storeName, data) {
-        localStorage.setItem(
-          LOCALSTORE_BASENAME + storeName,
-          JSON.stringify(data),
-        );
+    const cached = (function chromeLocalModule() {
+      if (!!localStorage.useLocalStorage) {
+        return {
+          destroyStore() {},
+          getStore() {},
+          setStore() {},
+        }
       }
-    };
-    atest.group('local', {
-      'getStore and setStore': () => {
-        const preserve = local.getStore(CONFIG_STORE_NAME);
-        local.setStore(CONFIG_STORE_NAME, {test: true});
-        const successfullySet = local.getStore(CONFIG_STORE_NAME).test;
-        local.setStore(CONFIG_STORE_NAME, preserve);
-        return successfullySet;
-      },
-    });
-
-    /**
-     * Simply wraps around localStore to add cache in memory.
-     */
-    const storeCache = {};
-
-    const cached = {
-      /**
-       * @param {string} storeName
-       * @returns {(Object|Array|string|number)} Stored data.
-       */
-      getStore(storeName) {
+      let storeCache = {};
+      
+      function populateCacheFromChomeStorage() {
+        chrome.storage.local.get(null, (result) => {
+          storeCache = result;
+          console.debug(result);
+        });
+      }
+      populateCacheFromChomeStorage();
+      
+      try { // @todo Remove try/catch block
+        chrome.storage.onChanged.addListener(() => {
+          console.debug('Repopulating cache');
+          populateCacheFromChomeStorage();
+        });
+      } catch (e) {
+        console.debug('Failed to set onChange listener', e);
+      }
+      
+      function destroyStore(storeName) {
+        if (!storeCache.hasOwnProperty(storeName)) {
+          throw new TypeError('Cannot find store to destroy');
+        }
+        delete storeCache[storeName];
+        chrome.storage.local.remove([storeName]);
+      }
+      function getStore(storeName) {
         if (storeCache.hasOwnProperty(storeName)) {
           return storeCache[storeName];
         }
-        const fromStore = local.getStore(storeName);
-        storeCache[storeName] = fromStore;
-        return fromStore;
-      },
-      /**
-       * @param {string} storeName
-       * @returns {(Object|Array|string|number)} Stored data.
-       */
-      setStore(storeName, data) {
+      }
+      function setStore(storeName, data) {
         if (!storeName) {
           throw new TypeError('Cannot create nameless store');
         }
+        if (typeof data !== 'object') {
+          throw new TypeError('Data should be an object, not ' + typeof data);
+        }
         storeCache[storeName] = data;
-        local.setStore(storeName, data);
-      },
-    };
-//     atest.group('cached', {
-//       'getStore': () => local.getStore(CONFIG_STORE_NAME),
-//       'setStore': () => {
-//         const preserve = local.getStore(CONFIG_STORE_NAME);
-//         local.setStore(CONFIG_STORE_NAME, {test: true});
-//         const successfullySet = local.getStore(CONFIG_STORE_NAME).test;
-//         local.setStore(CONFIG_STORE_NAME, preserve);
-//         return successfullySet;
-//       },
-//       'cached': async () => {
-//         await util.wait();
-//         return Object.entries(storeCache).length !== 0;
-//       },
-//     });
+        chrome.storage.local.set({[storeName]: data});
+      }
+      return {
+        destroyStore,
+        getStore,
+        setStore,
+      }
+    })();
 
     /**
      * Add a data element to an Array data store.
@@ -793,7 +660,12 @@ var user = (function userDataModule() {
      */
     function createStore({feature, locale, data}) {
       if (!feature) {
-        throw new Error('Cannot set data to nameless store.');
+        throw new TypeError('Cannot set data to nameless store.');
+      }
+      try {
+        data = JSON.parse(data);
+        console.debug('CreateStore received this JSON: ', data);
+      } catch (e) {
       }
       if (locale) {
         const sharedType = util.typeOf(cached.getStore(`${feature}`));
@@ -804,10 +676,31 @@ var user = (function userDataModule() {
       }
       cached.setStore(`${feature}${locale}`, data);
     }
+    
+    /**
+     * Set or replace all data for a specific feature, and optionally a
+     * specific locale. If no locale is specified, data will be added
+     * to a feature specific shared data store.
+     *
+     * @param {Object} o
+     * @param {string} o.feature
+     * @param {string=} o.locale
+     * @param {boolean} o.destroy - Should the store be destroyed?
+     */
+    function destroyStore({feature, locale, destroy}) {
+      if (!feature) {
+        throw new TypeError('Cannot destroy nameless store.');
+      }
+      const store = cached.getStore(`${feature}${locale}`);
+      if (!store) {
+        throw new Error('Cannot find store to destroy.');
+      }
+      cached.destroyStore(`${feature}${locale}`);
+    }
 
     /**
      * Get a data store for a specific feature.
-     * If no locale is specified, a shared store is returned. If a 
+     * If no locale is specified, a shared store is returned. If a
      * locale is specified, a merged store containing shared and locale
      * specific data is returned.
      *
@@ -863,6 +756,26 @@ var user = (function userDataModule() {
     }
 
     /**
+     * Remove an entry in a specific data store.
+     * If a locale is specified, the entries is removed from the locale
+     * specific store. If no locale is specified, the entry is removed
+     * from a store that is shared accross locales.
+     *
+     * @param {Object} o
+     * @param {string} o.feature
+     * @param {string=} o.locale
+     * @param {Object} o.remove - Key to be deleted from the store.
+     */
+    function removeValue({feature, locale = '', remove}) {
+      if (!feature) {
+        throw new TypeError('Cannot set data to nameless store.');
+      }
+      const data = cached.getStore(`${feature}${locale}`) || {};
+      delete data[remove];
+      cached.setStore(`${feature}${locale}`, data);
+    }
+
+    /**
      * Set an entry in a specific data store.
      * If a locale is specified, the entries is added to the locale
      * specific store. If no locale is specified, the entry is added
@@ -875,10 +788,10 @@ var user = (function userDataModule() {
      */
     function setValue({feature, locale = '', set}) {
       if (!feature) {
-        throw new Error('Cannot set data to nameless store.');
+        throw new TypeError('Cannot set data to nameless store.');
       }
       if (typeof set !== 'object') {
-        throw new Error('Set requires an object.');
+        throw new TypeError('Set requires an object.');
       }
       const data = cached.getStore(`${feature}${locale}`) || {};
       const newData = {...data, ...set};
@@ -895,15 +808,27 @@ var user = (function userDataModule() {
      * @param {string=} o.get
      * @param {string=} o.set
      * @param {*=} o.value
+     * @param {string=} o.remove
      * @param {*=} o.data
+     * @param {string=} o.destroy
      * @return {*}
      */
-    function storeAccess({feature, locale = '', add, get, set, value, data}) {
+    function storeAccess({
+      feature,
+      locale = '',
+      add,
+      get,
+      set,
+      value,
+      remove,
+      data,
+      destroy
+    }) {
       if (typeof feature !== 'string') {
-        throw new Error('Feature must be a text string');
+        throw new TypeError('Feature must be a text string');
       }
       if (typeof locale !== 'string') {
-        throw new Error('Locale must be a text string');
+        throw new TypeError('Locale must be a text string');
       }
       if (add !== undefined) {
         return addElement({feature, locale, add});
@@ -911,88 +836,100 @@ var user = (function userDataModule() {
         return getValue({feature, locale, get});
       } else if (set !== undefined) {
         return setValue({feature, locale, set, value});
+      } else if (remove !== undefined) {
+        return removeValue({feature, locale, remove});
       } else if (data !== undefined) {
         return createStore({feature, locale, data});
+      } else if (destroy === true) {
+        return destroyStore({feature, locale, destroy});
       } else {
         return dumpStore({feature, locale});
       }
     }
-    test.group('storeAccess', () => {
-      const testObjectStoreName = 'TestingObject';
-      const testArrayStoreName = 'TestingArray';
-      const language = 'English';
-      const tokyo = 'Tokyo';
-      const lauren = 'Lauren Ipsum';
-      const yanny = 'Yanny Ipsum';
-
-      let blank = storeAccess({
-        feature: testObjectStoreName,
-        data: {city: tokyo},
-      });
-      test.ok(blank === undefined, 'Return undefined for undefined stores.');
-      storeAccess({
-        feature: testObjectStoreName,
-        data: {city: tokyo},
-      });
-      let city = storeAccess({
-        feature: testObjectStoreName,
-        locale: language,
-        get: 'city',
-      });
-      test.ok(city === tokyo, 'Create an object store and get shared value');
-      storeAccess({
-        feature: testObjectStoreName,
-        locale: language,
-        data: {name: lauren},
-      });
-      let name = storeAccess({
-        feature: testObjectStoreName,
-        locale: language,
-        get: 'name',
-      });
-      test.ok(name === lauren, 'Set and get a locale specific value');
-      storeAccess({
-        feature: testObjectStoreName,
-        locale: language,
-        set: {name: yanny},
-      });
-      name = storeAccess({
-        feature: testObjectStoreName,
-        locale: language,
-        get: 'name',
-      });
-      test.ok(name === yanny, 'Update object value');
-      storeAccess({
-        feature: testArrayStoreName,
-        data: [2,3,4],
-      });
-      test.fizzle(() => {
+    atest.group('storeAccess', {
+      'before': () => {
+        return {
+          objectStore: 'TestingObject',
+          arrayStore: 'TestingArray',
+          language: 'English',
+          tokyo: 'Tokyo',
+          lauren: 'Lauren Ipsum',
+          yanny: 'Yanny Ipsum',
+        }
+      },
+      'Return undefined for undefined stores': (o) => {
+        return storeAccess({
+          feature: o.objectStore,
+        }) === undefined;
+      },
+      'Create an object store and get shared value': (o) => {
         storeAccess({
-          feature: testArrayObjectName,
-          data: [2,3,4],
+          feature: o.objectStore,
+          data: {city: o.tokyo},
         });
-      }, 'When object Store receives Array');
-      let array = storeAccess({
-        feature: testArrayStoreName,
-        locale: language,
-      });
-      test.ok(util.arraysMatch(array, [2,3,4]),'Set and get array');
-      storeAccess({
-        feature: testArrayStoreName,
-        add: 5,
-      });
-      array = storeAccess({
-        feature: testArrayStoreName,
-        locale: language,
-      });
-      test.ok(
-        util.arraysMatch(array, [2,3,4,5]),
-        'Add to array',
-      );
-      delete localStorage[LOCALSTORE_BASENAME + testObjectStoreName];
-      delete localStorage[LOCALSTORE_BASENAME + testObjectStoreName + language];
-      delete localStorage[LOCALSTORE_BASENAME + testArrayStoreName];
-      delete localStorage[LOCALSTORE_BASENAME + testArrayStoreName + language];
+        return storeAccess({
+          feature: o.objectStore,
+          locale: o.language,
+          get: 'city',
+        }) === o.tokyo;
+      },
+      'Set data and get value': (o) => {
+        storeAccess({
+          feature: o.objectStore,
+          locale: o.language,
+          data: {
+            name: o.lauren,
+          },
+        });
+        return storeAccess({
+          feature: o.objectStore,
+          locale: o.language,
+          get: 'name',
+        }) === o.lauren;
+      },
+      'Change value': (o) => {
+        storeAccess({
+          feature: o.objectStore,
+          locale: o.language,
+          data: {
+            name: o.lauren,
+          },
+        });
+        storeAccess({
+          feature: o.objectStore,
+          locale: o.language,
+          set: {
+            name: o.yanny
+          },
+        });
+        return storeAccess({
+          feature: o.objectStore,
+          locale: o.language,
+          get: 'name',
+        }) === o.yanny;
+      },
+      'after': (o) => {
+        const shared = storeAccess({
+          feature: o.objectStore,
+          locale: o.language,
+        });
+        const locale = storeAccess({
+          feature: o.objectStore,
+        });
+        if (shared) {
+          storeAccess({
+            feature: o.objectStore,
+            destroy: true,
+          })
+        }
+        if (locale) {
+          storeAccess({
+            feature: o.objectStore,
+            locale: o.language,
+            destroy: true,
+          })
+        }
+      },
     });
     return storeAccess;
   })();
@@ -1002,7 +939,7 @@ var user = (function userDataModule() {
    *
    * @param {Date} d - A date to turn into a matching timestamp.
    * For today's Date, returns a short format (hh:mm)
-   * For other Dates, returns a long format (MM/DD hh:mm:ss) 
+   * For other Dates, returns a long format (MM/DD hh:mm:ss)
    * @return {string}
    */
   function timestamp (d = new Date()) {
@@ -1150,11 +1087,11 @@ var user = (function userDataModule() {
      * Add one to the count of an existing counter, or create a new counter
      * starting at 1.
      *
-     * @param {string} name - Name of counter to be incremented or created. 
+     * @param {string} name - Name of counter to be incremented or created.
      */
     function add(name) {
       if (typeof name !== 'string') {
-        throw new Error('Counter add expects a name string');
+        throw new TypeError('Counter add expects a name string');
       }
       const /** object */ allCounts = getStore();
       const /** number */ newCount = (allCounts[name] + 1) || 1;
@@ -1187,7 +1124,7 @@ var user = (function userDataModule() {
      */
     function reset(name) {
       if (typeof name !== 'string' && name !== undefined) {
-        throw new Error('Counter reset expects a name string or nothing');
+        throw new TypeError('Counter reset expects a name string or nothing');
       }
       const allCounts = getStore();
       if (name) {
@@ -1221,14 +1158,14 @@ var user = (function userDataModule() {
       reset,
     };
   })();
-  test.group('counter', () => {
-    const complex = 'aG9yc2ViYXR0ZXJ5c3RhYmxl';
-    test.ok(counter.get(complex) === -1, 'Undefined counter');
-    test.ok(counter.add(complex) === 1, 'Initialised counter');
-    test.ok(counter.add(complex) === 2, 'Counter is counting');
-    test.ok(counter.get(complex) === 2, 'Counter is consistent');
-    test.ok(counter.reset(complex) === 0, 'Reset returns 0');
-    test.ok(counter.get(complex) === -1, 'Counter is gone');
+  atest.group('counter', {
+    'before': () => 'aG9yc2ViYXR0ZXJ5c3RhYmxl',
+    'Undefined counter': (name) => counter.get(name) === -1,
+    'Initialised counter': (name) => counter.add(name) === 1,
+    'Counter is counting': (name) => counter.add(name) === 2,
+    'Counter is consistent': (name) => counter.get(name) === 2,
+    'Reset returns 0': (name) => counter.reset(name) === 0,
+    'Counter is gone': (name) => counter.get(name) === -1,
   }, true);
 
   /** Object[] */
@@ -1237,7 +1174,7 @@ var user = (function userDataModule() {
   /**
    * Issue tracker. Integrates updates into a consistent list of currently
    * unresolved issues.
-   * 
+   *
    * @param {Object} issueUpdate - Incoming message. This may refer to a new
    * issue, or update the status of a previous issue.
    * @param {Object} issueUpdate.proxy - HTMLElement proxy.
@@ -1254,7 +1191,7 @@ var user = (function userDataModule() {
       return;
     }
     if (!issueUpdate || !issueUpdate.proxy || !issueUpdate.issueType) {
-      throw new Error('Not a valid issue.');
+      throw new TypeError('Not a valid issue.');
     }
     /**
      * Filter function to remove issues that match the incoming issue.
@@ -1278,9 +1215,8 @@ var user = (function userDataModule() {
     flaggedIssues = flaggedIssues.filter(removeOk);
     updateGui({issues: flaggedIssues});
   }
-  test.group('flag', () => {
-    test.fizzle(() => flag(), 'Without a issue');
-    // @todo Better tests.
+  atest.group('flag', {
+    'Fail without an issue': () => atest.throws(() => flag()),
   });
 
   /**
@@ -1318,13 +1254,13 @@ var user = (function userDataModule() {
         return JSON.stringify(payload);
       }
     }
-    test.group('payloadToString', () => {
-      let payload = 'one\ntwo';
-      let resultString = 'one\n   two';
-      test.ok(payloadToString(payload, 2) === resultString, 'Two spaces');
-      payload = {test: '1,2,3'};
-      resultString = '{"test":"1,2,3"}';
-      test.ok(payloadToString(payload, 2) === resultString, 'JSON');
+    atest.group('payloadToString', {
+      'Add two spaces to string': () => {
+        return payloadToString('one\ntwo', 2) === 'one\n   two';
+      },
+      'Convert object to JSON': () => {
+        return payloadToString({test: '1,2,3'}, 2) === '{"test":"1,2,3"}';
+      },
     });
 
     /**
@@ -1363,14 +1299,14 @@ var user = (function userDataModule() {
         };
       });
     }
-    test.group('getStore', () => {
-      test.ok(Array.isArray(getStore()), 'Returns an array');
+    atest.group('getStore', {
+      'Returns an array': () => Array.isArray(getStore()),
     });
 
     /**
      * Save an array of log entries.
      *
-     * @param {Object} entries - An object containing an array of log entries. 
+     * @param {Object} entries - An object containing an array of log entries.
      */
     function setStore(entries) {
       entries = entries.slice(-LOG_MAX_LENGTH).map(o => {
@@ -1393,17 +1329,19 @@ var user = (function userDataModule() {
     function addPersistent({type, payload}) {
       const entries = getStore();
       const newEntry = {
-        time: new Date(), 
-        type, 
+        time: new Date(),
+        type,
         payload
       };
       const allEntries = [...entries, newEntry];
       setStore(allEntries);
     }
-    test.group('addPersistent', () => {
-      const length = getStore().length;
-      addPersistent({type: 'testing', payload: '1,2,3'});
-      test.ok((length + 1) === getStore().length), 'Added one entry';
+    atest.group('addPersistent', {
+      'Added one entry': () => {
+        const length = getStore().length;
+        addPersistent({type: 'testing', payload: '1,2,3'});
+        return getStore().length === length + 1;
+      }
     }, true);
 
     /**
@@ -1446,19 +1384,13 @@ var user = (function userDataModule() {
       entries = entries.slice(-end, -start || undefined);
       return entries;
     }
-    test.group('getEntries', () => {
-      const entries = getEntries();
-      test.ok(
-        (entries.length === LOG_PAGE_SIZE) ||
-        (getStore().length < LOG_PAGE_SIZE),
-        'Get a full page from the log, if possible',
-      );
-      const randomString = Math.random().toString();
-      const filtered = getEntries({contains: randomString});
-      test.ok(
-        filtered.length === 0,
-        'Succesfully filter out all entries',
-      );
+    atest.group('getEntries', {
+      'Get a full page, if possible': () => {
+        const entries = getEntries();
+        const fullPage = entries.length === LOG_PAGE_SIZE;
+        const logTooShort = getStore().length < LOG_PAGE_SIZE;
+        return fullPage || logTooShort;
+      }
     });
 
     /**
@@ -1471,9 +1403,6 @@ var user = (function userDataModule() {
     function print(filterBy = {}) {
       getEntries(filterBy).forEach(entry => printToConsole(entry));
     }
-    test.group('print', () => {
-      test.todo('XXXXX');
-    });
 
     /**
      * Generate a logging function.
@@ -1546,11 +1475,11 @@ var eventReactions = (function eventListenersModule() {
     'onClick': 'click',
     'onFocusin': 'focusin',
     'onFocusout': 'focusout',
+    'onInteract': 'interact',
     'onKeydown': 'keydown',
     'onInput': 'input',
+    'onLoad': 'load',
     'onPaste': 'paste',
-    /** load is handled separately */
-    /** interact is handled separately */
   });
 
   /**
@@ -1607,14 +1536,14 @@ var eventReactions = (function eventListenersModule() {
         return [];
       }
       if (!Array.isArray(eventTypes)) {
-        throw new Error('Please provide an array of eventTypes');
+        throw new TypeError('Please provide an array of eventTypes');
       }
       const found = [];
       const reactions = map.get(htmlElement);
       for (let eventType of eventTypes) {
         if (reactions[eventType] !== undefined) {
           found.push(...reactions[eventType]);
-        }          
+        }
       }
       return found;
     }
@@ -1632,10 +1561,10 @@ var eventReactions = (function eventListenersModule() {
      */
     function set({htmlElement, eventType, functions}) {
       if (!util.isHTMLElement(htmlElement)) {
-        throw new Error(htmlElement + ' is not an htmlElement');
+        throw new TypeError(htmlElement + ' is not an htmlElement');
       }
       if (!Array.isArray(functions)) {
-        throw new Error('Please provide an array of functions');
+        throw new TypeError('Please provide an array of functions');
       }
       const reactions = map.get(htmlElement) || {};
       const current = get({htmlElement, eventTypes: [eventType]});
@@ -1695,17 +1624,41 @@ var eventReactions = (function eventListenersModule() {
         return '';
     }
   }
-  test.group('eventToString', () => {
-    const events = {
-      ctrlP: {type: 'keydown', ctrlKey: true, shiftKey: false, code: 'KeyP'},
-      p: {type: 'keydown', ctrlKey: false, shiftKey: false, code: 'KeyP'},
-      ctrlEnter: {type: 'keydown', ctrlKey: true, code: 'Enter'},
-      click: {type: 'click'},
-    };
-    test.ok(eventToString(events.ctrlP) === 'CtrlP', 'CtrlP');
-    test.ok(eventToString(events.p) === 'P', 'P');
-    test.ok(eventToString(events.ctrlEnter) === 'CtrlEnter', 'CtrlEnter');
-    test.ok(eventToString(events.click) === '', 'Click');
+  atest.group('eventToString', {
+    'onKeydown': () => {
+      return eventToString({
+        type: 'keydown',
+        code: 'KeyA',
+      }) === 'A';
+    },
+    'onKeydown_CtrlA': () => {
+      return eventToString({
+        type: 'keydown',
+        ctrlKey: true,
+        code: 'KeyA',
+      }) === 'CtrlA';
+    },
+    'onKeydown_CtrlShiftAltA': () => {
+      return eventToString({
+        type: 'keydown',
+        shiftKey: true,
+        ctrlKey: true,
+        altKey: true,
+        code: 'KeyA',
+      }) === 'CtrlShiftAltA';
+    },
+    'onKeydown_CtrlShiftAltA': () => {
+      return eventToString({
+        type: 'keydown',
+        ctrlKey: true,
+        code: 'Enter',
+      }) === 'CtrlEnter';
+    },
+    'onClick': () => {
+      return eventToString({
+        type: 'click',
+      }) === '';
+    },
   });
 
   /**
@@ -1723,10 +1676,35 @@ var eventReactions = (function eventListenersModule() {
     const type_k = `${type}_${eventString}`;
     return [type, type_k];
   }
-  test.group('eventToEventTypes', () => {
-    const ret = eventToEventTypes({type: 'click'});
-    test.ok(ret[0] === 'onClick', 'onClick');
-    test.ok(ret[1] === 'onClick_', 'onClick_');
+  atest.group('eventToEventTypes', {
+    'onKeydown[0]': () => {
+      return eventToEventTypes({
+        type: 'keydown',
+      })[0] === 'onKeydown';
+    },
+    'onKeydown_CtrlA[0]': () => {
+      return eventToEventTypes({
+        type: 'keydown',
+        ctrlKey: true,
+        code: 'KeyA',
+      })[0] === 'onKeydown';
+    },
+    'onKeydown_CtrlA[1]': () => {
+      return eventToEventTypes({
+        type: 'keydown',
+        ctrlKey: true,
+        code: 'KeyA',
+      })[1] === 'onKeydown_CtrlA';
+    },
+    'onKeydown_CtrlShiftAltA[1]': () => {
+      return eventToEventTypes({
+        type: 'keydown',
+        shiftKey: true,
+        ctrlKey: true,
+        altKey: true,
+        code: 'KeyA',
+      })[1] === 'onKeydown_CtrlShiftAltA';
+    },
   });
 
   /**
@@ -1738,14 +1716,32 @@ var eventReactions = (function eventListenersModule() {
       if (typeof func === 'function') {
         util.wait().then(func);
       } else {
-        throw new Error('Not a function.');
+        throw new TypeError('Not a function.');
       }
     }
   }
-  test.group('runAll', () => {
-    let sum = 0;
-    const func = () => sum++;
-    test.todo('Async');
+  atest.group('runAll', {
+    'Run 3 functions': async () => {
+      let count = 0;
+      const increment = () => count++;
+      runAll(increment, increment, increment);
+      await util.wait();
+      return count === 3;
+    },
+    'Throw unless all functions': async () => {
+      let count = 0;
+      const increment = () => count++;
+      return atest.throws(() => {
+        runAll(increment, increment, 3, increment);
+      });
+    },
+    'Fail if input is an array': async () => {
+      let count = 0;
+      const increment = () => count++;
+      return atest.throws(() => {
+        runAll([increment, increment, increment]);
+      });
+    },
   });
 
   /**
@@ -1764,6 +1760,15 @@ var eventReactions = (function eventListenersModule() {
       return () => run(proxy, idx, group);
     });
   }
+  atest.group('addContext', {
+    'Context added to functions': async () => {
+      const func = (a, b, c) => a + b + c;
+      const context = {proxy: 1, idx: 2, group: 3};
+      const withContext = addContext(func, context)[0];
+      await util.wait();
+      return withContext() === 6;
+    },
+  });
 
   /**
    * Process raw reactions objects:
@@ -1774,7 +1779,7 @@ var eventReactions = (function eventListenersModule() {
    */
   function unpackAndAddContext(reactions, context) {
     if (!reactions || !context) {
-      throw new Error('Reactions object and context are required.');
+      throw new TypeError('Reactions object and context are required.');
     }
     const cloneReaction = {...reactions};
     for (let eventType in cloneReaction) {
@@ -1804,17 +1809,27 @@ var eventReactions = (function eventListenersModule() {
     }
     return filteredClone;
   }
-  test.group('unpackAndAddContext', () => {
-    const reactions = {
-      onLoad: () => {},
-      onClick: () => {},
-      onInteract: () => {},
-      name: 'Name',
-    }
-    const ret = unpackAndAddContext(reactions, {});
-    test.ok(ret.onLoad === undefined, 'onLoad removed');
-    test.ok(ret.onClick.length === 2, 'onClick added');
-    test.ok(ret.name === undefined, 'name removed');
+  atest.group('unpackAndAddContext', {
+    'before': () => {
+      return {
+        name: 'Name',
+        onLoad: () => {},
+        onClick: () => {},
+        onInteract: () => {},
+      };
+    },
+    'onLoad removed': (reactions) => {
+      const ret = unpackAndAddContext(reactions, {});
+      return ret.onLoad === undefined;
+    },
+    'onClick added': (reactions) => {
+      const ret = unpackAndAddContext(reactions, {});
+      return ret.onClick.length === 2;
+    },
+    'Name removed': (reactions) => {
+      const ret = unpackAndAddContext(reactions, {});
+      return ret.name === undefined;
+    },
   });
 
   /**
@@ -1831,7 +1846,7 @@ var eventReactions = (function eventListenersModule() {
    */
   function set(htmlElement, reactions, context) {
     if (!util.isHTMLElement(htmlElement)) {
-      throw new Error('Not an HTMLElement');
+      throw new TypeError('Not an HTMLElement');
     }
     const formattedReactions = unpackAndAddContext(reactions, context);
     for (let reaction in formattedReactions) {
@@ -1894,6 +1909,9 @@ var eventReactions = (function eventListenersModule() {
    */
   function initGenericEventHandlers() {
     for (let type in SUPPORTED_EVENTS) {
+      if (type === 'onLoad' || type === 'onInteract') {
+        continue;
+      }
       const eventType = SUPPORTED_EVENTS[type];
       document.addEventListener(
         eventType,
@@ -1931,6 +1949,7 @@ var eventReactions = (function eventListenersModule() {
     reset: reactionStore.clear,
     set,
     setGlobal,
+    SUPPORTED_EVENTS,
   }
 })();
 
@@ -1973,11 +1992,16 @@ var {ー, ref} = (function domAccessModule() {
    * @param {string=} name
    * @param {number} idx
    * @return {string}
-   * @example - namePlusIdx('Example', 3) => 'Example-3'
+   * @example - namePlusIdx('Example name', 3) => 'ExampleName_3'
    */
   function namePlusIdx(name = 'Unnamed', idx) {
-    return `${name}[${idx}]`;
+    const camelCased = util.capitalize('each word', name).replace(/\s+/, '');
+    return `${camelCased}_${idx + 1}`;
   }
+  atest.group('namePlusIdx', {
+    'One word': () => namePlusIdx('Name', 3) === 'Name_4',
+    'Two words': () => namePlusIdx('First second', 0) === 'FirstSecond_1',
+  });
 
   /**
    * Get coordinates of an HTMLElement, taking scroll position into account.
@@ -1996,7 +2020,7 @@ var {ー, ref} = (function domAccessModule() {
       left: parseInt(scrollX + rect.left),
       width: parseInt(rect.width),
       height: parseInt(rect.height),
-    }
+    };
   }
 
   /**
@@ -2013,6 +2037,17 @@ var {ー, ref} = (function domAccessModule() {
       htmlElement,
     );
   }
+  atest.group('touch', {
+    'Listen for events': async () => {
+      let count = 0;
+      const fakeElement = {
+        dispatchEvent: () => count++,
+      };
+      touch(fakeElement);
+      await util.wait();
+      return count === 4
+    }
+  });
 
   /**
    * All changes to HTMLElement values should be routed through this function.
@@ -2029,7 +2064,7 @@ var {ー, ref} = (function domAccessModule() {
       return;
     }
     if(!EDITABLE_ELEMENT_TYPES.includes(htmlElement.type)) {
-      throw new Error(`Cannot set value on ${htmlElement.type} elements`);
+      throw new TypeError(`Cannot set value on ${htmlElement.type} elements`);
     }
     htmlElement.value = newValue;
     touch(htmlElement);
@@ -2038,12 +2073,35 @@ var {ー, ref} = (function domAccessModule() {
       {print: false, toast: false},
     );
   }
+  atest.group('safeSetter', {
+    'Basic set value on supported element': async () => {
+      let count = 0;
+      const fakeElement = {
+        type: EDITABLE_ELEMENT_TYPES[0],
+        dispatchEvent: () => count++,
+      };
+      safeSetter(fakeElement, 'Name', 'newValue');
+      await util.wait();
+      const numTouchEvents = 4;
+      return fakeElement.value = 'newValue' && count === numTouchEvents;
+    },
+    'Fail on unsupported element': async () => {
+      let count = 0;
+      const fakeElement = {
+        type: 'unsupported',
+        dispatchEvent: () => count++,
+      };
+      return atest.throws(() => {
+        safeSetter(fakeElement, 'Name', 'newValue')
+      });
+    },
+  });
 
   /**
    * Get a fresh proxy matching the select and pick parameters.
    * If the DOM updates, this may return a proxy to a different HTMLElement
    * than the original proxy.
-   * 
+   *
    * @param {Object} freshSelector
    * @param {string} freshSelector.select
    * @param {number[]} freshSelector.pick
@@ -2065,6 +2123,9 @@ var {ー, ref} = (function domAccessModule() {
    * @return {Object} proxy
    */
   function makeBasicProxy({htmlElement, name, freshSelector}) {
+    if (!util.isHTMLElement(htmlElement)) {
+      throw new TypeError('Not an HTMLElement');
+    }
     const proxy = {
       name,
       value: htmlElement.value,
@@ -2133,6 +2194,9 @@ var {ー, ref} = (function domAccessModule() {
    * @return {Object} proxy
    */
   function makeProxy({htmlElement, name, mode, freshSelector}) {
+    if (!util.isHTMLElement(htmlElement)) {
+      throw new TypeError('Not an HTMLElement');
+    }
     const proxy = makeBasicProxy({
       htmlElement,
       name,
@@ -2146,7 +2210,7 @@ var {ー, ref} = (function domAccessModule() {
     }
     function brokenSetter(newValue) {
       throw new Error(
-          `Cannot set value of ${name} to '${newValue}'. ` + 
+          `Cannot set value of ${name} to '${newValue}'. ` +
           `Element is not programmatically editable.`
       );
     }
@@ -2193,7 +2257,7 @@ var {ー, ref} = (function domAccessModule() {
   function toProxy(htmlElement, idx, options) {
     options.mode = 'programmable';
     if (!util.isHTMLElement(htmlElement)) {
-      throw new Error('Not an HTMLElement');
+      throw new TypeError('Not an HTMLElement');
     }
     const cached = htmlElementWeakMap.get(htmlElement);
     if (cached && options.mode === 'fresh') {
@@ -2221,6 +2285,11 @@ var {ー, ref} = (function domAccessModule() {
     }
     return proxy;
   }
+  atest.group('toProxy', {
+    'Throws without an HTMLElement': () => {
+      return atest.throws(() => toProxy({}, 0, {}));
+    },
+  });
 
   /**
    * Access the DOM and find HTMLElements matching the parameters.
@@ -2237,18 +2306,34 @@ var {ー, ref} = (function domAccessModule() {
    * @param {number} o.rootNumber
    * @param {string} o.select
    * @param {number[]} o.pick
+   * @param {HTMLElement[]}
    */
-  function getHtmlElements({rootSelect, rootNumber, select, pick}) {
+  function getHtmlElements({
+    rootSelect,
+    rootNumber = '0',
+    select,
+    pick,
+    withText,
+  }) {
     const simpleSelect = () => {
       return [...document.querySelectorAll(select)];
     }
     const complexSelect = () => {
-      return [...document.querySelectorAll(rootSelect)][rootNumber]
-          .querySelectorAll(select || '*');
+      const root = [...document.querySelectorAll(rootSelect)][rootNumber];
+      if (!root) {
+        return [];
+      }
+      return [...root.querySelectorAll(select || '*')] || [];
     }
     const allElements = (rootSelect) ? complexSelect() : simpleSelect();
+    const filterByText = (el) => {
+      if (!withText) {
+        return true;
+      }
+      return el.value === withText || el.textContent === withText;
+    };
     if (!pick) {
-      return allElements;
+      return allElements.filter(filterByText);
     }
     const pickedElements = [];
     for (let number of pick) {
@@ -2257,8 +2342,68 @@ var {ー, ref} = (function domAccessModule() {
       pickedElements.push(picked);
       }
     }
-    return pickedElements;
+    return pickedElements.filter(filterByText);
   }
+  atest.group('getHtmlElements', {
+    'Throws without input': () => atest.throws(() => getHtmlElements()),
+    'Returns an array': () => {
+      return Array.isArray(getHtmlElements({rootSelect: 'div'}));
+    },
+  })
+
+  function checkSupportedProps(prop) {
+    for (let supported of Object.keys(eventReactions.SUPPORTED_EVENTS)) {
+      if (prop.includes(supported)) {
+        return;
+      }
+    }
+    throw new TypeError(
+      `${prop}  is not a supported event. Please use:` +
+      util.mapToBulletedList(eventReactions.SUPPORTED_EVENTS)
+    );
+  }
+  atest.group('checkSupportedProps', {
+    'onLoad is ok': () => !atest.throws(() => checkSupportedProps('onLoad')),
+    'onError fails': () => atest.throws(() => checkSupportedProps('onError')),
+    'load fails': () => atest.throws(() => checkSupportedProps('load')),
+  });
+
+  function checkReactionsAreFunctions(name, action, reactions) {
+    util.ensureIsArray(reactions).forEach(reaction => {
+      if (typeof reaction !== 'function') {
+        throw new TypeError(
+          `Failed to add '${action}' reaction to ${name}.` +
+          `Reaction should be a function, not ${typeof reaction}.`,
+        );
+      }
+    });
+  }
+  atest.group('checkReactionsAreFunctions', {
+    'Array of functions': () => {
+      const reactions = [() => {}, () => {}];
+      return !atest.throws(() => {
+        checkReactionsAreFunctions('Test 1', 'onLoad', reactions);
+      });
+    },
+    'Single function': () => {
+      const reactions = () => {};
+      return !atest.throws(() => {
+        checkReactionsAreFunctions('Test 1', 'onLoad', reactions);
+      });
+    },
+    'Array with undefined': () => {
+      const reactions = [() => {}, () => {}, undefined];
+      return atest.throws(() => {
+        checkReactionsAreFunctions('Test 1', 'onLoad', reactions);
+      }, TypeError);
+    },
+    'Single undefined': () => {
+      const reactions = undefined;
+      return atest.throws(() => {
+        checkReactionsAreFunctions('Test 1', 'onLoad', reactions);
+      }, TypeError);
+    },
+  });
 
   /**
    * Set event reactions on an HTMLElement.
@@ -2272,6 +2417,8 @@ var {ー, ref} = (function domAccessModule() {
     const reactions = {};
     for (let prop in options) {
       if (/^on/.test(prop)) {
+        checkSupportedProps(prop);
+        checkReactionsAreFunctions(options.name, prop, options[prop]);
         reactions[prop] = options[prop];
       }
     }
@@ -2300,11 +2447,18 @@ var {ー, ref} = (function domAccessModule() {
     const proxies = htmlElements.map((element,idx) => {
       return toProxy(element, idx, options);
     });
-    proxies.forEach(proxy => options.css && (proxy.css = options.css));
+    proxies.forEach(proxy => {
+      if (options.css) {
+        proxy.css = options.css;
+      }
+    });
     if (options.mode !== 'fresh') {
       setAllReactions(htmlElements, proxies, options);
     }
     if (options.ref) {
+      if (typeof options.ref !== 'string') {
+        throw new TypeError(`Ref should be a string, not ${typeof options.ref}.`);
+      }
       ref[options.ref] = proxies;
     }
     return proxies;
@@ -2381,7 +2535,7 @@ var {ー, ref} = (function domAccessModule() {
       `.${BASE_ID}container { padding: 10px }`,
       `.${BASE_ID}container { right: 3px }`,
       `.${BASE_ID}container { top: 30px }`,
-      `.${BASE_ID}container { width: 300px }`,
+      `.${BASE_ID}container { width: 20em }`,
       `.${BASE_ID}container { z-index: 2000 }`,
       `.${BASE_ID}container p { margin: 4px }`,
       `.${BASE_ID}container em { font-weight: bold }`,
@@ -2395,6 +2549,7 @@ var {ー, ref} = (function domAccessModule() {
       `.${BASE_ID}boom { padding: ${BOOM_RADIUS}px }`,
       `.${BASE_ID}boom { position: absolute }`,
       `.${BASE_ID}boom { z-index: 1999 }`,
+      `.lpButton { opacity: 0.25 }`,
     ];
     rules.forEach(addRule);
   })();
@@ -2402,14 +2557,15 @@ var {ー, ref} = (function domAccessModule() {
   var toast = (function toastMiniModule() {
     const toast = document.createElement('div');
     toast.classList = 'toast';
-    toast.style.position = 'fixed';
-    toast.style.bottom = '60px';
-    toast.style.right = '60px';
     toast.style.backgroundColor = 'black';
+    toast.style.bottom = '60px';
+    toast.style.boxShadow = '0 0.2em 0.5em #aaa';
     toast.style.color = 'white';
+    toast.style.right = '60px';
     toast.style.padding = '0.8em 1.2em';
     toast.style.pointerEvents = 'none';
-    toast.style.boxShadow = '0 0.2em 0.5em #aaa';
+    toast.style.position = 'fixed';
+    toast.style.zIndex = '2001';
     document.body.append(toast);
     toast.hidden = true;
     let timer;
@@ -2442,6 +2598,9 @@ var {ー, ref} = (function domAccessModule() {
   })();
 
   async function boom({proxy}) {
+    if (!proxy || !proxy.getCoords) {
+      return;
+    }
     const coords = proxy.getCoords();
     const top =
         (coords.top || 400) + (coords.height / 2) - BOOM_RADIUS;
@@ -2472,8 +2631,10 @@ var {ー, ref} = (function domAccessModule() {
     p('counter', x.join(' | '));
     for (let issue of guiState.issues) {
       p(issue.issueLevel, issue.message, issue.issueType);
+      util.beep();
       boom(issue);
     }
     container.setContent(html.join('\n'));
   }
 })();
+undefined;
