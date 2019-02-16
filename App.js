@@ -1509,6 +1509,9 @@ var flows = (function workflowModule() {
           shared.noDuplicateValues,
           shared.noForbiddenPhrase,
         ],
+        onKeydown_CtrlAltArrowLeft: swapLeft,
+        onKeydown_CtrlAltArrowRight: swapRight,
+        onKeydown_CtrlDelete: deleteItem,
         ref: 'textAreas',
       });
 

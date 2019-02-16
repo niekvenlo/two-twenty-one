@@ -2603,9 +2603,9 @@ var {ー, ref} = (function domAccessModule() {
     }
     const coords = proxy.getCoords();
     const top =
-        (coords.top || 100) + (coords.height / 2) - BOOM_RADIUS;
+        (coords.top || 400) + (coords.height / 2) - BOOM_RADIUS;
     const left =
-        (coords.left || 100) + (coords.width / 2) - BOOM_RADIUS;
+        (coords.left || 500) + (coords.width / 2) - BOOM_RADIUS;
     const div = document.createElement('div');
     div.classList = BASE_ID + 'boom';
     div.style.top = top + 'px';
