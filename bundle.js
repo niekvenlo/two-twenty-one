@@ -509,7 +509,25 @@ var util = (function utilityModule() {
       await willFailInitially().catch((e) => error = e);
       return !!error;
     },
-  })
+  });
+  
+  /**
+   * Swap the values of two proxies.
+   *
+   * @param {Object} one - Proxy
+   * @param {Object} two - Proxy
+   */
+  function swapValues(one, two) {
+    [one.value, two.value] = [two.value, one.value];
+  }
+  atest.group('swapValues', {
+    'Simple swap': () => {
+      const one = {value: 'one'};
+      const two = {value: 'two'};
+      swapValues(one, two);
+      return one.value === 'two' && two.value === 'one';
+    },
+  });
 
   /**
    * The inverse of calling toString on a RegExp.
@@ -591,6 +609,7 @@ var util = (function utilityModule() {
     isDev,
     isHTMLElement,
     retry,
+    swapValues,
     toRegex,
     typeOf,
     wait,
@@ -649,27 +668,19 @@ var user = (function userDataModule() {
   const storeAccess = (function storesMiniModule() {
 
     const cached = (function chromeLocalModule() {
-      if (!!localStorage.useLocalStorage) {
-        return {
-          destroyStore() {},
-          getStore() {},
-          setStore() {},
-        }
-      }
       let storeCache = {};
       
-      function populateCacheFromChomeStorage() {
+      function populateCacheFromChromeStorage() {
         chrome.storage.local.get(null, (result) => {
           storeCache = result;
-          console.debug(result);
         });
       }
-      populateCacheFromChomeStorage();
+      populateCacheFromChromeStorage();
       
       try { // @todo Remove try/catch block
         document.body.addEventListener('chromeStorageUpdate', () => {
           console.debug('Repopulating cache');
-          populateCacheFromChomeStorage();
+          populateCacheFromChromeStorage();
         });
       } catch (e) {
         console.debug('Failed to repopulate cache', e);
