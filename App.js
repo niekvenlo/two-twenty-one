@@ -193,7 +193,7 @@ var shared = (function workflowMethodsModule() {
       if (hit === is) {
         packet.issueLevel = issueLevel;
         packet.message = message;
-        util.attention({on: ref.editButton, n: 0, click: true});
+        util.attention(ref.editButton, 0, 'click');
       }
       util.dispatch('issueUpdate', packet);
     }
@@ -341,7 +341,7 @@ var shared = (function workflowMethodsModule() {
       const [regex, replaceWith] = rule;
       tmpValue = tmpValue.replace(util.toRegex(regex), replaceWith);
     }
-    return util.capitalize('first letter', tmpValue);
+    return util.cap.firstLetter(tmpValue);
   }
   switch (environment.locale()) {
     case 'Dutch':
@@ -451,30 +451,56 @@ var shared = (function workflowMethodsModule() {
        commentBox.value =
            commentBox.value.replace(new RegExp('^' + initials + '\n'), '');
     }
+    let statusType = '';
+    function setStatus(newType) {
+      if (statusType === newType) {
+        return;
+      }
+      const commentBox = getCommentBox();
+      const matchStatusOrEnd = new RegExp(statusType + '|$');
+      commentBox.value =
+          commentBox.value.replace(matchStatusOrEnd, newType || '');
+      statusType = newType;
+    }
     return {
       addInitials,
       removeInitials,
+      setStatus,
     };
   })();
   atest.group('comment', {
-    'Add and remove initials': () => {
+    'before': () => {
       const tmp = ref.finalCommentBox;
-      const userComment = 'user comment';
       const fakeBox = {
-        value: userComment,
-        focus: () => {},
-        scrollIntoView: () => {},
-      };
-      const initials = user.config.get('initials');
+          value: 'user comment',
+          focus: () => {},
+          scrollIntoView: () => {},
+        }
       ref.finalCommentBox = [fakeBox];
-      comment.addInitials();
-      const initialsFound = new RegExp('^' + initials).test(fakeBox.value);
-      comment.removeInitials();
-      const initialsNotFound = !new RegExp('^' + initials).test(fakeBox.value);
-      const commentFound = new RegExp(userComment).test(fakeBox.value);
-      return initialsFound && initialsNotFound && commentFound;
+      return {tmp};
     },
-  }, true);
+    'after': (o) => ref.finalCommentBox = o.tmp,
+    'Add initials': (o) => {
+      comment.addInitials();
+      console.log(ref.finalCommentBox[0].value, o.initials);
+      return ref.finalCommentBox[0].value.includes(o.initials);
+    },
+    'Remove initials': (o) => {
+      comment.addInitials();
+      comment.removeInitials();
+      return !ref.finalCommentBox[0].value.includes(o.initials);
+    },
+    'Set status': (o) => {
+      comment.setStatus('test');
+      return ref.finalCommentBox[0].value.includes('test');
+    },
+    'Change status': (o) => {
+      comment.setStatus('test');
+      comment.setStatus('changed');
+      const value = ref.finalCommentBox[0].value;
+      return value.includes('changed') && !value.includes('test');
+    },
+  });
 
   /**
    * When pasting a url, it is moved from one box to another. The url is also
@@ -487,7 +513,6 @@ var shared = (function workflowMethodsModule() {
    * @param {Object[]} group - Array of two proxies.
    */
   function fallThrough (_, idx, group) {
-    const LOG_ENTRY_MAX_LENGTH = 100;
     if (group.length !== 2) {
       throw new RangeError('fallThrough requires two proxies.');
     }
@@ -495,7 +520,7 @@ var shared = (function workflowMethodsModule() {
       return;
     }
     const pastedValue = group[0].value;
-    if (/plex/.test(pastedValue)) {
+    if (/eplex\.c/.test(pastedValue)) {
       group[0].value = '';
       user.log.warn('Cannot paste a screenshot here');
       util.wait().then(() => group[0].click());
@@ -504,11 +529,8 @@ var shared = (function workflowMethodsModule() {
     if (/^https?:/.test(pastedValue)) {
       group[1].value = pastedValue;
     }
-    let value = brandCapitalisation(commonReplacements(group[0].value));
+    const value = brandCapitalisation(commonReplacements(group[0].value));
     group[0].value = value;
-    if (value.length > LOG_ENTRY_MAX_LENGTH) {
-      value = value.slice(0,LOG_ENTRY_MAX_LENGTH - 3) + '...';
-    }
     if (pastedValue === value) {
       user.log.low(
         `No change to '${pastedValue}'`,
@@ -692,7 +714,7 @@ var shared = (function workflowMethodsModule() {
     if (!user.config.get('enablePrefill')) {
       return;
     }
-    const flowName = util.capitalize('first letter', environment.flowName());
+    const flowName = util.cap.firstLetter(environment.flowName());
     const values = user.storeAccess({
       feature: `${flowName}Prefill`,
       locale: environment.locale(),
@@ -717,7 +739,7 @@ var shared = (function workflowMethodsModule() {
     for (let idx in values) {
       targets[idx].value = values[idx];
     }
-    util.attention({on: ref.editButton, n: 0, click: true});
+    util.attention(ref.editButton, 0, 'click');
   }
 
   /**
@@ -749,7 +771,7 @@ var shared = (function workflowMethodsModule() {
       return user.log.warn('Not enough data to save.');
     }
     const extractionData = {[domain]: values.slice(1)};
-    const flowName = util.capitalize('first letter', environment.flowName());
+    const flowName = util.cap.firstLetter(environment.flowName());
     user.storeAccess({
       feature: `${flowName}Prefill`,
       locale: environment.locale(),
@@ -912,6 +934,13 @@ var shared = (function workflowMethodsModule() {
       refresh: () => { close(); open(); },
     }
   })();
+  
+  /**
+   * Trim leading and trailing spaces from proxy values.
+   */
+  function trim(proxy) {
+    proxy.value = proxy.value.trim();
+  }
 
   function updateCharacterCount(_, __, group) {
     const count = group[0].value.length;
@@ -943,6 +972,7 @@ var shared = (function workflowMethodsModule() {
     submit,
     tabOrder,
     tabs,
+    trim,
     updateCharacterCount,
 
     addDashes: changeValue({
@@ -1018,7 +1048,7 @@ var flows = (function workflowModule() {
        * Click the 'Acquire next task' button.
        */
       async function clickAcquire() {
-        util.attention({on: ref.firstButton, click: true});
+        util.attention(ref.firstButton, 0, 'click');
         try {
           await util.retry(clickContinue, 20, 100)();
         } catch (e) {
@@ -1049,7 +1079,7 @@ var flows = (function workflowModule() {
        */
       function toggleSelectWithKey(key) {
         return function toggle() {
-          util.attention({on: ref.select, n: key - 1, click: true});
+          util.attention(ref.select, key - 1, 'click');
         }
       }
 
@@ -1143,13 +1173,13 @@ var flows = (function workflowModule() {
 
     const stages = {
       async start() {
-        util.attention({on: ref.approvalButtons, n: 1, click: true});
+        util.attention(ref.approvalButtons, 1, 'click');
         shared.comment.removeInitials();
         shared.guiUpdate('Ready to edit');
       },
 
       async approve() {
-        util.attention({on: ref.approvalButtons, n: 0, click: true});
+        util.attention(ref.approvalButtons, 0, 'click');
         completeScreenshots();
         shared.tabs.close();
         shared.comment.addInitials();
@@ -1158,9 +1188,13 @@ var flows = (function workflowModule() {
 
       async submit() {
         if (ref.submitButton[0].disabled) {
-          toStage('start');
-          user.log.warn('Task is not ready');
-          return;
+          user.log.warn('Just a sec', {save: false, print: false});
+          await util.wait(100);
+          if (ref.submitButton[0].disabled) {
+            toStage('start');
+            user.log.warn('Task is not ready');
+            return;
+          }
         }
         const submitted = await shared.submit();
         if (submitted) {
@@ -1181,78 +1215,11 @@ var flows = (function workflowModule() {
     const submit = () => stageIs('start', 'approve') && toStage('submit');
     const start = () => stageIs('approve') && toStage('start');
 
-    /**
-     * Exposes methods that try to find specific proxies and click on
-     * them.
-     */
-    const click = (function clickMiniModule() {
-      function addItem(n) {
-        if (n < 2) {
-          for (let button of ref.addItem) {
-            button.click();
-          }
-        } else {
-          util.attention({on: ref.addItem, n: n - 2, click: true});
-        }
-      }
-      function leaveBlank(n) {
-        const leaveBlankButtons = ref.leaveBlank.slice(-3);
-        if (n < 2) {
-          for (let button of leaveBlankButtons) {
-            button.click();
-          }
-        } else {
-          const button = leaveBlankButtons[n - 2];
-          button.click();
-        }
-      }
-      return {
-        addItem,
-        leaveBlank,
-      }
-    })();
-
-    /**
-     * Exposes methods that try to find specific proxies and move the focus
-     * to them.
-     */
-    const focus = (function focusMiniModule() {
-      function addDataButton() {
-        util.attention({
-          on: ref.addDataButton, n: 0, focus: true, scrollIntoView: true
-        });
-      }
-      function editButton() {
-        util.attention({
-          on: ref.editButton, n: 0, focus: true, scrollIntoView: true
-        });
-      }
-      function item1() {
-        util.attention({
-          on: ref.textAreas, n: 0, click: true, focus: true
-        });
-        util.attention({
-          on: ref.editButton, n: 0, click: true, scrollIntoView: true
-        });
-      }
-      function item(n) {
-        if (!ref.textAreas) {
-          return;
-        }
-        util.attention({
-          on: ref.textAreas, n: n - 1, focus: true
-        });
-        util.attention({
-          on: ref.editButton, n: n - 1, click: true, scrollIntoView: true
-        });
-      }
-      return {
-        addDataButton,
-        editButton,
-        item1,
-        item,
-      }
-    })();
+    function focusItem(n) {
+      util.attention(ref.addDataButton, 0, 'click'),
+      util.attention(ref.editButton, 0, 'click, scrollIntoView');
+      util.attention(ref.textAreas, n - 1, 'focus');
+    }
 
     /**
      * Before starting a task, decide whether to skip it or to open all
@@ -1289,29 +1256,29 @@ var flows = (function workflowModule() {
         'alcoholDomain': [4, 1, 4],
         'adultDomain':   [4, 1, 6],
         'gambling':      [4, 1, 5],
+        'emptyCreative': [1, 2, 0, 'No creative'],
       };
       if (!ref.statusDropdown) {
         throw new Error('No status dropdown menus selected.');
       }
-      function clickCanExtract(type) {
-        if (!ref.canOrCannotExtractButtons) {
-          user.log.warn('canOrCannotExtractButtons not found');
-          return;
-        }
-        if (type !== 'canExtract' && ref.invalidScreenshot) {
-          util.attention({on: ref.invalidScreenshot, focus: true});
+      function clickAndFocus(type) {
+        if (type !== 'canExtract') {
+          util.attention(ref.invalidScreenshot, 0, 'focus');
         }
         const n = (type === 'canExtract') ? 0 : 1;
-        util.attention({
-          on: ref.canOrCannotExtractButtons, n, click: true, focus: true
-        });
+        util.attention(ref.canOrCannotExtractButtons, n, 'click');
+        util.attention(ref.invalidScreenshot, 0, 'focus');
       }
       async function setTo() {
-        const [b, c, d] = keys[type];
+        if (!keys[type]) {
+          return user.log.warn('Invalid status type: ' + type);
+        }
+        const [b, c, d, message] = keys[type] || [];
         const dropdowns = ref.statusDropdown;
         dropdowns[0].value = b;
         dropdowns[c].value = d;
-        clickCanExtract(type);
+        clickAndFocus(type);
+        shared.comment.setStatus(message);
       }
       return setTo;
     }
@@ -1353,10 +1320,10 @@ var flows = (function workflowModule() {
       if (idx < 1) {
         return;
       }
-      group[idx - 1].focus();
       if (group[idx].value === '') {
-        click.leaveBlank(idx);
+        util.attention(ref.leaveBlank.slice(-3), idx - 2, 'click');
       }
+      util.attention(group, idx - 1, 'focus');
     }
 
     /**
@@ -1373,9 +1340,9 @@ var flows = (function workflowModule() {
         return;
       }
       if (group[idx + 1] && group[idx + 1].disabled) {
-        click.addItem(idx + 1);
+        util.attention(ref.addItem.slice(-3), idx - 1, 'click');
       }
-      util.attention({on: group, n: idx + 1, focus: true});
+      util.attention(group, idx + 1, 'focus');
     }
 
     /**
@@ -1461,7 +1428,7 @@ var flows = (function workflowModule() {
     }
 
     function moveFocusToText(_, idx) {
-      util.attention({on: ref.textAreas, n: idx, focus: true});
+      util.attention(ref.textAreas, idx, 'focus');
     }
     
     function checkDomainMismatch() {
@@ -1481,6 +1448,23 @@ var flows = (function workflowModule() {
       util.dispatch('issueUpdate', packet);
     }
     checkDomainMismatch = util.debounce(checkDomainMismatch);
+    
+    /**
+     * Raise an issue if the creative contains no text.
+     *
+     * @param {Object} proxy
+     * @param {number} _
+     * @param {Object[]} group
+     */
+    function checkEmptyCreative(proxy, __, group) {
+      const packet = {proxy, issueType: 'Empty creative'};
+      if (group.every(el => !el.textContent)) {
+        packet.issueLevel = 'orange';
+        packet.message = 'Creative is empty';
+      }
+      util.dispatch('issueUpdate', packet);
+    }
+    checkEmptyCreative = util.debounce(checkEmptyCreative);
 
     /**
      * Set up event handlers.
@@ -1492,7 +1476,9 @@ var flows = (function workflowModule() {
         rootSelect: '#extraction-editing',
         select: 'textarea',
         pick: [1, 5, 9, 13, 17],
-        onClick: (_, idx) => idx > 1 && click.addItem(idx),
+        onClick: (_, idx) => {
+          util.attention(ref.addItem.slice(-3), idx - 2, 'click');
+        },
         onInteract: [
           shared.noMoreThan25Chars,
           shared.noDuplicateValues,
@@ -1509,9 +1495,6 @@ var flows = (function workflowModule() {
           shared.noDuplicateValues,
           shared.noForbiddenPhrase,
         ],
-        onKeydown_CtrlAltArrowLeft: swapLeft,
-        onKeydown_CtrlAltArrowRight: swapRight,
-        onKeydown_CtrlDelete: deleteItem,
         ref: 'textAreas',
       });
 
@@ -1578,8 +1561,8 @@ var flows = (function workflowModule() {
         select: 'textarea',
         pick: [0],
         onKeydown_CtrlAltArrowRight: [
-          () => util.attention({on: ref.editButton, click: true}),
-          focus.item1,
+          () => util.attention(ref.editButton, 0, 'click'),
+          () => focusItem(1),
         ],
         onLoad: shared.prefill,
       });
@@ -1614,7 +1597,7 @@ var flows = (function workflowModule() {
         rootNumber: 1,
         select: 'textarea',
         onKeydown_CtrlAltArrowRight: [
-          () => util.attention({on: ref.finalCommentBox, focus: true}),
+          () => util.attention(ref.finalCommentBox, 0, 'focus'),
         ],
         ref: 'invalidScreenshot',
       });
@@ -1625,7 +1608,10 @@ var flows = (function workflowModule() {
         rootNumber: [2],
         select: '*',
         pick: [3, 6, 8],
-        onLoad: checkDomainMismatch,
+        onLoad: [
+          checkEmptyCreative,
+          checkDomainMismatch,
+        ],
         ref: 'creative',
       });
 
@@ -1673,8 +1659,8 @@ var flows = (function workflowModule() {
         select: 'label',
         withText: 'Add Data',
         onKeydown_CtrlAltArrowRight: [
-          () => util.attention({on: ref.addDataButton, n: 0, click: true}),
-          focus.item1,
+          () => util.attention(ref.addDataButton, 0, 'click'),
+          () => focusItem(1),
         ],
         ref: 'addDataButton',
       });
@@ -1687,7 +1673,7 @@ var flows = (function workflowModule() {
         onLoad: shared.tabOrder.add,
         onKeydown_CtrlAltArrowRight: [
           (proxy) => proxy.click(),
-          focus.item1,
+          () => focusItem(1),
         ],
         ref: 'editButton',
       });
@@ -1721,10 +1707,7 @@ var flows = (function workflowModule() {
         select: 'textarea',
         pick: [0],
         onFocusout: start,
-        onKeydown_CtrlAltArrowRight: [
-          () => util.attention({on: ref.editButton, n: 0, click: true}),
-          focus.item1,
-        ],
+        onKeydown_CtrlAltArrowRight: () => focusItem(1),
         ref: 'finalCommentBox',
       });
 
@@ -1732,10 +1715,7 @@ var flows = (function workflowModule() {
         name: 'CanOrCannotExtract',
         select: 'label',
         pick: [0, 1],
-        onKeydown_CtrlAltArrowRight: [
-          () => util.attention({on: ref.editButton, n: 0, click: true}),
-          focus.item1,
-        ],
+        onKeydown_CtrlAltArrowRight: () => focusItem(1),
         ref: 'canOrCannotExtractButtons',
       });
 
@@ -1793,8 +1773,10 @@ var flows = (function workflowModule() {
         onKeydown_NumpadDivide: shared.saveExtraction,
         onKeydown_Backquote: [
           beginTask,
-          focus.addDataButton,
-          focus.editButton,
+          () => {
+            util.attention(ref.addDataButton, 0, 'focus, scrollIntoView');
+            util.attention(ref.editButton, 0, 'focus, scrollIntoView');
+          },
         ],
         onKeydown_CtrlBackquote: main,
         onKeydown_CtrlAltDigit0: setStatus('canExtract'),
@@ -1807,6 +1789,8 @@ var flows = (function workflowModule() {
         onKeydown_CtrlAltDigit7: setStatus('drugDomain'),
         onKeydown_CtrlAltDigit8: setStatus('alcoholDomain'),
         onKeydown_CtrlAltDigit9: setStatus('adultDomain'),
+        onKeydown_CtrlShiftAltDigit1: setStatus('emptyCreative'),
+        onKeydown_CtrlAltP: () => user.log.print(),
       });
     }
 
