@@ -1320,10 +1320,10 @@ var flows = (function workflowModule() {
       if (idx < 1) {
         return;
       }
-      group[idx - 1].focus();
       if (group[idx].value === '') {
-        util.attention(ref.leaveBlank.slice(-3), n - 2, 'click');
+        util.attention(ref.leaveBlank.slice(-3), idx - 2, 'click');
       }
+      util.attention(group, idx - 1, 'focus');
     }
 
     /**
@@ -1340,7 +1340,7 @@ var flows = (function workflowModule() {
         return;
       }
       if (group[idx + 1] && group[idx + 1].disabled) {
-        util.attention(ref.addItem, idx + 1, 'click');
+        util.attention(ref.addItem.slice(-3), idx - 1, 'click');
       }
       util.attention(group, idx + 1, 'focus');
     }
@@ -1457,9 +1457,6 @@ var flows = (function workflowModule() {
      * @param {Object[]} group
      */
     function checkEmptyCreative(proxy, __, group) {
-      if (!user.config.get('checkEmptyCreative')) {
-        return
-      }
       const packet = {proxy, issueType: 'Empty creative'};
       if (group.every(el => !el.textContent)) {
         packet.issueLevel = 'orange';
@@ -1480,7 +1477,7 @@ var flows = (function workflowModule() {
         select: 'textarea',
         pick: [1, 5, 9, 13, 17],
         onClick: (_, idx) => {
-          util.attention(ref.addItem, idx, 'click');
+          util.attention(ref.addItem.slice(-3), idx - 2, 'click');
         },
         onInteract: [
           shared.noMoreThan25Chars,
