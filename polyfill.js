@@ -1,10 +1,20 @@
 chrome.storage = (function chromeLocalStorageModule() {
   const mockStore = {
     Configuration: {initials: '__'},
-    BrandCapitalisation: {},
-    CommonReplacementsDutch: {},
-    ForbiddenPhrases: {},
-    ForbiddenPhrasesDutch: {},
+    BrandCapitalisation: [
+      "AdWords",
+      "iPhone",
+      "iPad",
+      "iPod",
+      "iMac",
+      "iBook",
+      "iTunes",
+      "MacBook",
+      "YouTube"
+    ],
+    CommonReplacementsDutch: [],
+    ForbiddenPhrases: [],
+    ForbiddenPhrasesDutch: [],
     LogBook: [],
   };
   return {
@@ -14,22 +24,20 @@ chrome.storage = (function chromeLocalStorageModule() {
        * @param {function} callback
        */
       get(param, callback) {
-        if (param === null) {
-          return {...mockStore};
-        }
-        const ret = {};
+        const ret = (param === null) ? {...mockStore} : {};
         if (Array.isArray(param)) {
           for (let el of param) {
             if (mockStore[el]) {
               ret[el] = mockStore[el];
             }
           }
-        } else {
+        } else if (param !== null) {
           ret[param] = mockStore[param];
         }
         if (typeof callback === 'function') {
           callback(ret);
         }
+        return false; // No return value
       },
 
       /**
