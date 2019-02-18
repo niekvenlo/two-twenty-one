@@ -509,6 +509,10 @@ var ForbiddenPhrasesDutch = JSON.parse(String.raw`[
     "Remove the space"
   ],
   [
+    "/heren ondergoed/i",
+    "Remove the space"
+  ],
+  [
     "/\\bvluhten\\b/i",
     "Use 'vluchten'"
   ],
@@ -763,6 +767,14 @@ var CommonReplacementsDutch = JSON.parse(String.raw`[
   [
     "/belgie/i",
     "België"
+  ],
+  [
+    "/italie/i",
+    "Italië"
+  ],
+  [
+    "/slovenie/i",
+    "Slovenië"
   ],
   [
     "/egeische/i",
@@ -1066,6 +1078,7 @@ window.onload = function() {
       }
       chrome.storage.local.set({[store]: stores[store]});
     }
+    document.body.dispatchEvent(new Event('chromeStorageUpdate'));
   }
   
   /**
@@ -1123,7 +1136,6 @@ window.onload = function() {
     CommonReplacementsDutch,
   }
 
-  
   chrome.storage.local.get(null, (stores) => {
     var allStores = {...defaultStores, ...stores};
     for (let store in allStores) {
