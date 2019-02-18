@@ -89,54 +89,92 @@ var util = (function utilityModule() {
    * @fileoverview Exports utility functions.
    */
 
-  const DEFAULT_DELAY = 15; //milliseconds
+  const DEFAULT_DELAY = 15; // milliseconds
   const DEFAULT_RETRIES = 20;
+  const DEFAULT_SPACES = 4; // for bulletedList
 
   /**
-   * Compares two arrays shallowly. Two arrays match if the i-th element in
-   * each is exactly equal to the i-th element in the other.
+   * Return any input in the form of an array.
    *
-   * @param {*[]} a - First array
-   * @param {*[]} b - Second array
-   * @return {boolean} Does every element in both arrays match?
+   * @param {*|*[]} input
+   * @return {*[]}
    */
-  function arraysMatch(a, b) {
-    if (a.length !== b.length) {
-      return false;
+  function alwaysArray(input) {
+    if (Array.isArray(input)) {
+      return [...input];
     }
-    for (let i = 0; i < a.length; i++) {
-      if (a[i] !== b[i]) {
-        return false;
-      }
-    }
-    return true;
+    return [input];
   }
-  atest.group('arraysMatch', {
-    'Empty arrays': () => arraysMatch([], []) === true,
-    'Simple arrays': () => arraysMatch([2], [2]) === true,
-    'First empty': () => arraysMatch([], [2]) === false,
-    'Second empty': () => arraysMatch([2], []) === false,
-    'Multiple elements': () => arraysMatch([3, 4, 5], [3, 4, 5]) === true,
-    'One mismatch': () => arraysMatch([5, 4, 5], [3, 4, 5]) === false,
-    'Different order': () => arraysMatch([3, 4, 5], [4, 3, 5]) === false,
+  atest.group('alwaysArray', {
+    '5 becomes an array': () => Array.isArray(alwaysArray(5)),
+    '5 becomes [5]': () => alwaysArray(5)[0] === 5,
+    '[5] remains an array': () => Array.isArray(alwaysArray([5])),
+    '[5] remains [5]': () => alwaysArray([5])[0] === 5,
   });
   
-  function attention({on, n = 0, focus, click, scrollIntoView}) {
+  /**
+   * Helper to move focus to, click on, or scroll to a proxy.
+   *
+   * @param {(Object|Object[])} on - A proxy or an array of proxies.
+   * @param {number} n - The number of the proxy on which to act.
+   * @param {string|string[]} actions - A string or an Array of strings
+   * describing the actions to take.
+   * @example: attention(buttons, 0, 'click'); // => Clicks on the first button.
+   * @throws {TypeError} When n is not a number.
+   */
+  function attention(on, n = 0, actions) {
+    if (typeof n !== 'number') {
+      throw new TypeError('Attention expects a number, not ' + n);
+    }
     if (Array.isArray(on)) {
       on = on[n];
     }
     if (!on || !on.click) {
       return;
     }
-    focus && on.focus();
-    click && on.click();
-    scrollIntoView && on.scrollIntoView();
+    if (actions.includes('click')) {
+      on.click();
+    }
+    if (actions.includes('focus')) {
+      on.focus();
+    }
+    if (actions.includes('scrollIntoView')) {
+      on.scrollIntoView();
+    }
   }
+  atest.group('attention', {
+    'Simple click': () => {
+      let clicked = false;
+      const el = {
+        click() { clicked = true },
+      };
+      attention([el], 0, 'click');
+      return clicked;
+    },
+    'Focus and scroll': () => {
+      let clicked = false;
+      let focused = false;
+      let scrolled = false;
+      const el = {
+        click() { clicked = true },
+        focus() { focused = true },
+        scrollIntoView() { scrolled = true },
+      };
+      attention([el], 0, 'focus, scrollIntoView');
+      return focused && scrolled;
+    },
+    'Fails silently': () => attention([], 1, 'click') === undefined,
+    'Throws': () => atest.throws(() => attention([], 'click')),
+  });
 
-  function beep() {
-    (new Audio(
+  /**
+   * Play a short beep.
+   */
+  async function beep() {
+    const audioFile = new Audio(
     'data:audio/wav;base64,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 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////VEFHAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAU291bmRib3kuZGUAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMjAwNGh0dHA6Ly93d3cuc291bmRib3kuZGUAAAAAAAAAACU='
-    )).play();
+    );
+    audioFile.play();
   }
   beep = debounce(beep, 1000);
 
@@ -150,7 +188,10 @@ var util = (function utilityModule() {
   function bundle(...functions) {
     for (let func of functions) {
       if (typeof func !== 'function') {
-        throw new TypeError('Not a function');
+        throw new TypeError(
+          `'${func}' (${func.name || 'unnamed'}) is not a function. Bundled:` +
+          bulletedList(functions)
+        );
       }
     }
     /**
@@ -158,7 +199,14 @@ var util = (function utilityModule() {
      */
     function bundled(...params) {
       for (let func of functions) {
-        func(...params);
+        try {
+          func(...params);
+        } catch (e) {
+          throw new Error(
+            `Bundle threw an Error (${e.message}) in ${func}. ` +
+            `Bundled: \n${bulletedList(functions)}`
+          );
+        }
       }
     }
     return bundled;
@@ -173,27 +221,93 @@ var util = (function utilityModule() {
       return count === 3;
     },
     'Requires functions': () => atest.throws(() => bundle(4,3)()),
+    'Catches errors in functions': () => {
+      return atest.throws(() => {
+        bundle(
+          () => { throw new Error() },
+        )();
+      });
+    }
+  });
+
+  /**
+   * Map an Object's keys, or an Array's values to a string, with a new line
+   * for each element, and an asterisk in front of each item.
+   * For function elements or function values, the function name and a
+   * string description of the function is printed.
+   *
+   * @param {Array|Object} arrOrObj - Array or Object
+   * @param {number=} spaces - The number of spaces to precede each item.
+   * @return {string}
+   * @example:
+   * bulletedList(['One', 'Two']) // =>
+   *     * One
+   *     * Two
+   */
+  function bulletedList(input, spaces = DEFAULT_SPACES) {
+    if (typeof input !== 'object') {
+      throw new TypeError('Requires an Object or Array');
+    }
+    const spacer = (star) => {
+      return ' '.repeat(spaces) + ((star) ? '* ' : '  ');
+    }
+    const toArray = (obj) => {
+      const elToString = (entry) => `${entry[0]}: ${toString(entry[1])}`
+      return Object.entries(input).map(elToString);
+    }
+    function toString(entry) {
+      if (typeof entry === 'function') {
+        const string = entry.toString().slice(0,50).replace(/(\n|\s+)/g, ' ');
+        return (entry.name)
+            ? `${entry.name}\n${spacer()}${string}`
+            : string;
+      }
+      return entry;
+    }
+    const array = (Array.isArray(input)) ? input : toArray(input);
+    return spacer(true) + array.map(toString).join('\n' + spacer(true));
+  }
+  atest.group('bulletedList', {
+    'Simple array': () => bulletedList([1,2,3]) === '    * 1\n    * 2\n    * 3',
+    'Simple object': () => {
+      return bulletedList({namedKey: 1}) === `    * namedKey: 1`;
+    },
+    'Unnamed function': () => {
+      const string = `    * () => { 'body of function'}`;
+      return bulletedList([() => { 'body of function'}]) === string;
+    },
+    'Named function': () => {
+      const namedFunction = () => { 'body of function'};
+      const string = `    * namedFunction\n      () => { 'body of function'}`;
+      return bulletedList([namedFunction]) === string;
+    },
+    'Object with functions': () => {
+      const string = `    * namedKey: namedKey\n      () => { 'body of function'}`;
+      return bulletedList({namedKey: () => { 'body of function'}}) === string;
+    },
   });
 
   /**
    * Add capitalisation to a string.
    */
-  function capitalize(mode, string) {
-    if (mode === 'first letter') {
-      return string.replace(/^./, c => c.toUpperCase());
+  var cap = (function() {
+    const oneWord = (string) => string.replace(/^./, c => c.toUpperCase());
+    const eachWord = (string) => string.replace(/\w+/g, oneWord);
+    const camelCase = (string) => {
+      return cap.eachWord(string.toLowerCase()).replace(/\s+/, '');
+    };
+    return {
+      camelCase,
+      eachWord,
+      firstLetter: oneWord,
     }
-    if (mode === 'each word') {
-      return string.split(' ')
-          .map((word) => capitalize('first letter', word))
-          .join(' ');
-    }
-    return string;
-  }
-  atest.group('capitalize', {
-    'First letter': () => capitalize('first letter', 'abc abc') === 'Abc abc',
-    'Each word': () => capitalize('each word', 'abc abc') === 'Abc Abc',
-    '1 number': () => capitalize('first letter', '1 number') === '1 number',
-    'Japanese': () => capitalize('each word', 'お問い合わせ') === 'お問い合わせ',
+  })();
+  atest.group('cap', {
+    'First letter': () => cap.firstLetter('abc abc') === 'Abc abc',
+    'Each word': () => cap.eachWord('abc abc') === 'Abc Abc',
+    '1 number': () => cap.firstLetter('1 number') === '1 number',
+    '2number': () => cap.firstLetter('2number') === '2number',
+    'Japanese': () => cap.eachWord('お問い合わせ') === 'お問い合わせ',
   });
 
   /**
@@ -245,6 +359,7 @@ var util = (function utilityModule() {
    *
    * @param {function} func - The function to be decorated.
    * @param {number} ms - The delay in milliseconds.
+   * @return {function}
    */
   function delay(func, ms = DEFAULT_DELAY) {
     async function delayed(...params) {
@@ -285,25 +400,6 @@ var util = (function utilityModule() {
     });
   }
   atest.todo();
-
-  /**
-   * Return any input in the form of an array.
-   *
-   * @param {*|*[]} input
-   * @return {*[]}
-   */
-  function ensureIsArray(input) {
-    if (Array.isArray(input)) {
-      return input;
-    }
-    return [input];
-  }
-  atest.group('ensureIsArray', {
-    '5 becomes an array': () => Array.isArray(ensureIsArray(5)),
-    '5 becomes [5]': () => ensureIsArray(5)[0] === 5,
-    '[5] remains an array': () => Array.isArray(ensureIsArray([5])),
-    '[5] remains [5]': () => ensureIsArray([5])[0] === 5,
-  });
 
   /**
    * Map a url to its domain.
@@ -359,37 +455,7 @@ var util = (function utilityModule() {
     'The document: true': () => isHTMLElement(document) === true,
     'Document body: true': () => isHTMLElement(document.body) === true,
   });
-
-  /**
-   * Map an Object's keys, or an Array's values to a string, with a new line
-   * for each element, and an asterisk in front of each item.
-   *
-   * @param {Array|Object} arrOrObj - Array or Object
-   * @param {number=} spaces - The number of spaces to precede each item.
-   * @return {string}
-   * @example:
-   * mapToBulletedList(['One', 'Two']) // =>
-   *     * One
-   *     * Two
-   */
-  function mapToBulletedList(arrOrObj, spaces = 4) {
-    if (typeof arrOrObj !== 'object') {
-      throw new TypeError('Requires an Object or Array');
-    }
-    const arr = (Array.isArray(arrOrObj))
-        ? arrOrObj
-        : Object.entries(arrOrObj).map(entry => entry.join(': '));
-    return arr.map(el => '\n' + ' '.repeat(spaces) + '* ' + el).join('');
-  }
-  atest.group('mapToBulletedList', {
-    'Array, default spaces': () => mapToBulletedList([1,2,3])
-        === '\n    * 1\n    * 2\n    * 3',
-    'Array, 0 spaces': () => mapToBulletedList([1,2,3], 0)
-        === '\n* 1\n* 2\n* 3',
-    'Object, default spaces': () => mapToBulletedList({a: 0, b: 1})
-        === '\n    * a: 0\n    * b: 1',
-  });
-
+  
   /**
    * Returns an async function that will run the input function
    * repeatedly, until it returns a truthy value.
@@ -397,23 +463,36 @@ var util = (function utilityModule() {
    * @param {function} func - The function to be decorated.
    * @param {number} retries - The number of times to run the function.
    * @param {number} ms - The delay between iterations in milliseconds.
+   * @param {boolean} suppressError - Should an error be thfown if the
+   * function never returned a truthy value?
    * @return {Promise} A Promise which will return the result of the function
    * if it ran succesfully, or throw an Error otherwise.
+   * @throws {Error} If the function never succeeds and suppressError is not
+   * true.
    */
-  function retry(func, retries = DEFAULT_RETRIES, delay = DEFAULT_DELAY) {
+  function retry(
+    func,
+    retries = DEFAULT_RETRIES,
+    delay = DEFAULT_DELAY,
+    supressError
+  ) {
     let attempts = 0;
-    return async function retrying(...params) {
+    async function retrying(...params) {
       while (attempts++ < retries) {
+        await wait(delay);
         const ret = func(...params);
         if (ret) {
           return ret;
         }
-        await wait(delay);
+      }
+      if (suppressError) {
+        return false;
       }
       throw new Error(
         `Failed. Ran ${func.name || 'unnamed function'} ${retries} times`
       );
     }
+    return retrying;
   }
   atest.group('retry', {
     'Test 1': async () => {
@@ -499,19 +578,18 @@ var util = (function utilityModule() {
   });
 
   return {
-    arraysMatch,
+    alwaysArray,
     attention,
     beep,
     bundle,
-    capitalize,
+    bulletedList,
+    cap,
     debounce,
     delay,
     dispatch,
-    ensureIsArray,
     getDomain,
     isDev,
     isHTMLElement,
-    mapToBulletedList,
     retry,
     toRegex,
     typeOf,
@@ -547,7 +625,7 @@ var user = (function userDataModule() {
 
   const LOGBOOK_STORE_NAME = 'LogBook';
   const LOG_MAX_LENGTH = 5000; // entries
-  const LOG_ENTRY_MAX_LENGTH = 500; // characters per log entry
+  const LOG_ENTRY_MAX_LENGTH = 250; // characters per log entry
   const LOG_PAGE_SIZE = 25; // entries per page
   const NO_COLOR_FOUND = 'yellow'; //
   const TIMESTAMP_STYLE = 'color: grey';
@@ -589,12 +667,12 @@ var user = (function userDataModule() {
       populateCacheFromChomeStorage();
       
       try { // @todo Remove try/catch block
-        chrome.storage.onChanged.addListener(() => {
+        document.body.addEventListener('chromeStorageUpdate', () => {
           console.debug('Repopulating cache');
           populateCacheFromChomeStorage();
         });
       } catch (e) {
-        console.debug('Failed to set onChange listener', e);
+        console.debug('Failed to repopulate cache', e);
       }
       
       function destroyStore(storeName) {
@@ -944,10 +1022,11 @@ var user = (function userDataModule() {
    */
   function timestamp (d = new Date()) {
     /** Cast numbers into a zero prefixed two digit string format */
+    const c = new Date();
     const cast = (/** number */n) /** string */ => ('0' + n).slice(-2);
-    const sameDate = (new Date().getDate() - d.getDate() === 0);
-    const sameMonth = (new Date().getMonth() - d.getMonth() === 0);
-    const sameYear = (new Date().getFullYear() - d.getFullYear() === 0);
+    const sameDate = (c.getDate() - d.getDate() === 0);
+    const sameMonth = (c.getMonth() - d.getMonth() === 0);
+    const sameYear = (c.getFullYear() - d.getFullYear() === 0);
     const isTodaysDate = sameDate && sameMonth && sameYear;
     const month = cast(d.getMonth() + 1);
     const date = cast(d.getDate());
@@ -1138,7 +1217,7 @@ var user = (function userDataModule() {
       } else {
         user.log.counter(
           'Resetting all counters:' +
-          util.mapToBulletedList(allCounts),
+          util.bulletedList(allCounts),
         );
         for (let i in allCounts) {
           delete allCounts[i];
@@ -1242,26 +1321,20 @@ var user = (function userDataModule() {
     /**
      * Generate a string from a log entry, in order to print to the console.
      *
-     * @param {Object | string} payload Data associated with the log entry.
-     * @param {number} space Number of spaces to include in front of new
-     * lines.
+     * @param {Object | string} payload - Data associated with the log entry.
+     * @return {string}
      */
-    function payloadToString(payload, space) {
-      const spacer = " ".repeat(space + 1);
-      if (typeof payload === 'string') {
-        return payload.replace(/\n/g,'\n' + spacer);
-      } else {
-        return JSON.stringify(payload);
+    function payloadToString(payload) {
+      const string = (typeof payload === 'string')
+          ? payload
+          : JSON.stringify(payload);
+      if (typeof payload !== 'string') {
+        console.debug('payloadToString received object', payload);
       }
+      return (string.length > LOG_ENTRY_MAX_LENGTH)
+          ? (string.slice(0, LOG_ENTRY_MAX_LENGTH - 3) + '...')
+          : string;
     }
-    atest.group('payloadToString', {
-      'Add two spaces to string': () => {
-        return payloadToString('one\ntwo', 2) === 'one\n   two';
-      },
-      'Convert object to JSON': () => {
-        return payloadToString({test: '1,2,3'}, 2) === '{"test":"1,2,3"}';
-      },
-    });
 
     /**
      * Print a log entry to the console, with a timestamp.
@@ -1269,13 +1342,18 @@ var user = (function userDataModule() {
      * @param {string} type
      * @param {Object|string} payload
      * @time {Date=} Optionally, provide a Date for the timestamp.
+     * @param {boolean} save - Is this entry being saved?
      */
     function printToConsole({type, payload, time = new Date(), save = true}) {
       const color = LOG_TYPES[type] || NO_COLOR_FOUND;
       const ts = timestamp(time);
-      const string = payloadToString(payload, ts.length);
-      const aster = (save) ? ' ' : '-';
-      console.log(`%c${ts}%c${aster}${string}`, TIMESTAMP_STYLE, `color: ${color}`);
+      const string = payloadToString(payload)
+          .replace(/\n/, '\n' + ' '.repeat(ts.length + 1));
+      console.log(
+        `%c${ts}%c ${string}`,
+        TIMESTAMP_STYLE,
+        `color: ${color}`
+      );
     }
 
     /**
@@ -1284,65 +1362,22 @@ var user = (function userDataModule() {
      *
      * @return {Object[]} Array of entries.
      */
-    function getStore() {
+    function getLogbook() {
       const logBook = storeAccess({
         feature: LOGBOOK_STORE_NAME,
-      });
-      if (!Array.isArray(logBook)) {
-        return [];
+      }) || [];
+      // If the logbook is too long, cut it in half.
+      if (logBook.length > LOG_MAX_LENGTH) {
+        storeAccess({
+          feature: LOGBOOK_STORE_NAME,
+          data: logBook.slice(-LOG_MAX_LENGTH / 2),
+        });
       }
       return logBook.map(entry => {
-        return {
-          time: new Date(entry[0]),
-          type: entry[1],
-          payload: entry[2],
-        };
+        const [time, type, payload] = entry;
+        return {time, type, payload};
       });
     }
-    atest.group('getStore', {
-      'Returns an array': () => Array.isArray(getStore()),
-    });
-
-    /**
-     * Save an array of log entries.
-     *
-     * @param {Object} entries - An object containing an array of log entries.
-     */
-    function setStore(entries) {
-      entries = entries.slice(-LOG_MAX_LENGTH).map(o => {
-        return [o.time, o.type, o.payload];
-      });
-      storeAccess({
-        feature: LOGBOOK_STORE_NAME,
-        data: entries,
-      });
-    }
-
-    /**
-     * Add a single log entry to the saved log.
-     *
-     * @param {Object} entry - Log entry object.
-     * @param {string} entry.type - Type of log entry.
-     * @param {Object|string} entry.payload - Data associated with the
-     * log entry.
-     */
-    function addPersistent({type, payload}) {
-      const entries = getStore();
-      const newEntry = {
-        time: new Date(),
-        type,
-        payload
-      };
-      const allEntries = [...entries, newEntry];
-      setStore(allEntries);
-    }
-    atest.group('addPersistent', {
-      'Added one entry': () => {
-        const length = getStore().length;
-        addPersistent({type: 'testing', payload: '1,2,3'});
-        return getStore().length === length + 1;
-      }
-    }, true);
 
     /**
      * Get a filtered part of the persistent log as an array of entries.
@@ -1356,28 +1391,28 @@ var user = (function userDataModule() {
         after: entry => entry.time > new Date(filterBy.after),
         before: entry => entry.time < new Date(filterBy.before),
         contains: entry => new RegExp(filterBy.contains).test(entry.payload),
-        items: entry => true,
+        pageSize: entry => true,
         page: entry => true,
         regex: entry => filterBy.regex.test(entry.payload),
         type: entry => entry.type === filterBy.type,
         typeExclude: entry => entry.type !== filterBy.typeExclude,
       };
-      let entries = getStore();
+      let entries = getLogbook();
       for (let filterType in filterBy) {
         try {
           entries = entries.filter(filters[filterType]);
         } catch (e) {
           if (e instanceof TypeError) {
             user.log.warn(
-              `'${filterType}' is not a valid log filter. Please use:` +
-              util.mapToBulletedList(filters),
+              `'${filterType}' is not a valid log filter.\nPlease use:` +
+              util.bulletedList(filters),
               {save: false},
             );
             return [];
           }
         }
       }
-      const pageSize = filterBy.items || LOG_PAGE_SIZE;
+      const pageSize = filterBy.pageSize || LOG_PAGE_SIZE;
       const page = (filterBy.page > 0) ? filterBy.page : 0;
       const start = pageSize * (page);
       const end = pageSize * (page + 1);
@@ -1388,7 +1423,7 @@ var user = (function userDataModule() {
       'Get a full page, if possible': () => {
         const entries = getEntries();
         const fullPage = entries.length === LOG_PAGE_SIZE;
-        const logTooShort = getStore().length < LOG_PAGE_SIZE;
+        const logTooShort = getLogbook().length < LOG_PAGE_SIZE;
         return fullPage || logTooShort;
       }
     });
@@ -1401,15 +1436,25 @@ var user = (function userDataModule() {
      * @example print({before: new Date()});
      */
     function print(filterBy = {}) {
-      getEntries(filterBy).forEach(entry => printToConsole(entry));
+      const entries = getEntries(filterBy);
+      for (let entry of entries) {
+        printToConsole(entry)
+      }
     }
 
     /**
      * Generate a logging function.
      *
-     * @param {string} type Title of the log.
+     * @param {string} type - Type of log.
      */
     function genericLog(type) {
+      /**
+       * @param {string|Object} payload
+       * @param {Object} o - Options
+       * @param {boolean} o.print
+       * @param {boolean} o.save
+       * @param {boolean} o.toast
+       */
       function add(payload, {print = true, save = true, toast = true} = {}) {
         if (typeof payload === 'string' &&
             payload.length > LOG_ENTRY_MAX_LENGTH) {
@@ -1417,10 +1462,12 @@ var user = (function userDataModule() {
         }
         if (print) {
           printToConsole({type, payload, save});
- 
         }
         if (save) {
-          addPersistent({type, payload});
+          storeAccess({
+            feature: LOGBOOK_STORE_NAME,
+            add: [new Date(), type, payload],
+          });
         }
         if (toast) {
           updateGui({toast: payload});
@@ -1505,6 +1552,7 @@ var eventReactions = (function eventListenersModule() {
     'CtrlEnter',
     'CtrlNumpadEnter',
     'CtrlR',
+    'CtrlSlash',
     'AltArrowLeft',
     'AltArrowRight',
   ]);
@@ -1755,7 +1803,7 @@ var eventReactions = (function eventListenersModule() {
    * @param {Object[]} o.group - All proxies in this group.
    */
   function addContext(functions, {proxy, idx, group}) {
-    return util.ensureIsArray(functions).map(func => {
+    return util.alwaysArray(functions).map(func => {
       const run = util.debounce(func);
       return () => run(proxy, idx, group);
     });
@@ -1920,30 +1968,6 @@ var eventReactions = (function eventListenersModule() {
     }
   }
 
-  (function addCheatCode() {
-    const CODE = [
-      'ArrowUp',
-      'ArrowUp',
-      'ArrowDown',
-      'ArrowDown',
-      'ArrowLeft',
-      'ArrowRight',
-      'ArrowLeft',
-      'ArrowRight',
-      'KeyB',
-      'KeyA',
-      'Backquote',
-    ];
-    let idx = 0;
-    function cheatCodeHandler(e) {
-      (e.code === CODE[idx]) ? idx++ : idx = 0;
-      if (idx === CODE.length) {
-        user.log.low('cheat mode');
-      }
-    }
-    document.addEventListener('keydown', cheatCodeHandler, {passive: true});
-  })();
-
   initGenericEventHandlers();
   return {
     reset: reactionStore.clear,
@@ -1995,8 +2019,7 @@ var {ー, ref} = (function domAccessModule() {
    * @example - namePlusIdx('Example name', 3) => 'ExampleName_3'
    */
   function namePlusIdx(name = 'Unnamed', idx) {
-    const camelCased = util.capitalize('each word', name).replace(/\s+/, '');
-    return `${camelCased}_${idx + 1}`;
+    return `${util.cap.camelCase(name)}_${idx + 1}`;
   }
   atest.group('namePlusIdx', {
     'One word': () => namePlusIdx('Name', 3) === 'Name_4',
@@ -2060,7 +2083,7 @@ var {ー, ref} = (function domAccessModule() {
   function safeSetter(htmlElement, name, newValue) {
     const currentValue = htmlElement.value;
     if (currentValue === newValue) {
-      user.log.low(`No change to ${name}'.`, {print: false});
+      user.log.low(`No change to ${name}.`, {print: false});
       return;
     }
     if(!EDITABLE_ELEMENT_TYPES.includes(htmlElement.type)) {
@@ -2359,7 +2382,7 @@ var {ー, ref} = (function domAccessModule() {
     }
     throw new TypeError(
       `${prop}  is not a supported event. Please use:` +
-      util.mapToBulletedList(eventReactions.SUPPORTED_EVENTS)
+      util.bulletedList(eventReactions.SUPPORTED_EVENTS)
     );
   }
   atest.group('checkSupportedProps', {
@@ -2369,7 +2392,7 @@ var {ー, ref} = (function domAccessModule() {
   });
 
   function checkReactionsAreFunctions(name, action, reactions) {
-    util.ensureIsArray(reactions).forEach(reaction => {
+    util.alwaysArray(reactions).forEach(reaction => {
       if (typeof reaction !== 'function') {
         throw new TypeError(
           `Failed to add '${action}' reaction to ${name}.` +
@@ -2558,10 +2581,10 @@ var {ー, ref} = (function domAccessModule() {
     const toast = document.createElement('div');
     toast.classList = 'toast';
     toast.style.backgroundColor = 'black';
-    toast.style.bottom = '60px';
+    toast.style.bottom = '30px';
     toast.style.boxShadow = '0 0.2em 0.5em #aaa';
     toast.style.color = 'white';
-    toast.style.right = '60px';
+    toast.style.right = '30px';
     toast.style.padding = '0.8em 1.2em';
     toast.style.pointerEvents = 'none';
     toast.style.position = 'fixed';
@@ -2603,9 +2626,9 @@ var {ー, ref} = (function domAccessModule() {
     }
     const coords = proxy.getCoords();
     const top =
-        (coords.top || 400) + (coords.height / 2) - BOOM_RADIUS;
+        (coords.top || 100) + (coords.height / 2) - BOOM_RADIUS;
     const left =
-        (coords.left || 500) + (coords.width / 2) - BOOM_RADIUS;
+        (coords.left || 100) + (coords.width / 2) - BOOM_RADIUS;
     const div = document.createElement('div');
     div.classList = BASE_ID + 'boom';
     div.style.top = top + 'px';
@@ -2627,7 +2650,7 @@ var {ー, ref} = (function domAccessModule() {
     for (let counter in guiState.counters) {
       x.push(counter + ': ' + guiState.counters[counter]);
     }
-    p('stage', util.capitalize('first letter', guiState.stage), 'Stage');
+    p('stage', util.cap.firstLetter(guiState.stage), 'Stage');
     p('counter', x.join(' | '));
     for (let issue of guiState.issues) {
       p(issue.issueLevel, issue.message, issue.issueType);
