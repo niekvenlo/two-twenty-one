@@ -660,10 +660,8 @@ var user = (function userDataModule() {
   };
 
   /**
-   * Manage dynamic data stores. Data is stored as JSON in LocalStorage so
-   * data must be serialisable. E.g. function and RegExp cannot be stored
-   * directly, and need to be converted to string, and deserialised on
-   * retrieval.
+   * Manage dynamic data stores.
+   * Note: Data was originally stored as JSON.
    */
   const storeAccess = (function storesMiniModule() {
 
@@ -676,15 +674,6 @@ var user = (function userDataModule() {
         });
       }
       populateCacheFromChromeStorage();
-      
-      try { // @todo Remove try/catch block
-        document.body.addEventListener('chromeStorageUpdate', () => {
-          console.debug('Repopulating cache');
-          populateCacheFromChromeStorage();
-        });
-      } catch (e) {
-        console.debug('Failed to repopulate cache', e);
-      }
       
       function destroyStore(storeName) {
         if (!storeCache.hasOwnProperty(storeName)) {
@@ -2166,8 +2155,16 @@ var {ー, ref} = (function domAccessModule() {
       get checked() {
         return htmlElement.checked;
       },
+      set css(styles) {
+        for (let rule in styles) {
+          htmlElement.style[rule] = styles[rule];
+        }
+      },
       get disabled() {
         return htmlElement.disabled;
+      },
+      set spellcheck(on) {
+        htmlElement.spellcheck = on;
       },
       get textContent() {
         return htmlElement.textContent;
@@ -2180,11 +2177,6 @@ var {ー, ref} = (function domAccessModule() {
       },
       set tabIndex(value) {
         htmlElement.tabIndex = value;
-      },
-      set css(styles) {
-        for (let rule in styles) {
-          htmlElement.style[rule] = styles[rule];
-        }
       },
       click() {
         htmlElement.click();
@@ -2671,4 +2663,25 @@ var {ー, ref} = (function domAccessModule() {
     container.setContent(html.join('\n'));
   }
 })();
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+// EXTENSION MANAGEMENT module
+
+(function extensionManagementModule() {
+  chrome.runtime.onInstalled.addListener((reason) => {
+    if (reason === 'update' || reason === 'install') {
+      chrome.runtime.openOptionsPage();
+    }
+  });
+})();
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////
 undefined;
