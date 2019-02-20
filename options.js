@@ -1,13 +1,5 @@
 var ForbiddenPhrases = JSON.parse(String.raw`[
   [
-    "/\\s&\\w|\\w&\\s/",
-    "Use spaces on both sides of the &"
-  ],
-  [
-    "/\\s/\\w|\\w/\\s/",
-    "Use spaces on both sides of the /"
-  ],
-  [
     "/[,.]/",
     "Commas and periods are not allowed"
   ],
@@ -24,12 +16,12 @@ var ForbiddenPhrases = JSON.parse(String.raw`[
     "Brackets are not allowed"
   ],
   [
-    "/[\\\\]/",
-    "Backslash is not allowed"
-  ],
-  [
     "/[@#$^*–~]/",
     "Special characters are not allowed"
+  ],
+  [
+    "/^ /",
+    "A space at the front is not allowed"
   ],
   [
     "/  /",
@@ -38,6 +30,14 @@ var ForbiddenPhrases = JSON.parse(String.raw`[
   [
     "/\\n",
     "Line breaks are not allowed"
+  ],
+  [
+    "/\\s&\\w|\\w&\\s/",
+    "Use spaces on both sides of the &"
+  ],
+  [
+    "/\\s/\\w|\\w/\\s/",
+    "Use spaces on both sides of the /"
   ]
 ]`);
 
@@ -509,6 +509,10 @@ var ForbiddenPhrasesDutch = JSON.parse(String.raw`[
     "Remove the space"
   ],
   [
+    "/heren ondergoed/i",
+    "Remove the space"
+  ],
+  [
     "/\\bvluhten\\b/i",
     "Use 'vluchten'"
   ],
@@ -765,6 +769,14 @@ var CommonReplacementsDutch = JSON.parse(String.raw`[
     "België"
   ],
   [
+    "/italie/i",
+    "Italië"
+  ],
+  [
+    "/slovenie/i",
+    "Slovenië"
+  ],
+  [
     "/egeische/i",
     "Egeïsche"
   ],
@@ -953,7 +965,7 @@ var CommonReplacementsDutch = JSON.parse(String.raw`[
     "Home"
   ],
   [
-    "/building/i",
+    "/^building/i",
     "Building"
   ],
   [
@@ -1032,7 +1044,7 @@ window.onload = function() {
     var depth = 0;
     var inQuote = false;
     for (let char of json) {
-      if (!inQuote && char === ']' || char === '}') {
+      if (!inQuote && (char === ']' || char === '}')) {
         depth--;
         out += '\n' + '  '.repeat(depth);
       }
@@ -1043,7 +1055,7 @@ window.onload = function() {
       if (char === '"') {
         inQuote = !inQuote;
       }
-      if (!inQuote && char === '[' || char === '{') {
+      if (!inQuote && (char === '[' || char === '{')) {
         depth++;
         out += '\n' + '  '.repeat(depth);
       }
@@ -1123,7 +1135,6 @@ window.onload = function() {
     CommonReplacementsDutch,
   }
 
-  
   chrome.storage.local.get(null, (stores) => {
     var allStores = {...defaultStores, ...stores};
     for (let store in allStores) {
