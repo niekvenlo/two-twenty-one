@@ -5,7 +5,7 @@
 
 var environment = (function environmentModule() {
   'use strict';
- 
+
   /**
    * @fileoverview Provides access to variables about the current workflow.
    */
@@ -97,7 +97,7 @@ var environment = (function environmentModule() {
 
 var shared = (function workflowMethodsModule() {
   'use strict';
- 
+
   /**
    * @fileoverview Exports an object packed with methods
    * designed to add reactions to HTMLElement proxies.
@@ -178,7 +178,7 @@ var shared = (function workflowMethodsModule() {
     if (!ALERT_LEVELS.includes(issueLevel)) {
       throw new RangeError(
         issueLevel + ' is not a known issueLevel. Please use:' +
-        util.mapToBulletedList(ALERT_LEVELS)
+        util.bulletedList(ALERT_LEVELS)
       );
     }
     if (typeof when !== 'function') {
@@ -317,7 +317,10 @@ var shared = (function workflowMethodsModule() {
     return tmpValue;
   }
   atest.group('brandCapitalisation', {
-    'iPhone': () => brandCapitalisation('Iphone') === 'iPhone',
+    'iPhone': async () => {
+      await util.wait(100);
+      return brandCapitalisation('Iphone') === 'iPhone';
+    },
   });
 
   function commonReplacements(value) {
@@ -378,6 +381,7 @@ var shared = (function workflowMethodsModule() {
     }
     util.dispatch('issueUpdate', packet);
   }
+  noForbiddenPhrase = util.delay(noForbiddenPhrase, 100);
 
   /**
    * Cycle a select HTMLElement through a series of options.
@@ -423,8 +427,6 @@ var shared = (function workflowMethodsModule() {
   /**
    * Simplifies common changes to the comment box.
    *
-   * #addInitials Adds initials and moves focus.
-   * #removeInitials Removes initials.
    * @ref {finalCommentBox}
    */
   const comment = (function commentMiniModule() {
@@ -469,20 +471,21 @@ var shared = (function workflowMethodsModule() {
     };
   })();
   atest.group('comment', {
-    'before': () => {
+    'before': async () => {
+      await utilwait(100);
       const tmp = ref.finalCommentBox;
+      const initials = user.config.get('initials');
       const fakeBox = {
           value: 'user comment',
           focus: () => {},
           scrollIntoView: () => {},
         }
       ref.finalCommentBox = [fakeBox];
-      return {tmp};
+      return {tmp, initials};
     },
     'after': (o) => ref.finalCommentBox = o.tmp,
     'Add initials': (o) => {
       comment.addInitials();
-      console.log(ref.finalCommentBox[0].value, o.initials);
       return ref.finalCommentBox[0].value.includes(o.initials);
     },
     'Remove initials': (o) => {
@@ -503,6 +506,19 @@ var shared = (function workflowMethodsModule() {
   });
 
   /**
+   * Locally disable browser spellcheck on specified elements.
+   *
+   * @param {Object} _ - Ignored
+   * @param {number} __ - Ignored
+   * @param {Objec[]} group - Array of proxies.
+   */
+  function disableSpellcheck(_, __, group) {
+    for (let proxy of group) {
+      proxy.spellcheck = false;
+    }
+  }
+
+  /**
    * When pasting a url, it is moved from one box to another. The url is also
    * analysed and reduced to a descriptive string.
    * E.g. pasting 'http://www.example.com/hats' into the first box, it moves
@@ -520,7 +536,7 @@ var shared = (function workflowMethodsModule() {
       return;
     }
     const pastedValue = group[0].value;
-    if (/eplex\.c/.test(pastedValue)) {
+    if (/gleplex/.test(pastedValue)) {
       group[0].value = '';
       user.log.warn('Cannot paste a screenshot here');
       util.wait().then(() => group[0].click());
@@ -730,7 +746,7 @@ var shared = (function workflowMethodsModule() {
     const numValues = values.filter(v => v).length
     if (!confirm(
       `Would you like to use ${numValues / 2} prefill values instead?` +
-      util.mapToBulletedList(values)
+      util.bulletedList(values)
     )) {
       user.log.notice('Rejected the prefill values');
       return;
@@ -746,10 +762,10 @@ var shared = (function workflowMethodsModule() {
    * Pops up a confirmation dialog. On confirmation, will reset all counters.
    */
   async function resetCounter() {
-    const counterList = util.mapToBulletedList(user.counter.get());
+    const counterList = util.bulletedList(user.counter.get());
     const question = (counterList)
-        ? 'Please confirm.\nAre you sure you want to reset all counters?' +
-        counterList
+        ? 'Please confirm.\nAre you sure you want to reset all counters?\n' +
+            counterList
         : 'Nothing to reset. No counters set';
     user.log.notice(question, {toast: true});
     await util.wait();
@@ -780,7 +796,7 @@ var shared = (function workflowMethodsModule() {
     });
     user.log.ok(
       'Saving new default extraction for ' + domain +
-      util.mapToBulletedList(values.slice(1), 2)
+      util.bulletedList(values.slice(1), 2)
     );
   }
 
@@ -934,7 +950,7 @@ var shared = (function workflowMethodsModule() {
       refresh: () => { close(); open(); },
     }
   })();
-  
+
   /**
    * Trim leading and trailing spaces from proxy values.
    */
@@ -959,6 +975,7 @@ var shared = (function workflowMethodsModule() {
 
   return {
     comment,
+    disableSpellcheck,
     fallThrough,
     noForbiddenPhrase,
     guiUpdate,
@@ -993,11 +1010,18 @@ var shared = (function workflowMethodsModule() {
       is: true,
     }),
 
-    requireUrl: changeValue({
-      to: '',
-      when: testRegex(/^http/),
-      is: false,
-    }),
+    requireUrl: () => {
+      changeValue({
+        to: '',
+        when: testRegex(/^http/),
+        is: false,
+      });
+      changeValue({
+        to: '',
+        when: testRegex(/^http.+:/),
+        is: true,
+      });
+    },
 
     requireScreenshot: changeValue({
       to: '',
@@ -1005,11 +1029,18 @@ var shared = (function workflowMethodsModule() {
       is: false,
     }),
 
-    removePorg: changeValue({
-      to: '',
-      when: testRegex(/le.com\/eva/),
-      is: true,
-    }),
+    removeBannedDomains: () => {
+      changeValue({
+        to: '',
+        when: testRegex(/le.com\/eva/),
+        is: true,
+      });
+      changeValue({
+        to: '',
+        when: testRegex(/http:..youtube.com/),
+        is: true,
+      });
+    },
 
     removeScreenshot: changeValue({
       to: '',
@@ -1032,7 +1063,7 @@ var shared = (function workflowMethodsModule() {
 
 var flows = (function workflowModule() {
   'use strict';
- 
+
   /**
    * @fileoverview Exports an object for each supported workflow.
    */
@@ -1114,7 +1145,7 @@ var flows = (function workflowModule() {
     }
     return {init};
   })();
-  
+
   const labels = (function labelsModule() {
     function countTasks() {
       try {
@@ -1151,7 +1182,7 @@ var flows = (function workflowModule() {
       util.dispatch('guiUpdate', {stage: 'Trying to count'});
       countTasks();
     }
-    
+
     return {init};
   })();
 
@@ -1232,6 +1263,19 @@ var flows = (function workflowModule() {
       }
       shared.tabs.refresh();
     }
+    
+    // const status = (function statusMiniModule() {
+    //   // return object:
+    //   return {
+    //     get() {},
+    //     canExtract() {},
+    //     insufficient() {},
+    //     pageError() {},
+    //     dynamic() {},
+    //     geo() {},
+    //     // ...
+    //   }
+    // });
 
     /**
      * Set the current task status, by changing the values in the
@@ -1256,7 +1300,9 @@ var flows = (function workflowModule() {
         'alcoholDomain': [4, 1, 4],
         'adultDomain':   [4, 1, 6],
         'gambling':      [4, 1, 5],
-        'emptyCreative': [1, 2, 0, 'No creative'],
+        'emptyCreative': [1, 2, 0, 'Creative Not Available/Comprehendable'],
+        'urlsUnchanged': [1, 2, 0, 'URLs Not Changing/Tabs On Same Page'],
+        'urlMismatch':   [1, 2, 0, 'Visible URL/LP URL Mismatch'],
       };
       if (!ref.statusDropdown) {
         throw new Error('No status dropdown menus selected.');
@@ -1420,7 +1466,7 @@ var flows = (function workflowModule() {
       text[idx].focus();
       user.log.ok('Deleted item', {print: false, save: false});
     }
-    
+
     function deleteAllItems() {
       for (let idx in [0,1,2,3,4,5]) {
         deleteItem(null, idx);
@@ -1430,7 +1476,7 @@ var flows = (function workflowModule() {
     function moveFocusToText(_, idx) {
       util.attention(ref.textAreas, idx, 'focus');
     }
-    
+
     function checkDomainMismatch() {
       const getTrimmedDomain = (url) => {
         return util.getDomain(url).split('.').slice(-2).join('.').toLowerCase();
@@ -1448,7 +1494,7 @@ var flows = (function workflowModule() {
       util.dispatch('issueUpdate', packet);
     }
     checkDomainMismatch = util.debounce(checkDomainMismatch);
-    
+
     /**
      * Raise an issue if the creative contains no text.
      *
@@ -1511,8 +1557,9 @@ var flows = (function workflowModule() {
         onLoad: shared.keepAlive,
         onPaste: [
           shared.requireUrl,
-          shared.removePorg,
+          shared.removeBannedDomains,
           shared.removeScreenshot,
+          shared.disableSpellcheck,
         ],
         ref: 'linkAreas'
       });
@@ -1530,6 +1577,7 @@ var flows = (function workflowModule() {
         onPaste: [
           shared.requireUrl,
           shared.requireScreenshot,
+          shared.disableSpellcheck,
         ],
         ref: 'screenshots',
       });
@@ -1544,6 +1592,7 @@ var flows = (function workflowModule() {
         onLoad: [
           shared.addDashes,
           shared.tabOrder.remove,
+          shared.disableSpellcheck,
         ],
         ref: 'dashes',
       });
@@ -1590,7 +1639,7 @@ var flows = (function workflowModule() {
         pick: [65],
         ref: 'finalUrl',
       });
-      
+
       ー({
         name: 'InvalidScreenshot',
         rootSelect: '.errorbox-good',
@@ -1601,7 +1650,7 @@ var flows = (function workflowModule() {
         ],
         ref: 'invalidScreenshot',
       });
-      
+
       ー({
         name: 'Creative',
         rootSelect: '.context-item',
@@ -1789,7 +1838,10 @@ var flows = (function workflowModule() {
         onKeydown_CtrlAltDigit7: setStatus('drugDomain'),
         onKeydown_CtrlAltDigit8: setStatus('alcoholDomain'),
         onKeydown_CtrlAltDigit9: setStatus('adultDomain'),
+        onKeydown_CtrlShiftAltDigit0: setStatus('canExtract'),
         onKeydown_CtrlShiftAltDigit1: setStatus('emptyCreative'),
+        onKeydown_CtrlShiftAltDigit2: setStatus('urlsUnchanged'),
+        onKeydown_CtrlShiftAltDigit3: setStatus('urlMismatch'),
         onKeydown_CtrlAltP: () => user.log.print(),
       });
     }
