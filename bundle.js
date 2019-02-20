@@ -695,7 +695,16 @@ var user = (function userDataModule() {
           throw new TypeError('Data should be an object, not ' + typeof data);
         }
         storeCache[storeName] = data;
-        chrome.storage.local.set({[storeName]: data});
+        console.debug({[storeName]: data});
+        try {
+          await chrome.storage.local.set({[storeName]: data});
+        } catch (e) {
+          if (/Invocation of form/.test(e.message)) {
+            console.debug('Expected Error: Invocation of form', e);
+          } else {
+            console.debug('Weird Error', e);
+          }
+        }
       }
       return {
         destroyStore,
@@ -2662,22 +2671,6 @@ var {ー, ref} = (function domAccessModule() {
     }
     container.setContent(html.join('\n'));
   }
-})();
-
-
-
-
-////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
-// EXTENSION MANAGEMENT module
-
-(function extensionManagementModule() {
-  chrome.runtime.onInstalled.addListener((reason) => {
-    if (reason === 'update' || reason === 'install') {
-      chrome.runtime.openOptionsPage();
-    }
-  });
 })();
 
 
