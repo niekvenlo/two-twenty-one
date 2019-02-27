@@ -16,7 +16,7 @@ var ForbiddenPhrases = JSON.parse(String.raw`[
     "Brackets are not allowed"
   ],
   [
-    "/[@#$^*–~]/",
+    "/[@#$^*–~‘’]/",
     "Special characters are not allowed"
   ],
   [
@@ -28,7 +28,7 @@ var ForbiddenPhrases = JSON.parse(String.raw`[
     "Double spaces are not allowed"
   ],
   [
-    "/\\n",
+    "/\\n/",
     "Line breaks are not allowed"
   ],
   [
@@ -103,7 +103,8 @@ var ForbiddenPhrasesDutch = JSON.parse(String.raw`[
     "Ons/het"
   ],
   [
-    "/\\b(onze|de) buffet$/i"
+    "/\\b(onze|de) buffet$/i",
+    "Ons/het"
   ],
   [
     "/\\b(onze|de) onderzoek$/i",
@@ -186,7 +187,7 @@ var ForbiddenPhrasesDutch = JSON.parse(String.raw`[
   ],
   [
     "/origneel/",
-    "Use origineel"
+    "Use 'origineel'"
   ],
   [
     "/code95/i"
@@ -356,7 +357,7 @@ var ForbiddenPhrasesDutch = JSON.parse(String.raw`[
     "/\\bmusic\\b/"
   ],
   [
-    "/degree/"
+    "/\bdegree\b/"
   ],
   [
     "/\\bproducer/"
@@ -366,7 +367,7 @@ var ForbiddenPhrasesDutch = JSON.parse(String.raw`[
   ],
   [
     "/texel/",
-    "Capitalise"
+    "Use 'Texel'"
   ],
   [
     "/\\be ?commerce/"
@@ -551,6 +552,22 @@ var ForbiddenPhrasesDutch = JSON.parse(String.raw`[
   [
     "/Hoe werkt het/i",
     "Use 'How het werkt'"
+  ],
+  [
+    "/assortient/i",
+    "Use 'assortiment'"
+  ],
+  [
+    "/regios/i",
+    "Use 'regio's'"
+  ],
+  [
+    "/\\w*artikeln/i",
+    "Use 'artikelen"
+  ],
+  [
+    "/^Voor te/i",
+    "Use 'Om te ...'"
   ]
 ]`);
 
@@ -1076,6 +1093,7 @@ window.onload = function() {
       if (typeof stores[store] !== 'object') {
         throw new Error(`Trying to set ${store} with ${typeof stores[store]}`);
       }
+      console.debug(store, stores[store]);
       chrome.storage.local.set({[store]: stores[store]});
     }
   }
@@ -1117,8 +1135,8 @@ window.onload = function() {
   
     const contain = document.createElement('div');
     const title = document.createElement('div');
+    title.className = 'title';
     title.textContent = name;
-    title.style.margin = '20px 0 0 0';
     const textarea = document.createElement('textarea');
     textarea.value = prettifyJSON(JSON.stringify(data));
     textarea.addEventListener('blur', handleBlur);
@@ -1127,8 +1145,71 @@ window.onload = function() {
     document.getElementById('main').append(contain);
   }
   
+  function makeEditorMk2(name, data) {
+    if (typeof data !== 'object') {
+      throw new Error(
+        `Data for ${name} should be an object, not ${typeof data}`
+      );
+    }
+    const contain = document.createElement('div');
+    const title = document.createElement('div');
+    title.className = 'title';
+    title.textContent = name;
+    const fields = document.createElement('div');
+    fields.className = 'fields';
+    fields.style.display = 'grid';
+    fields.style.gridTemplateColumns = '1fr 3fr';
+    contain.appendChild(title);
+    contain.appendChild(fields);
+    if (!Array.isArray(data)) {
+      for (let field in data) {
+        const f = document.createElement('div');
+        f.innerText = field;
+        const v = document.createElement('input');
+        v.addEventListener('blur', ({target}) => {
+          if (data[field] === target.value) {
+            return;
+          }
+          data[field] = target.value;
+          set({[name]: data});
+          toast(`Change saved (${field}: ${data[field]})`);
+        });
+        v.type = 'text';
+        v.value = data[field];
+        fields.appendChild(f);
+        fields.appendChild(v);
+      }
+    } else {
+      for (let field in data) {
+        const e = document.createElement('input');
+        e.value = data[field][0];
+        e.addEventListener('blur', ({target}) => {
+          if (data[field][0] === target.value) {
+            return;
+          }
+          data[field][0] = target.value;
+          set({[name]: data});
+          toast(`Change saved (${field}: ${data[field]})`);
+        });
+        fields.appendChild(e);
+        const d = document.createElement('input');
+        d.value = data[field][1] || '';
+        d.addEventListener('blur', ({target}) => {
+          if (data[field][1] === target.value) {
+            return;
+          }
+          data[field][1] = target.value;
+          set({[name]: data});
+          toast(`Change saved (${field}: ${data[field]})`);
+        });
+        fields.appendChild(d);
+      }
+    }
+    document.getElementById('main').append(contain);
+  }
+  
   var defaultStores = {
-    Configuration: {initials: '__'},
+    Configuration: {initials: ''},
     ForbiddenPhrases,
     ForbiddenPhrasesDutch,
     BrandCapitalisation,
@@ -1137,11 +1218,16 @@ window.onload = function() {
 
   chrome.storage.local.get(null, (stores) => {
     var allStores = {...defaultStores, ...stores};
+    set(allStores);
     for (let store in allStores) {
       if (store === 'LogBook') {
         continue;
       }
-      makeEditor(store, allStores[store]);
+      if (store === 'BrandCapitalisation' || /SavedExtractions/.test(store)) {
+        makeEditor(store, allStores[store]);
+        continue;
+      }
+      makeEditorMk2(store, allStores[store]);
     }
   });
   
