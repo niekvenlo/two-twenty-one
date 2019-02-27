@@ -103,7 +103,7 @@ var shared = (function workflowMethodsModule() {
    * designed to add reactions to HTMLElement proxies.
    */
 
-  const ALERT_LEVELS = ['red', 'orange', 'yellow'];
+  const ALERT_LEVELS = ['high', 'medium', 'low'];
 
   /**
    * Convenience function. Conditionally set a new value to a proxy.
@@ -372,7 +372,7 @@ var shared = (function workflowMethodsModule() {
       if (regex && regex.test(proxy.value)) {
         const clearValue = proxy.value.replace(/\s/g, '░');
         const clearPhrase = phrase.replace(/\s/g, '░');
-        packet.issueLevel = 'orange';
+        packet.issueLevel = 'medium';
         packet.message = (message)
             ? `${message} (${clearValue})`
             : `'${clearValue}' matches '${clearPhrase}'`;
@@ -472,7 +472,7 @@ var shared = (function workflowMethodsModule() {
   })();
   atest.group('comment', {
     'before': async () => {
-      await utilwait(100);
+      await util.wait(100);
       const tmp = ref.finalCommentBox;
       const initials = user.config.get('initials');
       const fakeBox = {
@@ -544,6 +544,10 @@ var shared = (function workflowMethodsModule() {
     }
     if (/^https?:/.test(pastedValue)) {
       group[1].value = pastedValue;
+      util.wait().then(() => {
+        util.attention(group, 1, 'click');
+        util.attention(group, 0, 'click, focus');
+      });
     }
     const value = brandCapitalisation(commonReplacements(group[0].value));
     group[0].value = value;
@@ -686,7 +690,7 @@ var shared = (function workflowMethodsModule() {
       const value = proxy.value;
       let packet = {proxy, issueType: 'Dupes'};
       if (dupes.includes(value)) {
-        packet.issueLevel = 'red';
+        packet.issueLevel = 'high';
         packet.message = `Duplicate values '${value}' in ${proxy.name}`;
       }
       packets.push(packet);
@@ -727,12 +731,12 @@ var shared = (function workflowMethodsModule() {
    * @todo Combine with Save feature
    */
   function prefill(proxy) {
-    if (!user.config.get('enablePrefill')) {
+    if (!user.config.get('enablePrefill')) { // @todo Way to add new Config option.
       return;
     }
     const flowName = util.cap.firstLetter(environment.flowName());
     const values = user.storeAccess({
-      feature: `${flowName}Prefill`,
+      feature: `${flowName}SavedExtractions`,
       locale: environment.locale(),
       get: util.getDomain(proxy.value),
     });
@@ -764,7 +768,7 @@ var shared = (function workflowMethodsModule() {
   async function resetCounter() {
     const counterList = util.bulletedList(user.counter.get());
     const question = (counterList)
-        ? 'Please confirm.\nAre you sure you want to reset all counters?\n' +
+        ? 'Please confirm.\nAre you sure you want to reset all counters?' +
             counterList
         : 'Nothing to reset. No counters set';
     user.log.notice(question, {toast: true});
@@ -779,26 +783,107 @@ var shared = (function workflowMethodsModule() {
   /**
    * Save the values from the current extraction.
    * Logs the values, and adds them to the prefill data store.
+   * The domain value of the first proxy is used as the key.
    */
   function saveExtraction() {
-    const values = ref.saveExtraction.map(element => element.value);
-    const domain = util.getDomain(values[0]);
-    if (!domain) {
-      return user.log.warn('Not enough data to save.');
+    if (!ref.saveExtraction) {
+      user.log.warn('No extraction textareas found.');
+      return;
     }
-    const extractionData = {[domain]: values.slice(1)};
+    const [key, ...values] = ref.saveExtraction.map(proxy => proxy.value);
+    if (!key) {
+      user.log.warn('Not enough data to save.');
+      return;
+    }
+    const domain = util.getDomain(key) || key;
     const flowName = util.cap.firstLetter(environment.flowName());
     user.storeAccess({
-      feature: `${flowName}Prefill`,
+      feature: `${flowName}SavedExtractions`,
       locale: environment.locale(),
-      set: {[domain]: values.slice(1)},
-      value: values.slice(1),
+      set: {[domain]: values},
     });
     user.log.ok(
       'Saving new default extraction for ' + domain +
-      util.bulletedList(values.slice(1), 2)
+      util.bulletedList(values),
     );
   }
+  
+  var extraction = (function extractionModule() {
+
+    function getCurrent() {
+      if (!ref.saveExtraction) {
+        return;
+      }
+      const [key, ...values] = ref.saveExtraction.map(proxy => proxy.value);
+      const domain = util.getDomain(key) || key || '';
+      return {domain, values};
+    }
+
+    function getPrefill(domain) {
+      const flowName = util.cap.firstLetter(environment.flowName());
+      const values = user.storeAccess({
+        feature: `${flowName}SavedExtractions`,
+        locale: environment.locale(),
+        get: domain,
+      });
+      if (!values) {
+        return;
+      }
+      return {domain, values};
+    }
+
+    const versions = [];
+    let idx = 0;
+    async function init() {
+      const initialExtraction = getCurrent();
+      if (!initialExtraction) {
+        return;
+      }
+      console.log(initialExtraction);
+      versions.push(initialExtraction);
+      const domain = initialExtraction.domain || '';
+      const initialExtractionNotBlank =
+          initialExtraction.values.some(value => value !== '');
+      if (initialExtractionNotBlank) {
+        const emptyValues = Array(initialExtraction.values.length).fill('');
+        versions.push({domain, values: emptyValues});
+      }
+      const prefill = getPrefill(domain);
+      if (prefill) {
+        versions.push(prefill);
+      }
+    }
+    function nextInCycle() {
+      idx = (idx + 1) % versions.length;
+      const nextVersion = versions[idx];
+      console.log(nextVersion, versions, idx);
+      ref.saveExtraction[0].value = nextVersion.domain;
+      for (let i in nextVersion.values) {
+        ref.saveExtraction[i + 1] = nextVersion.values[i];
+      }
+    }
+    async function saveCurrent() {
+      const current = getCurrent();
+      if (!current) {
+        return;
+      }
+      const flowName = util.cap.firstLetter(environment.flowName());
+      user.storeAccess({
+        feature: `${flowName}SavedExtractions`,
+        locale: environment.locale(),
+        set: {[current.domain]: current.values},
+      });
+      user.log.ok(
+        'Saving new default extraction for ' + current.domain +
+        util.bulletedList(current.values),
+      );
+    }
+    init();
+    return {
+      saveCurrent,
+      nextInCycle,
+    }
+  })();
 
   /**
    * Skip the current task.
@@ -819,7 +904,10 @@ var shared = (function workflowMethodsModule() {
       const button = ー(confirmButtonSelector)[0];
       if (button) {
         button.click();
-        user.log.notice('Skipping task\n' + environment.taskId().decoded);
+        const creativeUrl =
+            ref.creative&& ref.creative[1] && ref.creative[1].textContent;
+        const taskId = environment.taskId().decoded;
+        user.log.notice(`Skipping task\n${creativeUrl}\n${taskId}`);
         user.counter.add('Skipped');
         return true;
       }
@@ -835,6 +923,8 @@ var shared = (function workflowMethodsModule() {
     await util.retry(clickConfirm, RETRIES, DELAY)();
     util.dispatch('issueUpdate', {issueType: 'reset'});
     shared.tabs.close();
+    await util.wait(400);
+    shared.guiUpdate('Press Start');
   }
 
   /**
@@ -849,7 +939,10 @@ var shared = (function workflowMethodsModule() {
       user.log.warn('Not ready to submit');
       return false;
     }
-    user.log.notice('Submitting\n' + environment.taskId().decoded);
+    const creativeUrl =
+        ref.creative&& ref.creative[1] && ref.creative[1].textContent;
+    const taskId = environment.taskId().decoded;
+    user.log.notice(`Submitting task\n${creativeUrl}\n${taskId}`);
     guiUpdate('Submitting');
     await util.wait(100);
     if (button.disabled) {
@@ -976,6 +1069,7 @@ var shared = (function workflowMethodsModule() {
   return {
     comment,
     disableSpellcheck,
+    extraction,
     fallThrough,
     noForbiddenPhrase,
     guiUpdate,
@@ -999,7 +1093,7 @@ var shared = (function workflowMethodsModule() {
     }),
 
     noMoreThan25Chars: issueUpdate({
-      issueLevel: 'red',
+      issueLevel: 'high',
       issueType: 'More than 25 characters long',
       when: testLength({max: 25}),
     }),
@@ -1010,18 +1104,11 @@ var shared = (function workflowMethodsModule() {
       is: true,
     }),
 
-    requireUrl: () => {
-      changeValue({
-        to: '',
-        when: testRegex(/^http/),
-        is: false,
-      });
-      changeValue({
-        to: '',
-        when: testRegex(/^http.+:/),
-        is: true,
-      });
-    },
+    requireUrl: changeValue({
+      to: '',
+      when: testRegex(/^https?:\/\/[^\s:]+$/),
+      is: false,
+    }),
 
     requireScreenshot: changeValue({
       to: '',
@@ -1117,7 +1204,6 @@ var flows = (function workflowModule() {
       ー({
         name: 'Select',
         select: 'select',
-        pick: [0, 1, 2],
         onClick: shared.toggleSelectYesNo,
         ref: 'select',
       });
@@ -1131,11 +1217,20 @@ var flows = (function workflowModule() {
       });
 
       eventReactions.setGlobal({
-        onKeydown_Digit1: toggleSelectWithKey(1),
-        onKeydown_Digit2: toggleSelectWithKey(2),
-        onKeydown_Digit3: toggleSelectWithKey(3),
-        onKeydown_Digit4: toggleSelectWithKey(4),
-        onKeydown_Digit5: toggleSelectWithKey(5),
+        onKeydown_CtrlAltDigit1: toggleSelectWithKey(1),
+        onKeydown_CtrlAltDigit2: toggleSelectWithKey(2),
+        onKeydown_CtrlAltDigit3: toggleSelectWithKey(3),
+        onKeydown_CtrlAltDigit4: toggleSelectWithKey(4),
+        onKeydown_CtrlAltDigit5: toggleSelectWithKey(5),
+        onKeydown_CtrlAltDigit6: toggleSelectWithKey(6),
+        onKeydown_CtrlAltDigit7: toggleSelectWithKey(7),
+        onKeydown_CtrlAltDigit8: toggleSelectWithKey(8),
+        onKeydown_CtrlAltDigit9: toggleSelectWithKey(9),
+        onKeydown_CtrlAltDigit0: () => {
+          for (let idx = 0; idx < 10; idx++) {
+            toggleSelectWithKey(idx)();
+          }
+        },
         onKeydown_Enter: clickAcquire,
         onKeydown_NumpadEnter: clickAcquire,
         onKeydown_Space: clickAcquire,
@@ -1248,7 +1343,8 @@ var flows = (function workflowModule() {
 
     function focusItem(n) {
       util.attention(ref.addDataButton, 0, 'click'),
-      util.attention(ref.editButton, 0, 'click, scrollIntoView');
+      util.attention(ref.editButton, 0, 'click');
+      util.attention(ref.creative, 0, 'scrollIntoView');
       util.attention(ref.textAreas, n - 1, 'focus');
     }
 
@@ -1308,12 +1404,11 @@ var flows = (function workflowModule() {
         throw new Error('No status dropdown menus selected.');
       }
       function clickAndFocus(type) {
-        if (type !== 'canExtract') {
-          util.attention(ref.invalidScreenshot, 0, 'focus');
-        }
         const n = (type === 'canExtract') ? 0 : 1;
         util.attention(ref.canOrCannotExtractButtons, n, 'click');
-        util.attention(ref.invalidScreenshot, 0, 'focus');
+        (type === 'canExtract')
+            ? util.attention(ref.editButton, 0, 'focus')
+            : util.attention(ref.invalidScreenshot, 0, 'focus');
       }
       async function setTo() {
         if (!keys[type]) {
@@ -1468,7 +1563,7 @@ var flows = (function workflowModule() {
     }
 
     function deleteAllItems() {
-      for (let idx in [0,1,2,3,4,5]) {
+      for (let idx in [0,1,2,3,4]) {
         deleteItem(null, idx);
       }
     }
@@ -1477,9 +1572,18 @@ var flows = (function workflowModule() {
       util.attention(ref.textAreas, idx, 'focus');
     }
 
+    function leaveAllBlank() {
+      const blank = ref.leaveBlank.slice(-3)
+      util.attention(blank, 0, 'click');
+      util.attention(blank, 1, 'click');
+      util.attention(blank, 2, 'click');
+    }
+
     function checkDomainMismatch() {
       const getTrimmedDomain = (url) => {
-        return util.getDomain(url).split('.').slice(-2).join('.').toLowerCase();
+        const domain = util.getDomain(url).toLowerCase();
+        const n = (/co.uk/.test(url)) ? 3 : 2;
+        return domain.split('.').slice(-n).join('.');
       }
       const one = getTrimmedDomain('https://' + ref.creative[1].textContent);
       const two = getTrimmedDomain(ref.openInTabs.slice(-1)[0].value);
@@ -1488,7 +1592,7 @@ var flows = (function workflowModule() {
 
       const packet = {proxy: ref.creative[1], issueType: 'Domain mismatch'};
       if (new Set(links).size !== 1) {
-        packet.issueLevel = 'orange';
+        packet.issueLevel = 'medium';
         packet.message = links.join(', ');
       }
       util.dispatch('issueUpdate', packet);
@@ -1505,7 +1609,7 @@ var flows = (function workflowModule() {
     function checkEmptyCreative(proxy, __, group) {
       const packet = {proxy, issueType: 'Empty creative'};
       if (group.every(el => !el.textContent)) {
-        packet.issueLevel = 'orange';
+        packet.issueLevel = 'medium';
         packet.message = 'Creative is empty';
       }
       util.dispatch('issueUpdate', packet);
@@ -1522,8 +1626,9 @@ var flows = (function workflowModule() {
         rootSelect: '#extraction-editing',
         select: 'textarea',
         pick: [1, 5, 9, 13, 17],
-        onClick: (_, idx) => {
+        onClick: (proxy, idx) => {
           util.attention(ref.addItem.slice(-3), idx - 2, 'click');
+          util.attention([proxy], 0, 'focus');
         },
         onInteract: [
           shared.noMoreThan25Chars,
@@ -1554,12 +1659,14 @@ var flows = (function workflowModule() {
           shared.removeScreenshot,
         ],
         onKeydown_CtrlAlt: moveFocusToText,
-        onLoad: shared.keepAlive,
+        onLoad: [
+          shared.disableSpellcheck,
+          shared.keepAlive,
+        ],
         onPaste: [
           shared.requireUrl,
           shared.removeBannedDomains,
           shared.removeScreenshot,
-          shared.disableSpellcheck,
         ],
         ref: 'linkAreas'
       });
@@ -1574,10 +1681,10 @@ var flows = (function workflowModule() {
           shared.requireScreenshot,
         ],
         onKeydown_CtrlAlt: moveFocusToText,
+        onLoad: shared.disableSpellcheck,
         onPaste: [
           shared.requireUrl,
           shared.requireScreenshot,
-          shared.disableSpellcheck,
         ],
         ref: 'screenshots',
       });
@@ -1664,14 +1771,6 @@ var flows = (function workflowModule() {
         ref: 'creative',
       });
 
-      ー({
-        name: 'Prefill',
-        rootSelect: '#extraction-editing',
-        select: 'textarea',
-        pick: [1, 2, 5, 6, 9, 10, 13, 14, 17, 18],
-        ref: 'prefillTarget',
-      });
-
       for (let pair of [[1, 2],[5, 6],[9, 10],[13, 14],[17, 18]]) {
         ー({
           name: 'Fall',
@@ -1707,10 +1806,10 @@ var flows = (function workflowModule() {
         rootSelect: '.extraction',
         select: 'label',
         withText: 'Add Data',
-        onKeydown_CtrlAltArrowRight: [
-          () => util.attention(ref.addDataButton, 0, 'click'),
-          () => focusItem(1),
-        ],
+        onKeydown_CtrlAltArrowRight: () => {
+          util.attention(ref.addDataButton, 0, 'click');
+          focusItem(1);
+        },
         ref: 'addDataButton',
       });
 
@@ -1719,11 +1818,11 @@ var flows = (function workflowModule() {
         rootSelect: '.extraction',
         select: 'label',
         withText: 'Edit',
+        onKeydown_CtrlAltArrowRight: () => {
+          util.attention(ref.editButton, 0, 'click');
+          focusItem(1);
+        },
         onLoad: shared.tabOrder.add,
-        onKeydown_CtrlAltArrowRight: [
-          (proxy) => proxy.click(),
-          () => focusItem(1),
-        ],
         ref: 'editButton',
       });
 
@@ -1745,8 +1844,10 @@ var flows = (function workflowModule() {
 
       ー({
         name: 'ApprovalButtons',
+        rootSelect: '.primaryContent',
+        rootNumber: 3,
         select: 'label',
-        pick: [32, 33],
+        pick: [0, 1],
         ref: 'approvalButtons',
       });
 
@@ -1755,7 +1856,7 @@ var flows = (function workflowModule() {
         rootSelect: '.addComments',
         select: 'textarea',
         pick: [0],
-        onFocusout: start,
+        onFocusout: util.delay(start, 200),
         onKeydown_CtrlAltArrowRight: () => focusItem(1),
         ref: 'finalCommentBox',
       });
@@ -1785,8 +1886,9 @@ var flows = (function workflowModule() {
 
       ー({
         name: 'Save',
+        rootSelect: '#extraction-editing',
         select: 'textarea',
-        pick: [1, 2, 3, 6, 7, 10, 11, 14, 15, 18, 19],
+        pick: [0, 1, 2, 5, 6, 9, 10, 13, 14, 17, 18],
         ref: 'saveExtraction',
       });
 
@@ -1813,13 +1915,15 @@ var flows = (function workflowModule() {
       eventReactions.setGlobal({
         onKeydown_CtrlEnter: submit,
         onKeydown_CtrlNumpadEnter: submit,
+        onKeydown_CtrlAltEnter: submit,
+        onKeydown_CtrlAltNumpadEnter: submit,
         onKeydown_Backslash: approve,
         onKeydown_NumpadAdd: approve,
         onKeydown_BracketLeft: shared.resetCounter,
         onKeydown_BracketRight: shared.skipTask,
         onKeydown_NumpadSubtract: shared.skipTask,
-        onKeydown_CtrlAltS: shared.saveExtraction,
-        onKeydown_NumpadDivide: shared.saveExtraction,
+        onKeydown_CtrlAltS: shared.extraction.saveCurrent,
+        onKeydown_NumpadDivide: shared.extraction.saveCurrent,
         onKeydown_Backquote: [
           beginTask,
           () => {
@@ -1842,7 +1946,8 @@ var flows = (function workflowModule() {
         onKeydown_CtrlShiftAltDigit1: setStatus('emptyCreative'),
         onKeydown_CtrlShiftAltDigit2: setStatus('urlsUnchanged'),
         onKeydown_CtrlShiftAltDigit3: setStatus('urlMismatch'),
-        onKeydown_CtrlAltP: () => user.log.print(),
+        onKeydown_CtrlAltP: () => user.log.print({items: 100}),
+        onKeydown_CtrlAltO: nextInCycle,
       });
     }
 
@@ -1872,11 +1977,13 @@ function main() {
 
   util.dispatch('issueUpdate', {issueType: 'reset'});
   eventReactions.reset();
+
   ー({
     name: 'Links',
     select: 'a',
     onClick: util.delay(main, 1000),
   });
+
   eventReactions.setGlobal({
     onKeydown_Backquote: main,
   });
