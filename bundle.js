@@ -204,7 +204,7 @@ var util = (function utilityModule() {
         } catch (e) {
           throw new Error(
             `Bundle threw an Error (${e.message}) in ${func}. ` +
-            `Bundled: \n${bulletedList(functions)}`
+            `Bundled: ${bulletedList(functions)}`
           );
         }
       }
@@ -265,24 +265,24 @@ var util = (function utilityModule() {
       return entry;
     }
     const array = (Array.isArray(input)) ? input : toArray(input);
-    return spacer(true) + array.map(toString).join('\n' + spacer(true));
+    return '\n' + spacer(true) + array.map(toString).join('\n' + spacer(true));
   }
   atest.group('bulletedList', {
-    'Simple array': () => bulletedList([1,2,3]) === '    * 1\n    * 2\n    * 3',
+    'Simple array': () => bulletedList([1,2,3]) === '\n    * 1\n    * 2\n    * 3',
     'Simple object': () => {
-      return bulletedList({namedKey: 1}) === `    * namedKey: 1`;
+      return bulletedList({namedKey: 1}) === `\n    * namedKey: 1`;
     },
     'Unnamed function': () => {
-      const string = `    * () => { 'body of function'}`;
+      const string = `\n    * () => { 'body of function'}`;
       return bulletedList([() => { 'body of function'}]) === string;
     },
     'Named function': () => {
       const namedFunction = () => { 'body of function'};
-      const string = `    * namedFunction\n      () => { 'body of function'}`;
+      const string = `\n    * namedFunction\n      () => { 'body of function'}`;
       return bulletedList([namedFunction]) === string;
     },
     'Object with functions': () => {
-      const string = `    * namedKey: namedKey\n      () => { 'body of function'}`;
+      const string = `\n    * namedKey: namedKey\n      () => { 'body of function'}`;
       return bulletedList({namedKey: () => { 'body of function'}}) === string;
     },
   });
@@ -675,7 +675,7 @@ var user = (function userDataModule() {
       }
       populateCacheFromChromeStorage();
       
-      function destroyStore(storeName) {
+      async function destroyStore(storeName) {
         if (!storeCache.hasOwnProperty(storeName)) {
           throw new TypeError('Cannot find store to destroy');
         }
@@ -687,7 +687,7 @@ var user = (function userDataModule() {
           return storeCache[storeName];
         }
       }
-      function setStore(storeName, data) {
+      async function setStore(storeName, data) {
         if (!storeName) {
           throw new TypeError('Cannot create nameless store');
         }
@@ -1029,7 +1029,7 @@ var user = (function userDataModule() {
    * For other Dates, returns a long format (MM/DD hh:mm:ss)
    * @return {string}
    */
-  function timestamp (d = new Date()) {
+  function timestamp(d = new Date()) {
     /** Cast numbers into a zero prefixed two digit string format */
     const c = new Date();
     const cast = (/** number */n) /** string */ => ('0' + n).slice(-2);
@@ -1270,7 +1270,7 @@ var user = (function userDataModule() {
    * @param {string} issueUpdate.issueLevel - How critical is this issue?
    * @param {string} issueUpdate.message - Describes the details of the issue.
    * @example
-   * {proxy, issueType: 'Typo', issueLevel: 'red', message: 'Wrod misspelled'}
+   * {proxy, issueType: 'Typo', issueLevel: 'high', message: 'Wrod misspelled'}
    */
   function flag(issueUpdate) {
     if (issueUpdate && issueUpdate.issueType === 'reset') {
@@ -1357,7 +1357,7 @@ var user = (function userDataModule() {
       const color = LOG_TYPES[type] || NO_COLOR_FOUND;
       const ts = timestamp(time);
       const string = payloadToString(payload)
-          .replace(/\n/, '\n' + ' '.repeat(ts.length + 1));
+          .replace(/\n/g, '\n' + ' '.repeat(ts.length + 1));
       console.log(
         `%c${ts}%c ${string}`,
         TIMESTAMP_STYLE,
@@ -1400,7 +1400,7 @@ var user = (function userDataModule() {
         after: entry => entry.time > new Date(filterBy.after),
         before: entry => entry.time < new Date(filterBy.before),
         contains: entry => new RegExp(filterBy.contains).test(entry.payload),
-        pageSize: entry => true,
+        items: entry => true,
         page: entry => true,
         regex: entry => filterBy.regex.test(entry.payload),
         type: entry => entry.type === filterBy.type,
@@ -1421,7 +1421,7 @@ var user = (function userDataModule() {
           }
         }
       }
-      const pageSize = filterBy.pageSize || LOG_PAGE_SIZE;
+      const pageSize = filterBy.items || LOG_PAGE_SIZE;
       const page = (filterBy.page > 0) ? filterBy.page : 0;
       const start = pageSize * (page);
       const end = pageSize * (page + 1);
@@ -1446,6 +1446,7 @@ var user = (function userDataModule() {
      */
     function print(filterBy = {}) {
       const entries = getEntries(filterBy);
+      console.debug('LogEntries: ', entries);
       for (let entry of entries) {
         printToConsole(entry)
       }
@@ -2575,16 +2576,17 @@ var {ー, ref} = (function domAccessModule() {
       `.${BASE_ID}container p { margin: 4px }`,
       `.${BASE_ID}container em { font-weight: bold }`,
       `.${BASE_ID}container em { font-style: normal }`,
-      `.${BASE_ID}container .red { color: #dd4b39 }`,
-      `.${BASE_ID}container .orange { color: #872b20 }`,
-      `.${BASE_ID}container .yellow { color: #3d130e }`,
+      `.${BASE_ID}container .high { color: #dd4b39 }`,
+      `.${BASE_ID}container .medium { color: #4b0082 }`,
+      `.${BASE_ID}container .low { color: #3a3a3a }`,
       `.${BASE_ID}boom { background-color: black }`,
       `.${BASE_ID}boom { border-radius: 50% }`,
       `.${BASE_ID}boom { opacity: 0.02 }`,
       `.${BASE_ID}boom { padding: ${BOOM_RADIUS}px }`,
       `.${BASE_ID}boom { position: absolute }`,
       `.${BASE_ID}boom { z-index: 1999 }`,
-      `.lpButton { opacity: 0.25 }`,
+      `.lpButton { opacity: 0.2 }`,
+      `.submitTaskButton { opacity: 0 }`
     ];
     rules.forEach(addRule);
   })();
