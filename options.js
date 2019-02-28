@@ -1138,6 +1138,7 @@ window.onload = function() {
     title.className = 'title';
     title.textContent = name;
     const textarea = document.createElement('textarea');
+    textarea.spellcheck = false;
     textarea.value = prettifyJSON(JSON.stringify(data));
     textarea.addEventListener('blur', handleBlur);
     contain.appendChild(title);
@@ -1166,6 +1167,7 @@ window.onload = function() {
         const f = document.createElement('div');
         f.innerText = field;
         const v = document.createElement('input');
+        v.spellcheck = false;
         v.addEventListener('blur', ({target}) => {
           if (data[field] === target.value) {
             return;
@@ -1182,6 +1184,7 @@ window.onload = function() {
     } else {
       for (let field in data) {
         const e = document.createElement('input');
+        e.spellcheck = false;
         e.value = data[field][0];
         e.addEventListener('blur', ({target}) => {
           if (data[field][0] === target.value) {
@@ -1193,6 +1196,7 @@ window.onload = function() {
         });
         fields.appendChild(e);
         const d = document.createElement('input');
+        e.spellcheck = false;
         d.value = data[field][1] || '';
         d.addEventListener('blur', ({target}) => {
           if (data[field][1] === target.value) {
@@ -1208,8 +1212,178 @@ window.onload = function() {
     document.getElementById('main').append(contain);
   }
   
+  var create = (type, params, style) => {
+    const el = document.createElement(type);
+    for (let param in params) {
+      el[param] = params[param];
+    }
+    for (let rule in style) {
+      el.style[rule] = style[rule];
+    }
+    return el;
+  }
+  
+  function makeEditorMk3(name, data) {
+    if (typeof data !== 'object') {
+      throw new Error(
+        `Data for ${name} should be an object, not ${typeof data}`
+      );
+    }
+    const contain = create('div');
+    const title = create('div', {className: 'title', textContent: name})
+    const fields = create('div', {className: 'fields'}, {
+      display: 'grid',
+      gridTemplateColumns: '1fr 2fr',
+    });
+    contain.appendChild(title);
+    contain.appendChild(fields);
+    if (!Array.isArray(data)) {
+      for (let field in data) {
+        const key = create('div', {
+          innerText: field,
+        });
+        const value = (typeof data[field] === 'boolean')
+            ? create('input', {
+              spellcheck: false,
+              type: 'checkbox',
+              checked: data[field],
+            })
+            : create('input', {
+              spellcheck: false,
+              type: 'text',
+              value: data[field],
+            });
+        value.addEventListener('change', ({target}) => {
+          if (data[field] === target.value) {
+            return;
+          }
+          if (target.type === 'checkbox') {
+            data[field] = target.checked;
+          } else {
+            data[field] = target.value;
+          }
+          set({[name]: data});
+          toast(`Change saved (${field}: ${data[field]})`);
+        });
+        fields.appendChild(key);
+        fields.appendChild(value);
+      }
+    } else if (Array.isArray(data[0])) {
+      for (let field in data) {
+        const first = create('input', {
+          spellcheck: false,
+          type: 'text',
+          value: data[field][0],
+        });
+        const second = create('input', {
+          spellcheck: false,
+          type: 'text',
+          value: data[field][1] || '',
+        });
+        first.addEventListener('blur', ({target}) => {
+          if (data[field][0] === target.value) {
+            return;
+          }
+          data[field][0] = target.value;
+          set({[name]: data});
+          toast(`Change saved (${data[field].join(' -> ')})`);
+        });
+        second.addEventListener('blur', ({target}) => {
+          if (data[field][1] === target.value) {
+            return;
+          }
+          data[field][1] = target.value;
+          set({[name]: data});
+          toast(`Change saved (${data[field].join(' -> ')})`);
+        });
+        fields.appendChild(first);
+        fields.appendChild(second);
+      }
+    } else {
+      for (let field in data) {
+        const first = create('div');
+        const second = create('input', {
+          spellcheck: false,
+          type: 'text',
+          value: data[field],
+        });
+        second.addEventListener('blur', ({target}) => {
+          if (data[field] === target.value) {
+            return;
+          }
+          data[field] = target.value;
+          set({[name]: data});
+          toast(`Change saved (${data[field]})`);
+        });
+        fields.appendChild(first);
+        fields.appendChild(second);
+      }
+      const addValue = create('input', {
+        spellcheck: false,
+        type: 'text',
+        placeholder: 'Add a new value',
+      });
+      const addToData = ({target}) => {
+        if (!addValue.value) {
+          return;
+        }
+        data.push(addValue.value);
+        set({[name]: data});
+        toast(`Added a new value (${addValue.value})`);
+        setTimeout(() => window.location.reload(), 1000);
+      };
+      addValue.addEventListener('blur', addToData);
+      const first = create('div');
+      fields.appendChild(first);
+      fields.appendChild(addValue);
+      document.getElementById('main').append(contain);
+      return;
+    }
+    const addKey = create('input', {
+      spellcheck: false,
+      type: 'text',
+      placeholder: 'Type here',
+    });
+    const addValue = create('input', {
+      spellcheck: false,
+      type: 'text',
+      placeholder: 'to add a new pair',
+    });
+    const addToData = ({target}) => {
+      if (!addKey.value || !addValue.value) {
+        return;
+      }
+      if (Array.isArray(data)) {
+        data.push([addKey.value, addValue.value]);
+      } else {
+        const key = addKey.value;
+        const value = addValue.value;
+        if (value === 'true') {
+          data[key] = true;
+        } else if (value === 'false') {
+          data[key] = false;
+        } else {
+          data[key] = value;
+        }
+      }
+      set({[name]: data});
+      toast(`Added a new pair (${addKey.value} -> ${addValue.value})`);
+      setTimeout(() => window.location.reload(), 1000);
+    };
+    addKey.addEventListener('blur', addToData);
+    addValue.addEventListener('blur', addToData);
+    fields.appendChild(addKey);
+    fields.appendChild(addValue);
+    document.getElementById('main').append(contain);
+  }
+  
+  
+  
   var defaultStores = {
-    Configuration: {initials: ''},
+    Configuration: {
+      'advanced options': false,
+      'initials': '',
+    },
     ForbiddenPhrases,
     ForbiddenPhrasesDutch,
     BrandCapitalisation,
@@ -1223,11 +1397,15 @@ window.onload = function() {
       if (store === 'LogBook') {
         continue;
       }
-      if (store === 'BrandCapitalisation' || /SavedExtractions/.test(store)) {
+      if (/SavedExtractions/.test(store)) {
         makeEditor(store, allStores[store]);
-        continue;
+      } else if (store === 'Configuration') {
+        makeEditorMk3(store, allStores[store]);
+      } else {
+        if (allStores.Configuration['advanced options']) {
+          makeEditorMk3(store, allStores[store]);
+        }
       }
-      makeEditorMk2(store, allStores[store]);
     }
   });
   
