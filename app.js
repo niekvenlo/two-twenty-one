@@ -19,11 +19,12 @@ var environment = (function environmentModule() {
       select: 'button',
       pick: [0],
     })[0];
-    const header = ー({
-      name: 'Header',
-      select: 'h1',
-      pick: [0],
-    })[0];
+    // const header = ー({
+    //   name: 'Header',
+    //   select: 'h1',
+    //   pick: [0],
+    // })[0];
+    const header = document.querySelector('h1');
     const buttonText = firstButton && firstButton.textContent;
     const headerText = header && header.textContent;
     if (/Acquire/.test(buttonText)) {
@@ -32,10 +33,10 @@ var environment = (function environmentModule() {
     if (/Continue/.test(buttonText)) {
       return 'home';
     }
-    if (/telinks/.test(headerText)) {
+    if (/Sitelinks/.test(headerText)) {
       return 'sl'
     }
-    if (/ppets/.test(headerText)) {
+    if (/Snippets/.test(headerText)) {
       return 'ss'
     }
     if (/twentyone/.test(headerText)) {
@@ -266,45 +267,6 @@ var shared = (function workflowMethodsModule() {
       return {proxy, hit: false};
     }
   }
-  // test.group('textLength', () => {
-  //   const one = testLength({min: 2})({value: 'x'});
-  //   test.ok(one.hit === true, 'one: hit');
-  //   test.ok(one.message === 'Value is too short', 'one: message');
-  //   const two = testLength({max: 3})({value: 'x'});
-  //   test.ok(two.hit === false, 'two: no hit');
-  //   test.ok(two.message === undefined, 'two: message');
-  //   const three = testLength({min: 2, max: 5})({value: 'x x x'});
-  //   test.ok(three.hit === false, 'one: no hit');
-  //   test.ok(three.message === undefined, 'two: message');
-  // }, true);
-
-  /**
-   * For developers, this function is an example of a tester function.
-   * Implement the actual testing logic, then hook the function into either:
-   * 1) The issueUpdate function:
-   * issueUpdate{
-   *   issueType: 'Description of the issue',
-   *   when: exampleTester // Your tester function.
-   * }
-   * 2) The changeValue function:
-   * changeValue{
-   *   to: 'newValue',
-   *   when: exampleTester // Your tester function.
-   * }
-   * issueUpdate and changeValue will be triggered when your function returns
-   * an object with a property hit = true.
-   *
-   * Note that you can also create a function that acts directly on the object.
-   * You don't need to use the convenience functions.
-   */
-  function exampleTester(params) {
-    return (proxy, idx, group) => {
-      // Your code goes here
-      const hit = true
-      const message = 'This message describes the issue';
-      return {proxy, hit, message};
-    }
-  }
 
   function brandCapitalisation(value) {
     const brands = user.storeAccess({
@@ -504,6 +466,31 @@ var shared = (function workflowMethodsModule() {
       return value.includes('changed') && !value.includes('test');
     },
   });
+  
+  function checkCapitals(proxy) {
+    const packet = {proxy, issueType: 'Unusual capitalisation'};
+    const looksCorrect = (string) => {
+      const brands = user.storeAccess({
+        feature: 'BrandCapitalisation',
+      }) || [];
+      const firstWord = string.split(' ')[0]
+      const firstLetter = string[0] || 'X';
+      for (let brand of brands) {
+        if (new RegExp('^' + brand, 'i').test(firstWord)) {
+          if (new RegExp('^' + brand).test(firstWord)) {
+            return true;
+          }
+          return false;
+        }
+      }
+      return firstLetter === firstLetter.toUpperCase();
+    };
+    if (!looksCorrect(proxy.value)) {
+      packet.issueLevel = 'medium';
+      packet.message =`Check capitalisation of '${proxy.value}' in ${proxy.name}`;
+    }
+    util.dispatch('issueUpdate', packet);
+  }
 
   /**
    * Locally disable browser spellcheck on specified elements.
@@ -586,14 +573,11 @@ var shared = (function workflowMethodsModule() {
    */
   const is = (function isModule() {
     function analystTask() {
-      const taskTitle = ref.taskTitle && ref.taskTitle[0];
-      if (!taskTitle) {
+      const title = document.querySelector('.taskTitle');
+      if (!title) {
         return false;
       }
-      if (/Analyst/.test(taskTitle.textContent)) {
-        return true;
-      }
-      return false;
+      return /Analyst/.test(title.textContent);
     }
     /**
      * Was this task analysed by a reviewer?
@@ -666,6 +650,39 @@ var shared = (function workflowMethodsModule() {
   keepAlive = util.debounce(keepAlive);
 
   /**
+   * Tests whether all proxies in a group have the same domain.
+   *
+   * @param {Object} _ - Unused parameter. The triggering proxy.
+   * @param {number} __ - Unused parameter. The index of the triggering proxy.
+   * @param {Object[]} group - Array of proxies to check for mismatching
+   * domains.
+   */
+  function noDomainMismatch(_, __, group) {
+    const getTrimmedDomain = (url) => {
+      const domain = util.getDomain(url).toLowerCase();
+      const n = (/co.uk/.test(url)) ? 3 : 2;
+      return domain.split('.').slice(-n).join('.');
+    };
+    const lpDomain = getTrimmedDomain(group.slice(-1)[0].value);
+    const mismatch = [];
+    for (let proxy of group) {
+      const proxyDomain = getTrimmedDomain(proxy.value);
+      if (lpDomain && proxyDomain && (lpDomain !== proxyDomain)) {
+        mismatch.push(proxy);
+      }
+    }
+    for (let proxy of group) {
+      const packet = {proxy, issueType: 'Domain mismatch'};
+      if (mismatch.includes(proxy)) {
+        packet.issueLevel = 'medium';
+        const trimmed = getTrimmedDomain(proxy.value);
+        packet.message =`Different domain '${trimmed}' in ${proxy.name}`;
+      }
+      util.dispatch('issueUpdate', packet);
+    }
+  }
+
+  /**
    * Tests whether any proxies in a group have the same value, and flags
    * proxies that repeat previous values.
    *
@@ -673,7 +690,7 @@ var shared = (function workflowMethodsModule() {
    * @param {number} __ - Unused parameter. The index of the triggering proxy.
    * @param {Object[]} group - Array of proxies to check for duplicate values.
    */
-  function noDuplicateValues(_, __, group, testing) {
+  function noDuplicateValues(_, __, group) {
     const values = [];
     const dupes = [];
     const packets = [];
@@ -699,30 +716,39 @@ var shared = (function workflowMethodsModule() {
       }
     }
     for (let packet of packets) {
-      if (!testing) {
-        util.dispatch('issueUpdate', packet);
-      }
+      util.dispatch('issueUpdate', packet);
     }
     return packets;
   }
-  // test.group('noDuplicateValues', () => {
-  //   const run = (group) => {
-  //     return noDuplicateValues(0, 0, group, true)
-  //         .filter(issue => issue.message);
-  //   }
-  //   const a = {};
-  //   const b = {value: ''};
-  //   const c = {value: ''};
-  //   const d = {value: 'x'};
-  //   const e = {value: 'x'};
-  //   test.ok(run([a]).length === 0, 'Single proxy, no issue');
-  //   test.ok(run([a, d]).length === 0, 'Two proxies, no issues');
-  //   test.ok(run([b, c]).length === 0, 'Two proxies, no issues, still');
-  //   test.ok(run([a, b, c, c, d]).length === 0, 'Five proxies, no issue');
-  //   test.ok(run([a, b, c, d, e]).length === 2, 'Five proxies, two issues');
-  //   test.todo('Async test');
-  // });
   noDuplicateValues = util.delay(noDuplicateValues, 100);
+
+  /**
+   * Tests whether any proxies in a group have the same first word, and flags
+   * proxies that repeat previous first words.
+   *
+   * @param {Object} _ - Unused parameter. The triggering proxy.
+   * @param {number} __ - Unused parameter. The index of the triggering proxy.
+   * @param {Object[]} group - Array of proxies to check for duplicate values.
+   */
+  function noDuplicateVerbs(_, __, group) {
+    const firstWords = [];
+    const dupes = [];
+    for (let proxy of group) {
+      const firstWord = proxy.value.split(' ')[0];
+      if (firstWords.includes(firstWord)) {
+        dupes.push(proxy);
+      }
+      firstWord && firstWords.push(firstWord);
+    }
+    for (let proxy of group) {
+      const packet = {proxy, issueType: 'Repeated verb'};
+      if (dupes.includes(proxy)) {
+        packet.issueLevel = 'low';
+        packet.message = `First word repeated: '${proxy.value.split(' ')[0]}'`;
+      }
+      util.dispatch('issueUpdate', packet);
+    }
+  }
 
   /**
    * Based on an extraction value, attempts to find matching data to
@@ -760,6 +786,17 @@ var shared = (function workflowMethodsModule() {
       targets[idx].value = values[idx];
     }
     util.attention(ref.editButton, 0, 'click');
+  }
+
+  /**
+   * Remove stray characters from proxy values.
+   */
+  function removeQuotes(proxy) {
+    const chars = '`‘’';
+    if (proxy.value.split('').some(c => chars.includes(c))) {
+      user.log.notice('Removing characters', {toast: true});
+    }
+    proxy.value = proxy.value.replace(new RegExp(`[${chars}]`, 'g'), '');
   }
 
   /**
@@ -807,83 +844,6 @@ var shared = (function workflowMethodsModule() {
       util.bulletedList(values),
     );
   }
-  
-  var extraction = (function extractionModule() {
-
-    function getCurrent() {
-      if (!ref.saveExtraction) {
-        return;
-      }
-      const [key, ...values] = ref.saveExtraction.map(proxy => proxy.value);
-      const domain = util.getDomain(key) || key || '';
-      return {domain, values};
-    }
-
-    function getPrefill(domain) {
-      const flowName = util.cap.firstLetter(environment.flowName());
-      const values = user.storeAccess({
-        feature: `${flowName}SavedExtractions`,
-        locale: environment.locale(),
-        get: domain,
-      });
-      if (!values) {
-        return;
-      }
-      return {domain, values};
-    }
-
-    const versions = [];
-    let idx = 0;
-    async function init() {
-      const initialExtraction = getCurrent();
-      if (!initialExtraction) {
-        return;
-      }
-      console.log(initialExtraction);
-      versions.push(initialExtraction);
-      const domain = initialExtraction.domain || '';
-      const initialExtractionNotBlank =
-          initialExtraction.values.some(value => value !== '');
-      if (initialExtractionNotBlank) {
-        const emptyValues = Array(initialExtraction.values.length).fill('');
-        versions.push({domain, values: emptyValues});
-      }
-      const prefill = getPrefill(domain);
-      if (prefill) {
-        versions.push(prefill);
-      }
-    }
-    function nextInCycle() {
-      idx = (idx + 1) % versions.length;
-      const nextVersion = versions[idx];
-      console.log(nextVersion, versions, idx);
-      ref.saveExtraction[0].value = nextVersion.domain;
-      for (let i in nextVersion.values) {
-        ref.saveExtraction[i + 1] = nextVersion.values[i];
-      }
-    }
-    async function saveCurrent() {
-      const current = getCurrent();
-      if (!current) {
-        return;
-      }
-      const flowName = util.cap.firstLetter(environment.flowName());
-      user.storeAccess({
-        feature: `${flowName}SavedExtractions`,
-        locale: environment.locale(),
-        set: {[current.domain]: current.values},
-      });
-      user.log.ok(
-        'Saving new default extraction for ' + current.domain +
-        util.bulletedList(current.values),
-      );
-    }
-    init();
-    return {
-      saveCurrent,
-      nextInCycle,
-    }
-  })();
 
   /**
    * Skip the current task.
@@ -957,7 +917,7 @@ var shared = (function workflowMethodsModule() {
     user.counter.add('Submitted');
     return true;
   }
-  submit = util.debounce(submit, 100);
+  submit = util.delay(util.debounce(submit, 100), 100);
 
   const tabOrder = (function tabOrderMiniModule() {
     /**
@@ -1019,15 +979,23 @@ var shared = (function workflowMethodsModule() {
     async function open() {
       const invalidScreenshot = ref.invalidScreenshot || [];
       const openInTabs = ref.openInTabs || [];
+      const screenshots = ref.screenshots || [];
+      const mostLinks = [...openInTabs, ...screenshots];
       const finalUrl = ref.finalUrl || [];
       await util.wait(100);
       const allLinks = (user.config.get('includeFinalUrl'))
-          ? [...invalidScreenshot, ...openInTabs]
-          : [...invalidScreenshot, ...openInTabs, ...finalUrl];
+          ? [...invalidScreenshot, ...mostLinks]
+          : [...invalidScreenshot, ...mostLinks, ...finalUrl];
       const urls = allLinks
           .map(el => el.value)
           .filter(val => /^http/.test(val));
       const uniqueLinks = [...new Set(urls)];
+      
+      const commentLinks = ref.analystComment[0].textContent.match(/http\S*/);
+      console.debug('links', ref.analystComment[0].textContent, commentLinks);
+      for (let link of [...(commentLinks || [])]) {
+        uniqueLinks.push(link);
+      }
       for (let link of uniqueLinks) {
         openTabs.push(window.open(link, link));
       }
@@ -1048,6 +1016,9 @@ var shared = (function workflowMethodsModule() {
    * Trim leading and trailing spaces from proxy values.
    */
   function trim(proxy) {
+    if (proxy.value !== proxy.value.trim()) {
+      user.log.notice('Removing spaces from end', {toast: true});
+    }
     proxy.value = proxy.value.trim();
   }
 
@@ -1067,18 +1038,20 @@ var shared = (function workflowMethodsModule() {
   updateCharacterCount = util.delay(updateCharacterCount);
 
   return {
+    checkCapitals,
     comment,
     disableSpellcheck,
-    extraction,
     fallThrough,
     noForbiddenPhrase,
     guiUpdate,
     is,
     keepAlive,
+    noDomainMismatch,
     noDuplicateValues,
+    noDuplicateVerbs,
     prefill,
+    removeQuotes,
     resetCounter,
-    saveExtraction,
     skipTask,
     submit,
     tabOrder,
@@ -1159,7 +1132,7 @@ var flows = (function workflowModule() {
 
     function init() {
 
-      shared.guiUpdate('Loaded');
+      shared.guiUpdate('Rating Home Loaded');
       user.log.ok('TwoTwentyOne loaded');
 
       /**
@@ -1215,6 +1188,16 @@ var flows = (function workflowModule() {
         onClick: clickAcquire,
         ref: 'firstButton',
       });
+      
+      const printLog = () => {
+        const entries = user.log.raw();
+        console.log(JSON.stringify(entries));
+      };
+      
+      const printLogIds = () => {
+        const entries = user.log.raw({contains: 'Submit'})
+        console.log(JSON.stringify(entries));
+      };
 
       eventReactions.setGlobal({
         onKeydown_CtrlAltDigit1: toggleSelectWithKey(1),
@@ -1234,7 +1217,9 @@ var flows = (function workflowModule() {
         onKeydown_Enter: clickAcquire,
         onKeydown_NumpadEnter: clickAcquire,
         onKeydown_Space: clickAcquire,
-        onKeydown_BracketLeft: shared.resetCounter,
+        onKeydown_CtrlAltBracketLeft: shared.resetCounter,
+        onKeydown_P: printLog,
+        onKeydown_O: printLogIds,
       });
 
     }
@@ -1308,8 +1293,16 @@ var flows = (function workflowModule() {
         util.attention(ref.approvalButtons, 0, 'click');
         completeScreenshots();
         shared.tabs.close();
-        shared.comment.addInitials();
-        shared.guiUpdate('Approved');
+        if (!(ref.submitButton[0].disabled)) {
+          shared.comment.addInitials();
+          shared.guiUpdate('Approved');
+        } else {
+          toStage('start');
+          user.log.warn(
+            'Not ready to Approve',
+            {save: false, print: false, toast: true}
+          );
+        }
       },
 
       async submit() {
@@ -1326,6 +1319,8 @@ var flows = (function workflowModule() {
         if (submitted) {
           await util.wait(1000);
           shared.guiUpdate('Press Start');
+        } else {
+          toStage('approve');
         }
       }
     };
@@ -1343,8 +1338,7 @@ var flows = (function workflowModule() {
 
     function focusItem(n) {
       util.attention(ref.addDataButton, 0, 'click'),
-      util.attention(ref.editButton, 0, 'click');
-      util.attention(ref.creative, 0, 'scrollIntoView');
+      util.attention(ref.editButton, 0, 'click, scrollIntoView');
       util.attention(ref.textAreas, n - 1, 'focus');
     }
 
@@ -1358,6 +1352,9 @@ var flows = (function workflowModule() {
         return;
       }
       shared.tabs.refresh();
+      util.attention(ref.addDataButton, 0, 'focus');
+      util.attention(ref.editButton, 0, 'focus');
+      util.attention(ref.creative, 0, 'scrollIntoView');
     }
     
     // const status = (function statusMiniModule() {
@@ -1406,9 +1403,17 @@ var flows = (function workflowModule() {
       function clickAndFocus(type) {
         const n = (type === 'canExtract') ? 0 : 1;
         util.attention(ref.canOrCannotExtractButtons, n, 'click');
-        (type === 'canExtract')
-            ? util.attention(ref.editButton, 0, 'focus')
-            : util.attention(ref.invalidScreenshot, 0, 'focus');
+        if (type === 'canExtract') {
+          util.attention(ref.editButton, 0, 'click');
+          util.attention(ref.addDataButton, 0, 'click, scrollIntoView');
+          if (ref.extractionPage.value) {
+            focusItem(1);
+          } else {
+            util.attention(ref.extractionPage, 0, 'focus');
+          }
+        } else {
+          util.attention(ref.invalidScreenshot, 0, 'focus');
+        }
       }
       async function setTo() {
         if (!keys[type]) {
@@ -1563,6 +1568,7 @@ var flows = (function workflowModule() {
     }
 
     function deleteAllItems() {
+      util.attention(ref.editButton, 0, 'click');
       for (let idx in [0,1,2,3,4]) {
         deleteItem(null, idx);
       }
@@ -1590,7 +1596,7 @@ var flows = (function workflowModule() {
       const three = getTrimmedDomain(ref.finalUrl[0].value);
       const links = [one, two, three].filter(o => o);
 
-      const packet = {proxy: ref.creative[1], issueType: 'Domain mismatch'};
+      const packet = {proxy: ref.creative[1], issueType: 'Creative domain mismatch'};
       if (new Set(links).size !== 1) {
         packet.issueLevel = 'medium';
         packet.message = links.join(', ');
@@ -1620,19 +1626,43 @@ var flows = (function workflowModule() {
      * Set up event handlers.
      */
     function setupReactions() {
+      
+      const innocuousTerm = shared.is.analystTask()
+          ? {
+              text: [1, 5, 9, 13, 17],
+              link: [2, 6, 10, 14, 18],
+              dashes: [4, 8, 12, 16, 20],
+              linkLP: [2, 6, 10, 14, 18, 0],
+              fall: [[1, 2],[5, 6],[9, 10],[13, 14],[17, 18]],
+              remain: [0, 8, 17, 26, 35],
+            }
+          : {
+              text: [1, 4, 7, 10, 13],
+              link: [2, 5, 8, 11, 14],
+              dashes: [3, 6, 9, 12, 15],
+              linkLP: [2, 5, 8, 11, 14, 0],
+              fall: [[1, 2],[4, 5],[7, 8],[10, 11],[13, 14]],
+              remain: [0, 6, 13, 20, 27],
+            };
 
       ー({
         name: 'Text',
         rootSelect: '#extraction-editing',
         select: 'textarea',
-        pick: [1, 5, 9, 13, 17],
+        pick: innocuousTerm.text,
         onClick: (proxy, idx) => {
           util.attention(ref.addItem.slice(-3), idx - 2, 'click');
           util.attention([proxy], 0, 'focus');
         },
+        onFocusout: [
+          shared.trim,
+          shared.removeQuotes,
+        ],
         onInteract: [
+          shared.checkCapitals,
           shared.noMoreThan25Chars,
           shared.noDuplicateValues,
+          shared.noDuplicateVerbs,
           shared.noForbiddenPhrase,
         ],
         onKeydown_CtrlShiftAltArrowLeft: swapLeft,
@@ -1640,10 +1670,12 @@ var flows = (function workflowModule() {
         onKeydown_CtrlAltArrowLeft: moveLeft,
         onKeydown_CtrlAltArrowRight: moveRight,
         onKeydown_CtrlDelete: deleteItem,
-        onKeydown_CtrlShiftDelete: deleteAllItems,
         onLoad: [
+          shared.trim,
+          shared.checkCapitals,
           shared.noMoreThan25Chars,
           shared.noDuplicateValues,
+          shared.noDuplicateVerbs,
           shared.noForbiddenPhrase,
         ],
         ref: 'textAreas',
@@ -1653,7 +1685,7 @@ var flows = (function workflowModule() {
         name: 'Link',
         rootSelect: '#extraction-editing',
         select: 'textarea',
-        pick: [2, 6, 10, 14, 18],
+        pick: innocuousTerm.link,
         onFocusout: [
           shared.requireUrl,
           shared.removeScreenshot,
@@ -1668,32 +1700,53 @@ var flows = (function workflowModule() {
           shared.removeBannedDomains,
           shared.removeScreenshot,
         ],
-        ref: 'linkAreas'
+        ref: 'linkAreas',
       });
+      
+      if (shared.is.analystTask()) {
+        ー({
+          name: 'Screenshot',
+          rootSelect: '#extraction-editing',
+          select: 'textarea',
+          pick: [3, 7, 11, 15, 19],
+          onFocusout: [
+            shared.requireUrl,
+            shared.requireScreenshot,
+          ],
+          onKeydown_CtrlAlt: moveFocusToText,
+          onLoad: shared.disableSpellcheck,
+          onPaste: [
+            shared.requireUrl,
+            shared.requireScreenshot,
+          ],
+          ref: 'screenshots',
+        });
 
-      ー({
-        name: 'Screenshot',
-        rootSelect: '#extraction-editing',
-        select: 'textarea',
-        pick: [3, 7, 11, 15, 19],
-        onFocusout: [
-          shared.requireUrl,
-          shared.requireScreenshot,
-        ],
-        onKeydown_CtrlAlt: moveFocusToText,
-        onLoad: shared.disableSpellcheck,
-        onPaste: [
-          shared.requireUrl,
-          shared.requireScreenshot,
-        ],
-        ref: 'screenshots',
-      });
+      } else {
+        ー({
+          name: 'Screenshot',
+          rootSelect: '.extraction-screenshots',
+          select: 'textarea',
+          pick: [0, 1, 2, 3, 4],
+          onFocusout: [
+            shared.requireUrl,
+            shared.requireScreenshot,
+          ],
+          onKeydown_CtrlAlt: moveFocusToText,
+          onLoad: shared.disableSpellcheck,
+          onPaste: [
+            shared.requireUrl,
+            shared.requireScreenshot,
+          ],
+          ref: 'screenshots',
+        });
+      }
 
       ー({
         name: 'Dashes',
         rootSelect: '#extraction-editing',
         select: 'textarea',
-        pick: [4, 8, 12, 16, 20],
+        pick: innocuousTerm.dashes,
         onFocusin: shared.removeDashes,
         onFocusout: shared.addDashes,
         onLoad: [
@@ -1712,7 +1765,7 @@ var flows = (function workflowModule() {
       });
 
       ー({
-        name: 'Landing Page Url',
+        name: 'Extraction Page Url',
         rootSelect: '#extraction-editing',
         select: 'textarea',
         pick: [0],
@@ -1720,23 +1773,27 @@ var flows = (function workflowModule() {
           () => util.attention(ref.editButton, 0, 'click'),
           () => focusItem(1),
         ],
-        onLoad: shared.prefill,
+        onLoad: [
+          shared.prefill,
+          shared.removeScreenshot,
+          shared.requireUrl,
+        ],
+        ref: 'extractionPage',
       });
 
       ー({
         name: 'LinksAndLP',
         rootSelect: '#extraction-editing',
         select: 'textarea',
-        pick: [0, 2, 6, 10, 14, 18],
-        onInteract: shared.noDuplicateValues,
-        onPaste: shared.noDuplicateValues,
-      });
-
-      ー({
-        name: 'AllUrls',
-        rootSelect: '#extraction-editing',
-        select: 'textarea',
-        pick: [2, 6, 10, 14, 18, 3, 7, 11, 15, 19, 0],
+        pick: innocuousTerm.linkLP,
+        onInteract: [
+          shared.noDomainMismatch,
+          shared.noDuplicateValues,
+        ],
+        onPaste: [
+          shared.noDomainMismatch,
+          shared.noDuplicateValues,
+        ],
         ref: 'openInTabs',
       });
 
@@ -1755,6 +1812,10 @@ var flows = (function workflowModule() {
         onKeydown_CtrlAltArrowRight: [
           () => util.attention(ref.finalCommentBox, 0, 'focus'),
         ],
+        onPaste: [
+          shared.requireUrl,
+          shared.requireScreenshot,
+        ],
         ref: 'invalidScreenshot',
       });
 
@@ -1771,7 +1832,7 @@ var flows = (function workflowModule() {
         ref: 'creative',
       });
 
-      for (let pair of [[1, 2],[5, 6],[9, 10],[13, 14],[17, 18]]) {
+      for (let pair of innocuousTerm.fall) {
         ー({
           name: 'Fall',
           rootSelect: '#extraction-editing',
@@ -1781,7 +1842,7 @@ var flows = (function workflowModule() {
         });
       }
 
-      for (let rootNumber of [0, 8, 17, 26, 35]) {
+      for (let rootNumber of innocuousTerm.remain) {
         ー({
           name: 'Remaining',
           rootSelect: '.extraction-item table',
@@ -1885,6 +1946,12 @@ var flows = (function workflowModule() {
       });
 
       ー({
+        name: 'Task Title',
+        select: '.taskTitle',
+        ref: 'taskTitle'
+      });
+
+      ー({
         name: 'Save',
         rootSelect: '#extraction-editing',
         select: 'textarea',
@@ -1912,26 +1979,7 @@ var flows = (function workflowModule() {
         css: {display: 'none'},
       });
 
-      eventReactions.setGlobal({
-        onKeydown_CtrlEnter: submit,
-        onKeydown_CtrlNumpadEnter: submit,
-        onKeydown_CtrlAltEnter: submit,
-        onKeydown_CtrlAltNumpadEnter: submit,
-        onKeydown_Backslash: approve,
-        onKeydown_NumpadAdd: approve,
-        onKeydown_BracketLeft: shared.resetCounter,
-        onKeydown_BracketRight: shared.skipTask,
-        onKeydown_NumpadSubtract: shared.skipTask,
-        onKeydown_CtrlAltS: shared.extraction.saveCurrent,
-        onKeydown_NumpadDivide: shared.extraction.saveCurrent,
-        onKeydown_Backquote: [
-          beginTask,
-          () => {
-            util.attention(ref.addDataButton, 0, 'focus, scrollIntoView');
-            util.attention(ref.editButton, 0, 'focus, scrollIntoView');
-          },
-        ],
-        onKeydown_CtrlBackquote: main,
+      const statusReactions = {
         onKeydown_CtrlAltDigit0: setStatus('canExtract'),
         onKeydown_CtrlAltDigit1: setStatus('insufficient'),
         onKeydown_CtrlAltDigit2: setStatus('pageError'),
@@ -1943,11 +1991,75 @@ var flows = (function workflowModule() {
         onKeydown_CtrlAltDigit8: setStatus('alcoholDomain'),
         onKeydown_CtrlAltDigit9: setStatus('adultDomain'),
         onKeydown_CtrlShiftAltDigit0: setStatus('canExtract'),
-        onKeydown_CtrlShiftAltDigit1: setStatus('emptyCreative'),
+        onKeydown_CtrlShiftAltDigit1: setStatus('other'),
         onKeydown_CtrlShiftAltDigit2: setStatus('urlsUnchanged'),
         onKeydown_CtrlShiftAltDigit3: setStatus('urlMismatch'),
-        onKeydown_CtrlAltP: () => user.log.print({items: 100}),
-        onKeydown_CtrlAltO: nextInCycle,
+        onKeydown_CtrlShiftAltDigit4: setStatus('emptyCreative'),
+      };
+      
+      const experimentalEscapeApprove = () => {
+        console.debug('experimental escape approve');
+        if (user.config.get('use escape-key to approve')) {
+          approve();
+        }
+      };
+      
+      const experimentalBackslashApprove = () => {
+        console.debug('experimental backslash approve');
+        if (user.config.get('use backslash to approve')) {
+          approve();
+        }
+      };
+      
+      const experimentalEqualApprove = () => {
+        console.debug('experimental =-key to approve');
+        if (user.config.get('use =-key to approve')) {
+          approve();
+        }
+      };
+      
+      const experimentalSubmit = () => {
+        console.debug('experimental submit');
+        if (user.config.get('use escape-key to approve')) {
+          submit();
+        }
+      };
+      
+      const nordicLayout = {
+        onKeydown_CtrlAltBracketLeft: shared.resetCounter,
+        onKeydown_CtrlAltBracketRight: shared.skipTask,
+        onKeydown_Backslash: experimentalBackslashApprove,
+        onKeydown_Escape: experimentalEscapeApprove,
+        onKeydown_CtrlAltEqual: experimentalEqualApprove,
+      };
+      
+      const submitKeys = {
+        onKeydown_CtrlEnter: submit,
+        onKeydown_CtrlAltEnter: submit,
+        onKeydown_CtrlNumpadEnter: submit,
+        onKeydown_CtrlShiftEscape: experimentalSubmit,
+      };
+      
+      const logIds = () => {
+        const entries = user.log.raw({type: 'notice', items: 100});
+        console.log(JSON.stringify(entries));
+      };
+
+      eventReactions.setGlobal({
+        onKeydown_Backquote: beginTask,
+        onKeydown_CtrlAltBackquote: beginTask,
+        
+        onKeydown_NumpadSubtract: shared.skipTask,
+        onKeydown_NumpadAdd: approve,
+        
+        onKeydown_CtrlShiftDelete: deleteAllItems,
+        
+        onKeydown_CtrlBackquote: main,
+        onKeydown_CtrlAltP: () => logIds,
+        ...statusReactions,
+        ...nordicLayout,
+        ...submitKeys,
+        // onKeydown_CtrlAltS: shared.extraction.saveCurrent,
       });
     }
 
@@ -1972,6 +2084,9 @@ var flows = (function workflowModule() {
 function main() {
   const detectedFlowName = environment.flowName();
   if (!detectedFlowName) {
+    shared.guiUpdate('No flow');
+    util.dispatch('issueUpdate', {issueType: 'reset'});
+    eventReactions.reset();
     return false;
   }
 
@@ -1993,7 +2108,7 @@ function main() {
 
 (async function() {
   try {
-    await util.retry(main, 20, 150)();
+    await util.retry(main, 30, 250)();
   } catch (e) {
     const warning = 'No workflow identified';
     shared.guiUpdate(warning);
