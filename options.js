@@ -41,6 +41,13 @@ var ForbiddenPhrases = JSON.parse(String.raw`[
   ]
 ]`);
 
+var ForbiddenPhrasesSwedish = JSON.parse(String.raw`[
+  [
+    "/[,.]/",
+    "Commas and periods are not allowed"
+  ]
+]`);
+
 var ForbiddenPhrasesDutch = JSON.parse(String.raw`[
   [
     "/\\b(ons|het) biografie/i",
@@ -64,6 +71,10 @@ var ForbiddenPhrasesDutch = JSON.parse(String.raw`[
   ],
   [
     "/\\b(ons|het) kosten/i",
+    "Onze/de"
+  ],
+  [
+    "/\\b(ons|het) matrassen/i",
     "Onze/de"
   ],
   [
@@ -136,6 +147,10 @@ var ForbiddenPhrasesDutch = JSON.parse(String.raw`[
   ],
   [
     "/\\b(onze|de) portfolio$/i",
+    "Ons/het"
+  ],
+  [
+    "/\\b(onze|de) \\w*verblijf$/i",
     "Ons/het"
   ],
   [
@@ -243,6 +258,10 @@ var ForbiddenPhrasesDutch = JSON.parse(String.raw`[
   [
     "/piano les/i",
     "Remove the space"
+  ],
+  [
+    "/pianos\\b/i",
+    "Use 'piano's'"
   ],
   [
     "/vrijwilligers werk/i",
@@ -357,7 +376,7 @@ var ForbiddenPhrasesDutch = JSON.parse(String.raw`[
     "/\\bmusic\\b/"
   ],
   [
-    "/\bdegree\b/"
+    "/\\bdegree\\b/"
   ],
   [
     "/\\bproducer/"
@@ -458,6 +477,10 @@ var ForbiddenPhrasesDutch = JSON.parse(String.raw`[
     "Use 'zakelijk'"
   ],
   [
+    "/Zakelijk evenementen\\b/i",
+    "Use 'zakelijke'"
+  ],
+  [
     "/eierengerechten/i",
     "Use 'eiergerechten'"
   ],
@@ -503,14 +526,6 @@ var ForbiddenPhrasesDutch = JSON.parse(String.raw`[
   ],
   [
     "/verwarmings onderhoud/i",
-    "Remove the space"
-  ],
-  [
-    "/dames ondergoed/i",
-    "Remove the space"
-  ],
-  [
-    "/heren ondergoed/i",
     "Remove the space"
   ],
   [
@@ -568,6 +583,26 @@ var ForbiddenPhrasesDutch = JSON.parse(String.raw`[
   [
     "/^Voor te/i",
     "Use 'Om te ...'"
+  ],
+  [
+    "/prijstlijst/i",
+    "Use 'prijslijst'"
+  ],
+  [
+    "/menus/i",
+    "Use 'menu's'"
+  ],
+  [
+    "/paginas\\b/i",
+    "Use 'pagina's'"
+  ],
+  [
+    "/opleidinging/i",
+    "Use 'opleiding'"
+  ],
+  [
+    "/2de hands/i",
+    "Use 'Tweedehands'"
   ]
 ]`);
 
@@ -582,6 +617,69 @@ var BrandCapitalisation = JSON.parse(String.raw`
  "iTunes",
  "MacBook",
  "YouTube"
+]`);
+
+var CommonReplacementsSwedish = JSON.parse(String.raw`[
+  [
+    "/contact/i",
+    "Kontakta oss"
+  ],
+  [
+    "/about/i",
+    "Om oss"
+  ],
+  [
+    "/faq/i",
+    "Vanliga frågor"
+  ],
+  [
+    "/log ?in/i",
+    "Logga in"
+  ],
+  [
+    "/customer service/i",
+    "Vår kundtjänst"
+  ],
+  [
+    "/blog/i",
+    "Visa blogg"
+  ],
+  [
+    "/Inspiration/i",
+    "Få inspiration"
+  ],
+  [
+    "/^media$/i",
+    "Se media"
+  ],
+  [
+    "/products/i",
+    "Våra produkter"
+  ],
+  [
+    "/giftcard/i",
+    "Köp presentkort"
+  ],
+  [
+    "/my page/i",
+    "Mina sidor"
+  ],
+  [
+    "/storefinder|find store/i",
+    "Hitta butiker"
+  ],
+  [
+    "/projects/i",
+    "Olika projekt"
+  ],
+  [
+    "/store/i",
+    "Vår butik"
+  ],
+  [
+    "/webstore/i",
+    "Visa webbutik"
+  ]
 ]`);
 
 var CommonReplacementsDutch = JSON.parse(String.raw`[
@@ -1233,7 +1331,7 @@ window.onload = function() {
     const title = create('div', {className: 'title', textContent: name})
     const fields = create('div', {className: 'fields'}, {
       display: 'grid',
-      gridTemplateColumns: '1fr 2fr',
+      gridTemplateColumns: '1fr 1fr',
     });
     contain.appendChild(title);
     contain.appendChild(fields);
@@ -1376,47 +1474,60 @@ window.onload = function() {
     fields.appendChild(addValue);
     document.getElementById('main').append(contain);
   }
-  
-  
-  
+
   var defaultStores = {
     Configuration: {
       'advanced options': false,
+      'play beeps on error': true,
       'initials': '',
+      'use backslash to approve': true,
+      'use escape-key to approve': false,
+      'use =-key to approve': false,
     },
     ForbiddenPhrases,
     ForbiddenPhrasesDutch,
+    ForbiddenPhrasesSwedish,
     BrandCapitalisation,
     CommonReplacementsDutch,
+    CommonReplacementsSwedish,
   }
 
   chrome.storage.local.get(null, (stores) => {
     var allStores = {...defaultStores, ...stores};
     set(allStores);
+    const advancedOptions = allStores.Configuration['advanced options'];
     for (let store in allStores) {
       if (store === 'LogBook') {
         continue;
       }
-      if (/SavedExtractions/.test(store)) {
+      if (/SavedExtractions/.test(store) && advancedOptions) {
         makeEditor(store, allStores[store]);
       } else if (store === 'Configuration') {
         makeEditorMk3(store, allStores[store]);
       } else {
-        if (allStores.Configuration['advanced options']) {
+        if (advancedOptions) {
           makeEditorMk3(store, allStores[store]);
         }
       }
     }
   });
   
-  const button = document.createElement('button');
-  button.textContent = 'Reset default values';
-  button.addEventListener('click', () => {
+  const save = document.createElement('button');
+  save.textContent = 'Save changes';
+  save.addEventListener('click', () => {
+    toast('All changes saved');
+    setTimeout(() => window.location.reload(), 1000);
+  });
+  
+  const reset = document.createElement('button');
+  reset.textContent = 'Reset default values';
+  reset.addEventListener('click', () => {
     chrome.storage.local.clear();
     set(defaultStores);
     toast('Resetting default values');
     setTimeout(() => window.location.reload(), 1000);
   });
-  document.getElementById('buttons').append(button);
+  document.getElementById('buttons').append(save);
+  document.getElementById('buttons').append(reset);
 };
 undefined;
