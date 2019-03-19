@@ -415,6 +415,9 @@ var util = (function utilityModule() {
       return '';
     }
     const domain = url.match(/\/\/([^\/]*)/);
+    if (!domain) {
+      return '';
+    }
     return domain[1];
   }
   atest.group('getDomain', {
@@ -474,7 +477,7 @@ var util = (function utilityModule() {
     func,
     retries = DEFAULT_RETRIES,
     delay = DEFAULT_DELAY,
-    supressError
+    suppressError
   ) {
     let attempts = 0;
     async function retrying(...params) {
@@ -674,6 +677,7 @@ var user = (function userDataModule() {
         });
       }
       populateCacheFromChromeStorage();
+      document.addEventListener('cache', populateCacheFromChromeStorage);
       
       async function destroyStore(storeName) {
         if (!storeCache.hasOwnProperty(storeName)) {
@@ -1030,6 +1034,10 @@ var user = (function userDataModule() {
    * @return {string}
    */
   function timestamp(d = new Date()) {
+    if (!(d instanceof Date)) {
+      console.debug('Date', d);
+      d = new Date();
+    }
     /** Cast numbers into a zero prefixed two digit string format */
     const c = new Date();
     const cast = (/** number */n) /** string */ => ('0' + n).slice(-2);
@@ -1383,7 +1391,8 @@ var user = (function userDataModule() {
         });
       }
       return logBook.map(entry => {
-        const [time, type, payload] = entry;
+        const [timestamp, type, payload] = entry;
+        const time = new Date(timestamp || 0);
         return {time, type, payload};
       });
     }
@@ -1476,7 +1485,7 @@ var user = (function userDataModule() {
         if (save) {
           storeAccess({
             feature: LOGBOOK_STORE_NAME,
-            add: [new Date(), type, payload],
+            add: [new Date().toString(), type, payload],
           });
         }
         if (toast) {
@@ -1553,18 +1562,16 @@ var eventReactions = (function eventListenersModule() {
   const PREVENT_DEFAULT_ON = Object.freeze([
     'Backquote',
     'Backslash',
-    'BracketRight',
-    'BracketLeft',
     'NumpadAdd',
     'NumpadSubtract',
     'NumpadMultiply',
     'NumpadAdd',
     'CtrlEnter',
+    'CtrlAltEnter',
     'CtrlNumpadEnter',
-    'CtrlR',
-    'CtrlSlash',
     'AltArrowLeft',
     'AltArrowRight',
+    'CtrlAltEqual',
   ]);
 
   /**
@@ -1945,8 +1952,10 @@ var eventReactions = (function eventListenersModule() {
   }
 
   function maybePreventDefault(event) {
-    if (PREVENT_DEFAULT_ON.includes(eventToString(event))) {
+    const string = eventToString(event);
+    if (PREVENT_DEFAULT_ON.includes(string)) {
       event.preventDefault();
+    } else if (event.code) {
     }
   }
 
@@ -2093,7 +2102,7 @@ var {ー, ref} = (function domAccessModule() {
   function safeSetter(htmlElement, name, newValue) {
     const currentValue = htmlElement.value;
     if (currentValue === newValue) {
-      user.log.low(`No change to ${name}.`, {print: false});
+      user.log.low(`No change to ${name}.`, {print: false, toast: false});
       return;
     }
     if(!EDITABLE_ELEMENT_TYPES.includes(htmlElement.type)) {
@@ -2524,7 +2533,7 @@ var {ー, ref} = (function domAccessModule() {
    */
 
   const BASE_ID = 'tto';
-  const BOOM_RADIUS = 60;
+  const BOOM_RADIUS = 80;
   const TOAST_MAX_LENGTH = 30;
   const GUI_TEXT_MAX_LENGTH = 150;
 
@@ -2553,7 +2562,6 @@ var {ー, ref} = (function domAccessModule() {
     document.addEventListener('guiUpdate', ({detail}) => {
       detail.toast && toast(detail.toast);
       setState(detail);
-      update();
     }, {passive: true});
   })();
 
@@ -2579,10 +2587,10 @@ var {ー, ref} = (function domAccessModule() {
       `.${BASE_ID}container .high { color: #dd4b39 }`,
       `.${BASE_ID}container .medium { color: #4b0082 }`,
       `.${BASE_ID}container .low { color: #3a3a3a }`,
-      `.${BASE_ID}boom { background-color: black }`,
       `.${BASE_ID}boom { border-radius: 50% }`,
-      `.${BASE_ID}boom { opacity: 0.02 }`,
+      `.${BASE_ID}boom { opacity: 0.15 }`,
       `.${BASE_ID}boom { padding: ${BOOM_RADIUS}px }`,
+      `.${BASE_ID}boom { pointer-events: none }`,
       `.${BASE_ID}boom { position: absolute }`,
       `.${BASE_ID}boom { z-index: 1999 }`,
       `.lpButton { opacity: 0.2 }`,
@@ -2634,10 +2642,15 @@ var {ー, ref} = (function domAccessModule() {
     return {div, setContent};
   })();
 
-  async function boom({proxy}) {
+  async function boom({proxy, issueLevel}) {
     if (!proxy || !proxy.getCoords) {
       return;
     }
+    const colors = {
+      high: '#dd4b39',
+      medium: '#4b0082',
+      low: '#3a3a3a',
+    };
     const coords = proxy.getCoords();
     const top =
         (coords.top || 100) + (coords.height / 2) - BOOM_RADIUS;
@@ -2648,9 +2661,8 @@ var {ー, ref} = (function domAccessModule() {
     div.style.top = top + 'px';
     div.style.left = left + 'px';
     document.body.append(div);
-    await util.wait(50);
-    div.style.backgroundColor = '#dd4b39';
-    await util.wait(300);
+    div.style.backgroundColor = colors[issueLevel] || colors.high;
+    await util.wait(100);
     document.body.removeChild(div);
   }
 
@@ -2668,11 +2680,15 @@ var {ー, ref} = (function domAccessModule() {
     p('counter', x.join(' | '));
     for (let issue of guiState.issues) {
       p(issue.issueLevel, issue.message, issue.issueType);
-      util.beep();
+      if (user.config.get('play beeps on error')) {
+        util.beep();
+      }
       boom(issue);
     }
     container.setContent(html.join('\n'));
   }
+  
+  setInterval(update, 750);
 })();
 
 
