@@ -19,14 +19,19 @@ var environment = (function environmentModule() {
       select: 'button',
       pick: [0],
     })[0];
-    // const header = ー({
-    //   name: 'Header',
-    //   select: 'h1',
-    //   pick: [0],
-    // })[0];
-    const header = document.querySelector('h1');
+    const header = ー({
+      name: 'Header',
+      select: 'h1',
+      pick: [0],
+    })[0];
+    const title = ー({
+      name: 'Title',
+      select: '.taskTitle',
+      pick: [0],
+    })[0];
     const buttonText = firstButton && firstButton.textContent;
     const headerText = header && header.textContent;
+    const titleText = title && title.textContent;
     if (/Acquire/.test(buttonText)) {
       return 'home';
     }
@@ -39,11 +44,17 @@ var environment = (function environmentModule() {
     if (/Snippets/.test(headerText)) {
       return 'ss'
     }
+    if (/Curated Creatives/.test(titleText)) {
+      return 'as'
+    }
     if (/twentyone/.test(headerText)) {
       return 'sl';
     }
     if (/#activeevals\/subpage=labels/.test(document.location.href)) {
       return 'labels';
+    }
+    if (headerText || titleText) {
+      return 'unsupported';
     }
     return '';
   }
@@ -549,13 +560,6 @@ var shared = (function workflowMethodsModule() {
       `'${value}' from '${pastedValue}'`
     );
   }
-  // test.group('fallThrough', () => {
-  //   const a = {value: 'a'};
-  //   const b = {value: 'b'};
-  //   fallThrough(1, 0, [a, b]);
-  //   test.ok(a.value === 'Moved', 'a.value = Moved');
-  //   test.ok(b.value === 'a', 'b.value = a');
-  // }, true);
   fallThrough = util.delay(fallThrough, 0);
 
   /**
@@ -573,6 +577,7 @@ var shared = (function workflowMethodsModule() {
    */
   const is = (function isModule() {
     function analystTask() {
+      // @todo Should use ref.taskTitle[0]
       const title = document.querySelector('.taskTitle');
       if (!title) {
         return false;
@@ -691,11 +696,12 @@ var shared = (function workflowMethodsModule() {
    * @param {Object[]} group - Array of proxies to check for duplicate values.
    */
   function noDuplicateValues(_, __, group) {
+    const clean = (value) => value.replace(/\/#?\??$/, '');
     const values = [];
     const dupes = [];
     const packets = [];
     for (let proxy of group) {
-      const value = proxy.value;
+      const value = clean(proxy.value);
       if (values.includes(value)) {
         dupes.push(value);
       }
@@ -704,7 +710,7 @@ var shared = (function workflowMethodsModule() {
       }
     }
     for (let proxy of group) {
-      const value = proxy.value;
+      const value = clean(proxy.value);
       let packet = {proxy, issueType: 'Dupes'};
       if (dupes.includes(value)) {
         packet.issueLevel = 'high';
@@ -851,7 +857,7 @@ var shared = (function workflowMethodsModule() {
    * locations of the buttons in the DOM.
    */
   async function skipTask() {
-    const RETRIES = 20;
+    const RETRIES = 50;
     const DELAY = 25; // ms
 
     const confirmButtonSelector = {
@@ -979,25 +985,36 @@ var shared = (function workflowMethodsModule() {
     async function open() {
       const invalidScreenshot = ref.invalidScreenshot || [];
       const openInTabs = ref.openInTabs || [];
+      const lp = openInTabs.slice(-1);
+      const tabs = openInTabs.slice(0, -1);
       const screenshots = ref.screenshots || [];
-      const mostLinks = [...openInTabs, ...screenshots];
-      const finalUrl = ref.finalUrl || [];
-      await util.wait(100);
-      const allLinks = (user.config.get('includeFinalUrl'))
-          ? [...invalidScreenshot, ...mostLinks]
-          : [...invalidScreenshot, ...mostLinks, ...finalUrl];
-      const urls = allLinks
-          .map(el => el.value)
-          .filter(val => /^http/.test(val));
-      const uniqueLinks = [...new Set(urls)];
-      
-      const commentLinks = ref.analystComment[0].textContent.match(/http\S*/);
-      console.debug('links', ref.analystComment[0].textContent, commentLinks);
-      for (let link of [...(commentLinks || [])]) {
-        uniqueLinks.push(link);
+      if (ref.analystComment && ref.analystComment[0]) {
+        const commentLinks =
+            ref.analystComment[0]
+            .textContent.match(/http[^\s,]*/g);
+        if (commentLinks) {
+          const commentObjects = commentLinks.map(link => ({value: link}));
+          screenshots.push(...commentObjects);
+        }
       }
+      const originalLp = ref.finalUrl || [];
+      await util.wait(100);
+      const allLinks = [
+        ...invalidScreenshot,
+        ...tabs,
+        ...screenshots,
+        ...lp,
+        ...originalLp,
+      ].map(el => el.value).filter(value => /^http/.test(value));
+      const uniqueLinks = [...new Set(allLinks)];
+
       for (let link of uniqueLinks) {
-        openTabs.push(window.open(link, link));
+        const preface = 'https://www.google.com/evaluation/ads/beta/'
+            + 'rating/gwt/../redirect?a=true&q=';
+        const googleLink = user.config.get('use google links')
+            ? preface + encodeURIComponent(link)
+            : link;
+        openTabs.push(window.open(googleLink, link));
       }
       if (openTabs.length !== uniqueLinks.length) {
         user.log.warn(
@@ -1071,6 +1088,12 @@ var shared = (function workflowMethodsModule() {
       when: testLength({max: 25}),
     }),
 
+    noMoreThan12Chars: issueUpdate({
+      issueLevel: 'high',
+      issueType: 'More than 12 characters long',
+      when: testLength({max: 12}),
+    }),
+
     removeDashes: changeValue({
       to: '',
       when: testRegex(/---/),
@@ -1079,7 +1102,7 @@ var shared = (function workflowMethodsModule() {
 
     requireUrl: changeValue({
       to: '',
-      when: testRegex(/^https?:\/\/[^\s:]+$/),
+      when: testRegex(/^https?:\/\/[^\s]+$/),
       is: false,
     }),
 
@@ -1141,7 +1164,7 @@ var flows = (function workflowModule() {
       async function clickAcquire() {
         util.attention(ref.firstButton, 0, 'click');
         try {
-          await util.retry(clickContinue, 20, 100)();
+          await util.retry(clickContinue, 50, 150)();
         } catch (e) {
           user.log.warn('Continue button did not appear.', {print: false});
         }
@@ -1195,7 +1218,7 @@ var flows = (function workflowModule() {
       };
       
       const printLogIds = () => {
-        const entries = user.log.raw({contains: 'Submit'})
+        const entries = user.log.raw({items: 2000, contains: 'Submitting'});
         console.log(JSON.stringify(entries));
       };
 
@@ -1292,6 +1315,7 @@ var flows = (function workflowModule() {
       async approve() {
         util.attention(ref.approvalButtons, 0, 'click');
         completeScreenshots();
+        util.attention(ref.finalCommentBox, 0, 'focus');
         shared.tabs.close();
         if (!(ref.submitButton[0].disabled)) {
           shared.comment.addInitials();
@@ -1333,7 +1357,7 @@ var flows = (function workflowModule() {
     }
 
     const approve = () => stageIs('start') && toStage('approve');
-    const submit = () => stageIs('start', 'approve') && toStage('submit');
+    const submit = () => stageIs('approve') && toStage('submit');
     const start = () => stageIs('approve') && toStage('start');
 
     function focusItem(n) {
@@ -1575,6 +1599,7 @@ var flows = (function workflowModule() {
     }
 
     function moveFocusToText(_, idx) {
+      util.attention(ref.editButton, 0, 'click');
       util.attention(ref.textAreas, idx, 'focus');
     }
 
@@ -1645,6 +1670,13 @@ var flows = (function workflowModule() {
               remain: [0, 6, 13, 20, 27],
             };
 
+      const maybeNoMoreThan12Chars = (proxy) => {
+        if (!user.config.get('12 character limit')) {
+          return;
+        }
+        shared.noMoreThan12Chars(proxy);
+      }
+
       ー({
         name: 'Text',
         rootSelect: '#extraction-editing',
@@ -1661,6 +1693,7 @@ var flows = (function workflowModule() {
         onInteract: [
           shared.checkCapitals,
           shared.noMoreThan25Chars,
+          maybeNoMoreThan12Chars,
           shared.noDuplicateValues,
           shared.noDuplicateVerbs,
           shared.noForbiddenPhrase,
@@ -1674,6 +1707,7 @@ var flows = (function workflowModule() {
           shared.trim,
           shared.checkCapitals,
           shared.noMoreThan25Chars,
+          maybeNoMoreThan12Chars,
           shared.noDuplicateValues,
           shared.noDuplicateVerbs,
           shared.noForbiddenPhrase,
@@ -1790,6 +1824,10 @@ var flows = (function workflowModule() {
           shared.noDomainMismatch,
           shared.noDuplicateValues,
         ],
+        onLoad: [
+          shared.noDomainMismatch,
+          shared.noDuplicateValues,
+        ],
         onPaste: [
           shared.noDomainMismatch,
           shared.noDuplicateValues,
@@ -1850,6 +1888,7 @@ var flows = (function workflowModule() {
           select: 'div, textarea',
           pick: [2, 3],
           onChange: shared.updateCharacterCount,
+          onFocusin: shared.updateCharacterCount,
           onKeydown: shared.updateCharacterCount,
           onLoad: shared.updateCharacterCount,
         });
@@ -1929,12 +1968,32 @@ var flows = (function workflowModule() {
         onKeydown_CtrlAltArrowRight: () => focusItem(1),
         ref: 'canOrCannotExtractButtons',
       });
+      
+      ー({
+        name: 'Visit LP',
+        select: '.lpButton button',
+        pick: [0],
+        css: {
+          opacity: 1,
+          cursor: 'pointer',
+        },
+      });
+      
+      function manualSubmitWarning() {
+        alert('Please use the Submit Hotkey instead of clicking manually.')
+      };
+      manualSubmitWarning = util.debounce(manualSubmitWarning, 4000);
 
       ー({
         name: 'SubmitButton',
         select: '.submitTaskButton',
         pick: [0],
-        css: {opacity: 0.2},
+        css: {
+          backgroundColor: '#643495',
+          cursor: 'not-allowed',
+          opacity: 0.5,
+        },
+        onFocusin: manualSubmitWarning,
         ref: 'submitButton',
       });
 
@@ -1998,28 +2057,12 @@ var flows = (function workflowModule() {
       };
       
       const experimentalEscapeApprove = () => {
-        console.debug('experimental escape approve');
         if (user.config.get('use escape-key to approve')) {
           approve();
         }
       };
       
-      const experimentalBackslashApprove = () => {
-        console.debug('experimental backslash approve');
-        if (user.config.get('use backslash to approve')) {
-          approve();
-        }
-      };
-      
-      const experimentalEqualApprove = () => {
-        console.debug('experimental =-key to approve');
-        if (user.config.get('use =-key to approve')) {
-          approve();
-        }
-      };
-      
       const experimentalSubmit = () => {
-        console.debug('experimental submit');
         if (user.config.get('use escape-key to approve')) {
           submit();
         }
@@ -2028,9 +2071,8 @@ var flows = (function workflowModule() {
       const nordicLayout = {
         onKeydown_CtrlAltBracketLeft: shared.resetCounter,
         onKeydown_CtrlAltBracketRight: shared.skipTask,
-        onKeydown_Backslash: experimentalBackslashApprove,
+        onKeydown_Backslash: approve,
         onKeydown_Escape: experimentalEscapeApprove,
-        onKeydown_CtrlAltEqual: experimentalEqualApprove,
       };
       
       const submitKeys = {
@@ -2041,6 +2083,7 @@ var flows = (function workflowModule() {
       };
       
       const logIds = () => {
+        console.log('Entries');
         const entries = user.log.raw({type: 'notice', items: 100});
         console.log(JSON.stringify(entries));
       };
@@ -2055,14 +2098,79 @@ var flows = (function workflowModule() {
         onKeydown_CtrlShiftDelete: deleteAllItems,
         
         onKeydown_CtrlBackquote: main,
-        onKeydown_CtrlAltP: () => logIds,
+        onKeydown_CtrlAltP: logIds,
         ...statusReactions,
         ...nordicLayout,
         ...submitKeys,
-        // onKeydown_CtrlAltS: shared.extraction.saveCurrent,
       });
     }
 
+    return {init};
+  })();
+  
+  const as = (function asModule() {
+    function init() {
+      creativeValidation();
+      /*
+       * @todo Add Approve/Submit Hotkey.
+       * @todo Add Hotkeys mapping to 'issues'.
+       * @todo Add support for the 3 other sub-flows.
+       */
+    }
+    
+    function creativeValidation() {
+      ー({
+        name: 'Visit LP',
+        select: '.lpButton button',
+        pick: [0],
+        ref: 'visitLPButton',
+      });
+      
+      ー({
+        name: 'Provided Creatives',
+        select: '#provided-creatives',
+        pick: [0],
+        ref: 'creatives',
+      });
+      
+      function start() {
+        util.attention(ref.visitLPButton, 0, 'click');
+        util.attention(ref.creatives, 0, 'scrollIntoView');
+      }
+      
+      function approve() {
+        console.log('approve');
+      }
+      
+      function submit() {
+        console.log('submit');
+      }
+      
+      eventReactions.setGlobal({
+        onKeydown_Backquote: start,
+        onKeydown_Backslash: approve,
+        onKeydown_CtrlEnter: submit,
+      });
+    }
+    return {init};
+  })();
+  
+  const unsupported = (function unsupportedModule() {
+    function init() {
+      shared.guiUpdate('Unsupported flow');
+
+      (function addStylesheet () {
+        const style = document.createElement('style');
+        document.head.append(style);
+        const addRule = (p) => style.sheet.insertRule(p, 0);
+        const rules = [
+          `.lpButton button { opacity: 1 }`,
+          `.lpButton button { cursor: pointer }`,
+          `.submitTaskButton { opacity: 1 }`,
+        ];
+        rules.forEach(addRule);
+      })();
+    }
     return {init};
   })();
 
@@ -2070,6 +2178,8 @@ var flows = (function workflowModule() {
     home,
     labels,
     sl,
+    as,
+    unsupported,
   };
 })();
 
@@ -2082,16 +2192,14 @@ var flows = (function workflowModule() {
 // APP module
 
 function main() {
+  util.dispatch('issueUpdate', {issueType: 'reset'});
+  eventReactions.reset();
+  
   const detectedFlowName = environment.flowName();
   if (!detectedFlowName) {
     shared.guiUpdate('No flow');
-    util.dispatch('issueUpdate', {issueType: 'reset'});
-    eventReactions.reset();
     return false;
   }
-
-  util.dispatch('issueUpdate', {issueType: 'reset'});
-  eventReactions.reset();
 
   ー({
     name: 'Links',
@@ -2108,7 +2216,7 @@ function main() {
 
 (async function() {
   try {
-    await util.retry(main, 30, 250)();
+    await util.retry(main, 60, 300)();
   } catch (e) {
     const warning = 'No workflow identified';
     shared.guiUpdate(warning);
