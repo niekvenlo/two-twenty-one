@@ -176,7 +176,7 @@ var util = (function utilityModule() {
     );
     audioFile.play();
   }
-  beep = debounce(beep, 1000);
+  beep = debounce(beep, 4000);
 
   /**
    * Call several functions with a single function call.
@@ -679,6 +679,8 @@ var user = (function userDataModule() {
       populateCacheFromChromeStorage();
       document.addEventListener('cache', populateCacheFromChromeStorage);
       
+      const warnToRefresh = util.debounce(() => alert(`TwoTwenty has updated. Please refresh EWOQ.`), 5000);
+      
       async function destroyStore(storeName) {
         if (!storeCache.hasOwnProperty(storeName)) {
           throw new TypeError('Cannot find store to destroy');
@@ -703,8 +705,10 @@ var user = (function userDataModule() {
         try {
           await chrome.storage.local.set({[storeName]: data});
         } catch (e) {
-          if (/Invocation of form/.test(e.message)) {
+          if (e.message.includes('/Invocation of form')) {
             console.debug('Expected Error: Invocation of form', e);
+          } else if (e.message.includes(`Cannot read property 'local'`)) {
+            warnToRefresh();
           } else {
             console.debug('Weird Error', e);
           }
@@ -1085,79 +1089,44 @@ var user = (function userDataModule() {
    * #get(name) returns a value if a config setting is loaded, or undefined.
    * #set(name, newValue, save) adds a value to the config options in memory
    * and optionally updates the config options stored in localStorage.
-   * #save(name, newValue) adds a value to the config object and saves to
-   * localStorage.
-   * #raw() returns the config object in memory and exists mostly for
-   * debugging.
    */
   const config = (function configMiniModule() {
-    const tempSettings = {};
-    /**
-     * @param {string} name - The name of the configuration option to find.
-     * @return {(Object|string|number)} The associated value, or undefined if
-     * none is found.
-     */
+    function getStore() {
+      return storeAccess({
+        feature: CONFIG_STORE_NAME,
+      });
+    }
+
     function get(name) {
-      if (tempSettings.hasOwnProperty(name)) {
-        return tempSettings[name]
+      const allSettings = getStore();
+
+      // @todo Remove
+      if (!Array.isArray(allSettings)) {
+        return allSettings && allSettings[name];
       }
-      const storedSetting = storeAccess({
+      //
+
+      const setting = allSettings.find((setting) => setting.name === name);
+      if (!setting) {
+        return;
+      }
+      return setting.value;
+    }
+
+    function set(name, newValue) {
+      const allSettings = getStore();
+      const currentSetting = get(name);
+      const idx = allSettings.findIndex((setting) => setting.name === name);
+      currentSetting.value = newValue;
+      allSettings[idx] = currentSetting;
+      storeAccess({
         feature: CONFIG_STORE_NAME,
-        get: name,
+        data: allSettings,
       });
-      if (storedSetting) {
-        return storedSetting;
-      }
-      if (DEFAULT_SETTINGS.hasOwnProperty(name)) {
-        return DEFAULT_SETTINGS[name]
-      }
-    }
-
-    /**
-     * @param {string} name - The name of the configuration option to set.
-     * @param {(Object|string|number)} newValue
-     * @param {boolean} save - Should the value be saved to localstorage?
-     */
-    function set(name, newValue, save = false) {
-      const term = (save) ? 'permanently' : 'temporarily';
-      user.log.config(
-        `${name} ${term} changed to '${newValue}'`,
-      );
-      tempSettings[name] = newValue;
-      if (save) {
-        storeAccess({
-          feature: CONFIG_STORE_NAME,
-          set: {[name]: newValue},
-        });
-      }
-    }
-
-    /**
-     * Convenience function. As #set but automatically saves.
-     *
-     * @param {string} name - The name of the configuration option to set.
-     * @param {(Object|string|number)} newValue
-     */
-    function save(name, newValue) {
-      set(name, newValue, true);
-    }
-
-    /**
-     * Return the raw config object. Exists mainly for debugging purposes.
-     *
-     * @return {Object} All settings.
-     */
-    function raw() {
-      const stored = storeAccess({
-        feature: CONFIG_STORE_NAME,
-      });
-      return {...DEFAULT_SETTINGS, ...stored};
     }
     return {
       get,
       set,
-      save,
-      raw,
     };
   })();
 
@@ -2533,7 +2502,13 @@ var {ー, ref} = (function domAccessModule() {
    */
 
   const BASE_ID = 'tto';
-  const BOOM_RADIUS = 80;
+  const BUBBLE_RADIUS = 80;
+  const BUBBLE_TIME = 750;
+  const BUBBLE_COLORS = {
+    high: '#dd4b39',
+    medium: '#4b0082',
+    low: '#575777',
+  };
   const TOAST_MAX_LENGTH = 30;
   const GUI_TEXT_MAX_LENGTH = 150;
 
@@ -2574,9 +2549,9 @@ var {ー, ref} = (function domAccessModule() {
       `.${BASE_ID}container { font-size: 1.5em }`,
       `.${BASE_ID}container { opacity: 0.8 }`,
       `.${BASE_ID}container { overflow: hidden }`,
-      `.${BASE_ID}container { position: fixed }`,
       `.${BASE_ID}container { pointer-events: none }`,
       `.${BASE_ID}container { padding: 10px }`,
+      `.${BASE_ID}container { position: absolute }`,
       `.${BASE_ID}container { right: 3px }`,
       `.${BASE_ID}container { top: 30px }`,
       `.${BASE_ID}container { width: 20em }`,
@@ -2586,15 +2561,14 @@ var {ー, ref} = (function domAccessModule() {
       `.${BASE_ID}container em { font-style: normal }`,
       `.${BASE_ID}container .high { color: #dd4b39 }`,
       `.${BASE_ID}container .medium { color: #4b0082 }`,
-      `.${BASE_ID}container .low { color: #3a3a3a }`,
-      `.${BASE_ID}boom { border-radius: 50% }`,
-      `.${BASE_ID}boom { opacity: 0.15 }`,
-      `.${BASE_ID}boom { padding: ${BOOM_RADIUS}px }`,
-      `.${BASE_ID}boom { pointer-events: none }`,
-      `.${BASE_ID}boom { position: absolute }`,
-      `.${BASE_ID}boom { z-index: 1999 }`,
-      `.lpButton { opacity: 0.2 }`,
-      `.submitTaskButton { opacity: 0 }`
+      `.${BASE_ID}container .low { color: #000077 }`,
+      `.${BASE_ID}bubble { border-radius: 50% }`,
+      `.${BASE_ID}bubble { opacity: 0.25 }`,
+      `.${BASE_ID}bubble { pointer-events: none }`,
+      `.${BASE_ID}bubble { z-index: 1999 }`,
+      `.lpButton button { opacity: 0 }`,
+      `.lpButton button { cursor: not-allowed }`,
+      `.submitTaskButton { opacity: 0 }`,
     ];
     rules.forEach(addRule);
   })();
@@ -2642,27 +2616,24 @@ var {ー, ref} = (function domAccessModule() {
     return {div, setContent};
   })();
 
-  async function boom({proxy, issueLevel}) {
+  async function bubble({proxy, issueLevel}) {
     if (!proxy || !proxy.getCoords) {
       return;
     }
-    const colors = {
-      high: '#dd4b39',
-      medium: '#4b0082',
-      low: '#3a3a3a',
-    };
     const coords = proxy.getCoords();
-    const top =
-        (coords.top || 100) + (coords.height / 2) - BOOM_RADIUS;
-    const left =
-        (coords.left || 100) + (coords.width / 2) - BOOM_RADIUS;
+    const keepOnScreen = (x, max) => Math.min(Math.max(-BUBBLE_RADIUS * 0.6, x), max - BUBBLE_RADIUS);
+    const boo = (top, offset) => (top || 200) + (offset / 2) - BUBBLE_RADIUS;
+    const top = keepOnScreen(boo(coords.top, coords.height), window.innerHeight);
+    const left = keepOnScreen(boo(coords.left, coords.width), window.innerWidth);
     const div = document.createElement('div');
-    div.classList = BASE_ID + 'boom';
+    div.classList = BASE_ID + 'bubble';
     div.style.top = top + 'px';
     div.style.left = left + 'px';
+    div.style.padding = BUBBLE_RADIUS + 'px';
+    div.style.position = 'fixed';
     document.body.append(div);
-    div.style.backgroundColor = colors[issueLevel] || colors.high;
-    await util.wait(100);
+    div.style.backgroundColor = BUBBLE_COLORS[issueLevel] || BUBBLE_COLORS.high;
+    await util.wait(BUBBLE_TIME * 0.65);
     document.body.removeChild(div);
   }
 
@@ -2680,15 +2651,15 @@ var {ー, ref} = (function domAccessModule() {
     p('counter', x.join(' | '));
     for (let issue of guiState.issues) {
       p(issue.issueLevel, issue.message, issue.issueType);
-      if (user.config.get('play beeps on error')) {
+      if (user.config.get('play beeps on error') && issue.issueLevel !== 'low') {
         util.beep();
       }
-      boom(issue);
+      bubble(issue);
     }
     container.setContent(html.join('\n'));
   }
   
-  setInterval(update, 750);
+  setInterval(update, BUBBLE_TIME);
 })();
 
 
@@ -2696,3 +2667,52 @@ var {ー, ref} = (function domAccessModule() {
 
 ////////////////////////////////////////////////////////////////////////////////
 undefined;
+
+
+
+
+// @todo Remove this. Porting data
+chrome.storage.local.get(null, (stores) => {
+  // Porting settings to new format.
+
+  if (!Array.isArray(stores['Configuration'])) {
+    const defaults = [
+      {
+        name: 'initials',
+        value: user.config.get('initials'),
+        description: 'Your initials will be automatically added to the comment box.',
+      },
+      {
+        name: 'play beeps on error',
+        value: !!user.config.get('play beeps on error'),
+        description: '',
+      },
+      {
+        name: 'use escape-key to approve',
+        value: !!user.config.get('use escape-key to approve'),
+        description: 'Use the Escape key as a Hotkey to Approve tasks.',
+      },
+      {
+        name: '12 character limit',
+        value: false,
+        description: 'For the Japanese team, the character limit should be 12 characters.',
+      },
+      {
+        name: 'use google links',
+        value: false,
+        description: 'Experimental: Use the Google internal redirection system.',
+      },
+    ];
+    console.debug(defaults);
+    chrome.storage.local.set({'Configuration': defaults}, (stores) => {
+      if (!Array.isArray(stores['Configuration'])) {
+        alert(
+          `TwoTwenty was updated. Please do the following:
+          1) Load the TwoTwenty options page.
+          2) Click Reset default values.
+          3) Add your initials back.`
+        );
+      }
+    });
+  }
+});
