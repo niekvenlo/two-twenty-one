@@ -43,8 +43,20 @@ var ForbiddenPhrases = JSON.parse(String.raw`[
 
 var ForbiddenPhrasesSwedish = JSON.parse(String.raw`[
   [
-    "/[,.]/",
-    "Commas and periods are not allowed"
+    "/accessaorer/",
+    "Use 'accessoarer'"
+  ],
+  [
+    "/konstertbiljetter/",
+    "Use 'konsertbiljetter'"
+  ],
+  [
+    "/fotölj/",
+    "Use 'fåtölj'"
+  ],
+  [
+    "/underhålning/",
+    "Use 'underhållning'"
   ]
 ]`);
 
@@ -325,8 +337,8 @@ var ForbiddenPhrasesDutch = JSON.parse(String.raw`[
     "Use lowercase"
   ],
   [
-    "/\\bUSB\\b/",
-    "Use lowercase"
+    "/\\busb\\b/",
+    "Use uppercase"
   ],
   [
     "/Woocommerce/"
@@ -340,7 +352,7 @@ var ForbiddenPhrasesDutch = JSON.parse(String.raw`[
     "Capitalise"
   ],
   [
-    "/.Lease/",
+    "/\\bLease\\b/",
     "Don't use a capital on 'lease'"
   ],
   [
@@ -589,20 +601,20 @@ var ForbiddenPhrasesDutch = JSON.parse(String.raw`[
     "Use 'prijslijst'"
   ],
   [
-    "/menus/i",
-    "Use 'menu's'"
-  ],
-  [
-    "/paginas\\b/i",
-    "Use 'pagina's'"
-  ],
-  [
     "/opleidinging/i",
     "Use 'opleiding'"
   ],
   [
     "/2de hands/i",
     "Use 'Tweedehands'"
+  ],
+  [
+    "/accugereedschap/i",
+    "Add a space"
+  ],
+  [
+    "/jaloezieen/i",
+    "Use 'jaloezieën'"
   ]
 ]`);
 
@@ -936,6 +948,18 @@ var CommonReplacementsDutch = JSON.parse(String.raw`[
     "auto's"
   ],
   [
+    "/menus/i",
+    "menu's"
+  ],
+  [
+    "/paginas\\b/i",
+    "pagina's"
+  ],
+  [
+    "/programmas\\b/i",
+    "programma's"
+  ],
+  [
     "/\\bvacuum/i",
     "vacuüm"
   ],
@@ -1195,121 +1219,7 @@ window.onload = function() {
       chrome.storage.local.set({[store]: stores[store]});
     }
   }
-  
-  /**
-   * Make a single editor for a data store.
-   *
-   * @param {string} name
-   * @param {Object} data
-   */
-  function makeEditor(name, data) {
-    if (typeof data !== 'object') {
-      throw new Error(
-        `Data for ${name} should be an object, not ${typeof data}`
-      );
-    }
-    
-    /**
-     * On blur, if the textarea value is valid JSON, save the new data.
-     * Otherwise, move the focus to the point at which the parse failed.
-     */
-    const handleBlur = () => {
-      try {
-        const obj = JSON.parse(textarea.value);
-        toast('Saving new data for ' + name);
-        set({[name]: obj});
-  
-      } catch (e) {
-        if (!(e instanceof SyntaxError)) {
-          throw e;
-        }
-        const errorAt = e.message.match(/\d*$/)[0];
-        toast(`Invalid formatting (@${errorAt})`)
-        textarea.focus();
-        textarea.selectionStart = errorAt;
-        textarea.selectionEnd = errorAt;
-      }
-    }
-  
-    const contain = document.createElement('div');
-    const title = document.createElement('div');
-    title.className = 'title';
-    title.textContent = name;
-    const textarea = document.createElement('textarea');
-    textarea.spellcheck = false;
-    textarea.value = prettifyJSON(JSON.stringify(data));
-    textarea.addEventListener('blur', handleBlur);
-    contain.appendChild(title);
-    contain.appendChild(textarea);
-    document.getElementById('main').append(contain);
-  }
-  
-  function makeEditorMk2(name, data) {
-    if (typeof data !== 'object') {
-      throw new Error(
-        `Data for ${name} should be an object, not ${typeof data}`
-      );
-    }
-    const contain = document.createElement('div');
-    const title = document.createElement('div');
-    title.className = 'title';
-    title.textContent = name;
-    const fields = document.createElement('div');
-    fields.className = 'fields';
-    fields.style.display = 'grid';
-    fields.style.gridTemplateColumns = '1fr 3fr';
-    contain.appendChild(title);
-    contain.appendChild(fields);
-    if (!Array.isArray(data)) {
-      for (let field in data) {
-        const f = document.createElement('div');
-        f.innerText = field;
-        const v = document.createElement('input');
-        v.spellcheck = false;
-        v.addEventListener('blur', ({target}) => {
-          if (data[field] === target.value) {
-            return;
-          }
-          data[field] = target.value;
-          set({[name]: data});
-          toast(`Change saved (${field}: ${data[field]})`);
-        });
-        v.type = 'text';
-        v.value = data[field];
-        fields.appendChild(f);
-        fields.appendChild(v);
-      }
-    } else {
-      for (let field in data) {
-        const e = document.createElement('input');
-        e.spellcheck = false;
-        e.value = data[field][0];
-        e.addEventListener('blur', ({target}) => {
-          if (data[field][0] === target.value) {
-            return;
-          }
-          data[field][0] = target.value;
-          set({[name]: data});
-          toast(`Change saved (${field}: ${data[field]})`);
-        });
-        fields.appendChild(e);
-        const d = document.createElement('input');
-        e.spellcheck = false;
-        d.value = data[field][1] || '';
-        d.addEventListener('blur', ({target}) => {
-          if (data[field][1] === target.value) {
-            return;
-          }
-          data[field][1] = target.value;
-          set({[name]: data});
-          toast(`Change saved (${field}: ${data[field]})`);
-        });
-        fields.appendChild(d);
-      }
-    }
-    document.getElementById('main').append(contain);
-  }
-  
+
   var create = (type, params, style) => {
     const el = document.createElement(type);
     for (let param in params) {
@@ -1321,169 +1231,77 @@ window.onload = function() {
     return el;
   }
   
-  function makeEditorMk3(name, data) {
-    if (typeof data !== 'object') {
-      throw new Error(
-        `Data for ${name} should be an object, not ${typeof data}`
-      );
-    }
+  function makeConfigEditor(array) {
     const contain = create('div');
-    const title = create('div', {className: 'title', textContent: name})
+    const title = create('div', {className: 'title', textContent: 'Configuration'})
     const fields = create('div', {className: 'fields'}, {
       display: 'grid',
       gridTemplateColumns: '1fr 1fr',
     });
     contain.appendChild(title);
     contain.appendChild(fields);
-    if (!Array.isArray(data)) {
-      for (let field in data) {
-        const key = create('div', {
-          innerText: field,
-        });
-        const value = (typeof data[field] === 'boolean')
-            ? create('input', {
-              spellcheck: false,
-              type: 'checkbox',
-              checked: data[field],
-            })
-            : create('input', {
-              spellcheck: false,
-              type: 'text',
-              value: data[field],
-            });
-        value.addEventListener('change', ({target}) => {
-          if (data[field] === target.value) {
-            return;
-          }
-          if (target.type === 'checkbox') {
-            data[field] = target.checked;
-          } else {
-            data[field] = target.value;
-          }
-          set({[name]: data});
-          toast(`Change saved (${field}: ${data[field]})`);
-        });
-        fields.appendChild(key);
-        fields.appendChild(value);
-      }
-    } else if (Array.isArray(data[0])) {
-      for (let field in data) {
-        const first = create('input', {
-          spellcheck: false,
-          type: 'text',
-          value: data[field][0],
-        });
-        const second = create('input', {
-          spellcheck: false,
-          type: 'text',
-          value: data[field][1] || '',
-        });
-        first.addEventListener('blur', ({target}) => {
-          if (data[field][0] === target.value) {
-            return;
-          }
-          data[field][0] = target.value;
-          set({[name]: data});
-          toast(`Change saved (${data[field].join(' -> ')})`);
-        });
-        second.addEventListener('blur', ({target}) => {
-          if (data[field][1] === target.value) {
-            return;
-          }
-          data[field][1] = target.value;
-          set({[name]: data});
-          toast(`Change saved (${data[field].join(' -> ')})`);
-        });
-        fields.appendChild(first);
-        fields.appendChild(second);
-      }
-    } else {
-      for (let field in data) {
-        const first = create('div');
-        const second = create('input', {
-          spellcheck: false,
-          type: 'text',
-          value: data[field],
-        });
-        second.addEventListener('blur', ({target}) => {
-          if (data[field] === target.value) {
-            return;
-          }
-          data[field] = target.value;
-          set({[name]: data});
-          toast(`Change saved (${data[field]})`);
-        });
-        fields.appendChild(first);
-        fields.appendChild(second);
-      }
-      const addValue = create('input', {
-        spellcheck: false,
-        type: 'text',
-        placeholder: 'Add a new value',
+    for (let field of array) {
+      const key = create('div', {
+        innerText: field.name,
+        title: field.description,
       });
-      const addToData = ({target}) => {
-        if (!addValue.value) {
+      const value = (typeof field.value === 'boolean')
+          ? create('input', {
+            spellcheck: false,
+            type: 'checkbox',
+            checked: field.value,
+          })
+          : create('input', {
+            spellcheck: false,
+            type: 'text',
+            value: field.value,
+          });
+      value.addEventListener('change', ({target}) => {
+        if (field.value === target.value) {
           return;
         }
-        data.push(addValue.value);
-        set({[name]: data});
-        toast(`Added a new value (${addValue.value})`);
-        setTimeout(() => window.location.reload(), 1000);
-      };
-      addValue.addEventListener('blur', addToData);
-      const first = create('div');
-      fields.appendChild(first);
-      fields.appendChild(addValue);
-      document.getElementById('main').append(contain);
-      return;
-    }
-    const addKey = create('input', {
-      spellcheck: false,
-      type: 'text',
-      placeholder: 'Type here',
-    });
-    const addValue = create('input', {
-      spellcheck: false,
-      type: 'text',
-      placeholder: 'to add a new pair',
-    });
-    const addToData = ({target}) => {
-      if (!addKey.value || !addValue.value) {
-        return;
-      }
-      if (Array.isArray(data)) {
-        data.push([addKey.value, addValue.value]);
-      } else {
-        const key = addKey.value;
-        const value = addValue.value;
-        if (value === 'true') {
-          data[key] = true;
-        } else if (value === 'false') {
-          data[key] = false;
+        if (target.type === 'checkbox') {
+          field.value = target.checked;
         } else {
-          data[key] = value;
+          field.value = target.value;
         }
-      }
-      set({[name]: data});
-      toast(`Added a new pair (${addKey.value} -> ${addValue.value})`);
-      setTimeout(() => window.location.reload(), 1000);
-    };
-    addKey.addEventListener('blur', addToData);
-    addValue.addEventListener('blur', addToData);
-    fields.appendChild(addKey);
-    fields.appendChild(addValue);
+        set({'Configuration': array});
+        toast(`Change saved`);
+      });
+      fields.appendChild(key);
+      fields.appendChild(value);
+    }
     document.getElementById('main').append(contain);
   }
 
   var defaultStores = {
-    Configuration: {
-      'advanced options': false,
-      'play beeps on error': true,
-      'initials': '',
-      'use backslash to approve': true,
-      'use escape-key to approve': false,
-      'use =-key to approve': false,
-    },
+    Configuration: [
+      {
+        name: 'initials',
+        value: '',
+        description: 'Your initials will be automatically added to the comment box.',
+      },
+      {
+        name: 'play beeps on error',
+        value: true,
+        description: '',
+      },
+      {
+        name: 'use escape-key to approve',
+        value: false,
+        description: 'Use the Escape key as a Hotkey to Approve tasks.',
+      },
+      {
+        name: '12 character limit',
+        value: false,
+        description: 'For the Japanese team, the character limit should be 12 characters.',
+      },
+      {
+        name: 'use google links',
+        value: false,
+        description: 'Experimental: Use the Google internal redirection system.',
+      },
+    ],
     ForbiddenPhrases,
     ForbiddenPhrasesDutch,
     ForbiddenPhrasesSwedish,
@@ -1494,22 +1312,17 @@ window.onload = function() {
 
   chrome.storage.local.get(null, (stores) => {
     var allStores = {...defaultStores, ...stores};
-    set(allStores);
-    const advancedOptions = allStores.Configuration['advanced options'];
-    for (let store in allStores) {
-      if (store === 'LogBook') {
-        continue;
-      }
-      if (/SavedExtractions/.test(store) && advancedOptions) {
-        makeEditor(store, allStores[store]);
-      } else if (store === 'Configuration') {
-        makeEditorMk3(store, allStores[store]);
+    allStores['Configuration'] = defaultStores['Configuration'].map(defaultSetting => {
+      const storedSetting = allStores['Configuration'].find(a => a.name === defaultSetting.name);
+      if (storedSetting) {
+        return storedSetting
       } else {
-        if (advancedOptions) {
-          makeEditorMk3(store, allStores[store]);
-        }
+        return defaultSetting;
       }
-    }
+    })
+    set(allStores);
+    console.log(allStores);
+    makeConfigEditor(allStores['Configuration']);
   });
   
   const save = document.createElement('button');
