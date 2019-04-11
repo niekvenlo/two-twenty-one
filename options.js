@@ -1,13 +1,5 @@
 var ForbiddenPhrases = JSON.parse(String.raw`[
   [
-    "/\\s&\\w|\\w&\\s/",
-    "Use spaces on both sides of the &"
-  ],
-  [
-    "/\\s/\\w|\\w/\\s/",
-    "Use spaces on both sides of the /"
-  ],
-  [
     "/[,.]/",
     "Commas and periods are not allowed"
   ],
@@ -24,20 +16,47 @@ var ForbiddenPhrases = JSON.parse(String.raw`[
     "Brackets are not allowed"
   ],
   [
-    "/[\\\\]/",
-    "Backslash is not allowed"
+    "/[@#$^*–~‘’]/",
+    "Special characters are not allowed"
   ],
   [
-    "/[@#$^*–~]/",
-    "Special characters are not allowed"
+    "/^ /",
+    "A space at the front is not allowed"
   ],
   [
     "/  /",
     "Double spaces are not allowed"
   ],
   [
-    "/\\n",
+    "/\\n/",
     "Line breaks are not allowed"
+  ],
+  [
+    "/\\s&\\w|\\w&\\s/",
+    "Use spaces on both sides of the &"
+  ],
+  [
+    "/\\s/\\w|\\w/\\s/",
+    "Use spaces on both sides of the /"
+  ]
+]`);
+
+var ForbiddenPhrasesSwedish = JSON.parse(String.raw`[
+  [
+    "/accessaorer/",
+    "Use 'accessoarer'"
+  ],
+  [
+    "/konstertbiljetter/",
+    "Use 'konsertbiljetter'"
+  ],
+  [
+    "/fotölj/",
+    "Use 'fåtölj'"
+  ],
+  [
+    "/underhålning/",
+    "Use 'underhållning'"
   ]
 ]`);
 
@@ -64,6 +83,10 @@ var ForbiddenPhrasesDutch = JSON.parse(String.raw`[
   ],
   [
     "/\\b(ons|het) kosten/i",
+    "Onze/de"
+  ],
+  [
+    "/\\b(ons|het) matrassen/i",
     "Onze/de"
   ],
   [
@@ -103,7 +126,8 @@ var ForbiddenPhrasesDutch = JSON.parse(String.raw`[
     "Ons/het"
   ],
   [
-    "/\\b(onze|de) buffet$/i"
+    "/\\b(onze|de) buffet$/i",
+    "Ons/het"
   ],
   [
     "/\\b(onze|de) onderzoek$/i",
@@ -135,6 +159,10 @@ var ForbiddenPhrasesDutch = JSON.parse(String.raw`[
   ],
   [
     "/\\b(onze|de) portfolio$/i",
+    "Ons/het"
+  ],
+  [
+    "/\\b(onze|de) \\w*verblijf$/i",
     "Ons/het"
   ],
   [
@@ -186,7 +214,7 @@ var ForbiddenPhrasesDutch = JSON.parse(String.raw`[
   ],
   [
     "/origneel/",
-    "Use origineel"
+    "Use 'origineel'"
   ],
   [
     "/code95/i"
@@ -242,6 +270,10 @@ var ForbiddenPhrasesDutch = JSON.parse(String.raw`[
   [
     "/piano les/i",
     "Remove the space"
+  ],
+  [
+    "/pianos\\b/i",
+    "Use 'piano's'"
   ],
   [
     "/vrijwilligers werk/i",
@@ -305,8 +337,8 @@ var ForbiddenPhrasesDutch = JSON.parse(String.raw`[
     "Use lowercase"
   ],
   [
-    "/\\bUSB\\b/",
-    "Use lowercase"
+    "/\\busb\\b/",
+    "Use uppercase"
   ],
   [
     "/Woocommerce/"
@@ -320,7 +352,7 @@ var ForbiddenPhrasesDutch = JSON.parse(String.raw`[
     "Capitalise"
   ],
   [
-    "/.Lease/",
+    "/\\bLease\\b/",
     "Don't use a capital on 'lease'"
   ],
   [
@@ -356,7 +388,7 @@ var ForbiddenPhrasesDutch = JSON.parse(String.raw`[
     "/\\bmusic\\b/"
   ],
   [
-    "/degree/"
+    "/\\bdegree\\b/"
   ],
   [
     "/\\bproducer/"
@@ -366,7 +398,7 @@ var ForbiddenPhrasesDutch = JSON.parse(String.raw`[
   ],
   [
     "/texel/",
-    "Capitalise"
+    "Use 'Texel'"
   ],
   [
     "/\\be ?commerce/"
@@ -457,6 +489,10 @@ var ForbiddenPhrasesDutch = JSON.parse(String.raw`[
     "Use 'zakelijk'"
   ],
   [
+    "/Zakelijk evenementen\\b/i",
+    "Use 'zakelijke'"
+  ],
+  [
     "/eierengerechten/i",
     "Use 'eiergerechten'"
   ],
@@ -505,14 +541,6 @@ var ForbiddenPhrasesDutch = JSON.parse(String.raw`[
     "Remove the space"
   ],
   [
-    "/dames ondergoed/i",
-    "Remove the space"
-  ],
-  [
-    "/heren ondergoed/i",
-    "Remove the space"
-  ],
-  [
     "/\\bvluhten\\b/i",
     "Use 'vluchten'"
   ],
@@ -551,6 +579,42 @@ var ForbiddenPhrasesDutch = JSON.parse(String.raw`[
   [
     "/Hoe werkt het/i",
     "Use 'How het werkt'"
+  ],
+  [
+    "/assortient/i",
+    "Use 'assortiment'"
+  ],
+  [
+    "/regios/i",
+    "Use 'regio's'"
+  ],
+  [
+    "/\\w*artikeln/i",
+    "Use 'artikelen"
+  ],
+  [
+    "/^Voor te/i",
+    "Use 'Om te ...'"
+  ],
+  [
+    "/prijstlijst/i",
+    "Use 'prijslijst'"
+  ],
+  [
+    "/opleidinging/i",
+    "Use 'opleiding'"
+  ],
+  [
+    "/2de hands/i",
+    "Use 'Tweedehands'"
+  ],
+  [
+    "/accugereedschap/i",
+    "Add a space"
+  ],
+  [
+    "/jaloezieen/i",
+    "Use 'jaloezieën'"
   ]
 ]`);
 
@@ -565,6 +629,69 @@ var BrandCapitalisation = JSON.parse(String.raw`
  "iTunes",
  "MacBook",
  "YouTube"
+]`);
+
+var CommonReplacementsSwedish = JSON.parse(String.raw`[
+  [
+    "/contact/i",
+    "Kontakta oss"
+  ],
+  [
+    "/about/i",
+    "Om oss"
+  ],
+  [
+    "/faq/i",
+    "Vanliga frågor"
+  ],
+  [
+    "/log ?in/i",
+    "Logga in"
+  ],
+  [
+    "/customer service/i",
+    "Vår kundtjänst"
+  ],
+  [
+    "/blog/i",
+    "Visa blogg"
+  ],
+  [
+    "/Inspiration/i",
+    "Få inspiration"
+  ],
+  [
+    "/^media$/i",
+    "Se media"
+  ],
+  [
+    "/products/i",
+    "Våra produkter"
+  ],
+  [
+    "/giftcard/i",
+    "Köp presentkort"
+  ],
+  [
+    "/my page/i",
+    "Mina sidor"
+  ],
+  [
+    "/storefinder|find store/i",
+    "Hitta butiker"
+  ],
+  [
+    "/projects/i",
+    "Olika projekt"
+  ],
+  [
+    "/store/i",
+    "Vår butik"
+  ],
+  [
+    "/webstore/i",
+    "Visa webbutik"
+  ]
 ]`);
 
 var CommonReplacementsDutch = JSON.parse(String.raw`[
@@ -821,6 +948,18 @@ var CommonReplacementsDutch = JSON.parse(String.raw`[
     "auto's"
   ],
   [
+    "/menus/i",
+    "menu's"
+  ],
+  [
+    "/paginas\\b/i",
+    "pagina's"
+  ],
+  [
+    "/programmas\\b/i",
+    "programma's"
+  ],
+  [
     "/\\bvacuum/i",
     "vacuüm"
   ],
@@ -965,7 +1104,7 @@ var CommonReplacementsDutch = JSON.parse(String.raw`[
     "Home"
   ],
   [
-    "/building/i",
+    "/^building/i",
     "Building"
   ],
   [
@@ -1044,7 +1183,7 @@ window.onload = function() {
     var depth = 0;
     var inQuote = false;
     for (let char of json) {
-      if (!inQuote && char === ']' || char === '}') {
+      if (!inQuote && (char === ']' || char === '}')) {
         depth--;
         out += '\n' + '  '.repeat(depth);
       }
@@ -1055,7 +1194,7 @@ window.onload = function() {
       if (char === '"') {
         inQuote = !inQuote;
       }
-      if (!inQuote && char === '[' || char === '{') {
+      if (!inQuote && (char === '[' || char === '{')) {
         depth++;
         out += '\n' + '  '.repeat(depth);
       }
@@ -1076,84 +1215,169 @@ window.onload = function() {
       if (typeof stores[store] !== 'object') {
         throw new Error(`Trying to set ${store} with ${typeof stores[store]}`);
       }
+      console.debug(store, stores[store]);
       chrome.storage.local.set({[store]: stores[store]});
     }
     document.body.dispatchEvent(new Event('chromeStorageUpdate'));
   }
-  
-  /**
-   * Make a single editor for a data store.
-   *
-   * @param {string} name
-   * @param {Object} data
-   */
-  function makeEditor(name, data) {
-    if (typeof data !== 'object') {
-      throw new Error(
-        `Data for ${name} should be an object, not ${typeof data}`
-      );
+
+  var create = (type, params, style) => {
+    const el = document.createElement(type);
+    for (let param in params) {
+      el[param] = params[param];
     }
-    
-    /**
-     * On blur, if the textarea value is valid JSON, save the new data.
-     * Otherwise, move the focus to the point at which the parse failed.
-     */
-    const handleBlur = () => {
-      try {
-        const obj = JSON.parse(textarea.value);
-        toast('Saving new data for ' + name);
-        set({[name]: obj});
-  
-      } catch (e) {
-        if (!(e instanceof SyntaxError)) {
-          throw e;
-        }
-        const errorAt = e.message.match(/\d*$/)[0];
-        toast(`Invalid formatting (@${errorAt})`)
-        textarea.focus();
-        textarea.selectionStart = errorAt;
-        textarea.selectionEnd = errorAt;
-      }
+    for (let rule in style) {
+      el.style[rule] = style[rule];
     }
-  
-    const contain = document.createElement('div');
-    const title = document.createElement('div');
-    title.textContent = name;
-    title.style.margin = '20px 0 0 0';
-    const textarea = document.createElement('textarea');
-    textarea.value = prettifyJSON(JSON.stringify(data));
-    textarea.addEventListener('blur', handleBlur);
-    contain.appendChild(title);
-    contain.appendChild(textarea);
-    document.getElementById('main').append(contain);
+    return el;
   }
   
+  function makeConfigEditor(array) {
+    const contain = create('div');
+    const title =
+        create('div', {className: 'title', textContent: 'Configuration'});
+    const fields = create('div', {className: 'fields'}, {
+      display: 'grid',
+      gridTemplateColumns: '1fr 1fr',
+    });
+    contain.appendChild(title);
+    contain.appendChild(fields);
+    for (let field of array) {
+      const key = create('div', {
+        innerText: field.name,
+        title: field.description || '...',
+      });
+      const value = (typeof field.value === 'boolean')
+          ? create('input', {
+            spellcheck: false,
+            type: 'checkbox',
+            checked: field.value,
+          })
+          : create('input', {
+            spellcheck: false,
+            type: 'text',
+            value: field.value,
+          });
+      value.addEventListener('change', ({target}) => {
+        if (field.value === target.value) {
+          return;
+        }
+        if (target.type === 'checkbox') {
+          field.value = target.checked;
+        } else {
+          field.value = target.value;
+        }
+        set({'Configuration': array});
+        toast(`Change saved`);
+      });
+      fields.appendChild(key);
+      fields.appendChild(value);
+    }
+    document.getElementById('main').append(contain);
+  }
+
   var defaultStores = {
-    Configuration: {initials: '__'},
+    Configuration: [
+      {
+        name: 'initials',
+        value: '',
+        description:
+            'Your initials will be automatically added to the comment box.',
+      },
+      {
+        name: 'play beeps on error',
+        value: true,
+        description:
+            'Play a beep for high and medium level warnings. ' +
+            '\nBeep repeats every couple of seconds.',
+      },
+      {
+        name: 'use escape-key to approve',
+        value: false,
+        description:
+            'Use the Escape key as a Hotkey to Approve tasks.' +
+            '\nRecommended for the Japanese team.',
+      },
+      {
+        name: '12 character limit',
+        value: false,
+        description:
+            'Set the character limit in text boxes to 12.' +
+            '\nRecommended for the Japanese team.',
+      },
+      {
+        name: 'keep original capitalisation',
+        value: false,
+        description:
+            'Stops automatic capitalization changes when pasting text.' +
+            '\nRecommended for the Japanese team.',
+      },
+      {
+        name: 'use google links',
+        value: false,
+        description:
+            'Experimental: Use the Google internal redirection system.',
+      },
+    ],
     ForbiddenPhrases,
     ForbiddenPhrasesDutch,
+    ForbiddenPhrasesSwedish,
     BrandCapitalisation,
     CommonReplacementsDutch,
+    CommonReplacementsSwedish,
   }
 
   chrome.storage.local.get(null, (stores) => {
     var allStores = {...defaultStores, ...stores};
-    for (let store in allStores) {
-      if (store === 'LogBook') {
-        continue;
-      }
-      makeEditor(store, allStores[store]);
-    }
+    const copy = defaultStores['Configuration'].slice();
+    allStores['Configuration'] = copy.map(defaultSetting => {
+      const storedSetting = allStores['Configuration']
+          .find(a => a.name === defaultSetting.name);
+      const copy = {...defaultSetting};
+      copy.value = storedSetting.value || copy.value;
+      return copy;
+    });
+    set(allStores);
+    console.log(allStores);
+    makeConfigEditor(allStores['Configuration']);
   });
   
-  const button = document.createElement('button');
-  button.textContent = 'Reset default values';
-  button.addEventListener('click', () => {
+  const feedback = document.createElement('button');
+  feedback.textContent = 'Feature request?';
+  feedback.title =
+      'Any feedback is welcome.' +
+      '\nQuestions, comments, concerns';
+  feedback.addEventListener('click', () => {
+    toast('Opening the feedback form');
+    window.open('http://goto.google.com/twotwenty-feedback');
+  });
+  
+  const save = document.createElement('button');
+  save.className = 'main';
+  save.textContent = 'Save changes';
+  save.title =
+      'Changes are saved automatically.' +
+      'This button is a dummy.';
+  save.addEventListener('click', () => {
+    toast('All changes saved');
+    setTimeout(() => window.location.reload(), 1000);
+  });
+  
+  const reset = document.createElement('button');
+  reset.textContent = 'Reset default values';
+  reset.title =
+      'This will reset all settings to default.' +
+      '\nYou will lose your count and your log.' +
+      '\nRemember to put your initials back in.';
+  reset.addEventListener('click', () => {
     chrome.storage.local.clear();
     set(defaultStores);
     toast('Resetting default values');
     setTimeout(() => window.location.reload(), 1000);
   });
-  document.getElementById('buttons').append(button);
+  
+  document.getElementById('buttons').append(feedback);
+  document.getElementById('buttons').append(save);
+  document.getElementById('buttons').append(reset);
 };
 undefined;
