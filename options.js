@@ -1233,7 +1233,8 @@ window.onload = function() {
   
   function makeConfigEditor(array) {
     const contain = create('div');
-    const title = create('div', {className: 'title', textContent: 'Configuration'})
+    const title =
+        create('div', {className: 'title', textContent: 'Configuration'});
     const fields = create('div', {className: 'fields'}, {
       display: 'grid',
       gridTemplateColumns: '1fr 1fr',
@@ -1243,7 +1244,7 @@ window.onload = function() {
     for (let field of array) {
       const key = create('div', {
         innerText: field.name,
-        title: field.description,
+        title: field.description || '...',
       });
       const value = (typeof field.value === 'boolean')
           ? create('input', {
@@ -1279,27 +1280,42 @@ window.onload = function() {
       {
         name: 'initials',
         value: '',
-        description: 'Your initials will be automatically added to the comment box.',
+        description:
+            'Your initials will be automatically added to the comment box.',
       },
       {
         name: 'play beeps on error',
         value: true,
-        description: '',
+        description:
+            'Play a beep for high and medium level warnings. ' +
+            '\nBeep repeats every couple of seconds.',
       },
       {
         name: 'use escape-key to approve',
         value: false,
-        description: 'Use the Escape key as a Hotkey to Approve tasks.',
+        description:
+            'Use the Escape key as a Hotkey to Approve tasks.' +
+            '\nRecommended for the Japanese team.',
       },
       {
         name: '12 character limit',
         value: false,
-        description: 'For the Japanese team, the character limit should be 12 characters.',
+        description:
+            'Set the character limit in text boxes to 12.' +
+            '\nRecommended for the Japanese team.',
+      },
+      {
+        name: 'keep original capitalisation',
+        value: false,
+        description:
+            'Stops automatic capitalization changes when pasting text.' +
+            '\nRecommended for the Japanese team.',
       },
       {
         name: 'use google links',
         value: false,
-        description: 'Experimental: Use the Google internal redirection system.',
+        description:
+            'Experimental: Use the Google internal redirection system.',
       },
     ],
     ForbiddenPhrases,
@@ -1312,21 +1328,35 @@ window.onload = function() {
 
   chrome.storage.local.get(null, (stores) => {
     var allStores = {...defaultStores, ...stores};
-    allStores['Configuration'] = defaultStores['Configuration'].map(defaultSetting => {
-      const storedSetting = allStores['Configuration'].find(a => a.name === defaultSetting.name);
-      if (storedSetting) {
-        return storedSetting
-      } else {
-        return defaultSetting;
-      }
-    })
+    const copy = defaultStores['Configuration'].slice();
+    allStores['Configuration'] = copy.map(defaultSetting => {
+      const storedSetting = allStores['Configuration']
+          .find(a => a.name === defaultSetting.name);
+      const copy = {...defaultSetting};
+      copy.value = storedSetting.value || copy.value;
+      return copy;
+    });
     set(allStores);
     console.log(allStores);
     makeConfigEditor(allStores['Configuration']);
   });
   
+  const feedback = document.createElement('button');
+  feedback.textContent = 'Feature request?';
+  feedback.title =
+      'Any feedback is welcome.' +
+      '\nQuestions, comments, concerns';
+  feedback.addEventListener('click', () => {
+    toast('Opening the feedback form');
+    window.open('http://goto.google.com/twotwenty-feedback');
+  });
+  
   const save = document.createElement('button');
+  save.className = 'main';
   save.textContent = 'Save changes';
+  save.title =
+      'Changes are saved automatically.' +
+      'This button is a dummy.';
   save.addEventListener('click', () => {
     toast('All changes saved');
     setTimeout(() => window.location.reload(), 1000);
@@ -1334,12 +1364,18 @@ window.onload = function() {
   
   const reset = document.createElement('button');
   reset.textContent = 'Reset default values';
+  reset.title =
+      'This will reset all settings to default.' +
+      '\nYou will lose your count and your log.' +
+      '\nRemember to put your initials back in.';
   reset.addEventListener('click', () => {
     chrome.storage.local.clear();
     set(defaultStores);
     toast('Resetting default values');
     setTimeout(() => window.location.reload(), 1000);
   });
+  
+  document.getElementById('buttons').append(feedback);
   document.getElementById('buttons').append(save);
   document.getElementById('buttons').append(reset);
 };
