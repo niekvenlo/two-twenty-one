@@ -1218,6 +1218,7 @@ window.onload = function() {
       console.debug(store, stores[store]);
       chrome.storage.local.set({[store]: stores[store]});
     }
+    document.body.dispatchEvent(new Event('chromeStorageUpdate'));
   }
 
   var create = (type, params, style) => {
